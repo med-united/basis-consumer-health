@@ -1,0 +1,349 @@
+-- =====================================================================
+-- SICCT.asn1
+-- ASN.1-Syntax fuer das SICCT-Protokoll
+-- Abgeleitet aus: TeleTrusT-SICCT-Spezifikation V 1.3.0 (2025)
+--                 "Secure Interoperable ChipCard Terminal"
+--
+-- WICHTIGER GELTUNGSHINWEIS
+-- -------------------------
+-- In SICCT ist nur EIN Teil des Protokolls echtes BER/ASN.1:
+--
+--   (C) TLV-Datenobjekte (DOs) im Command-/Response-Data-Field und in
+--       Ereignisnachrichten sind nach ASN.1-BER codiert (Kap. 5.5.10.3).
+--       --> Dieser Teil ist normativ und maschinenlesbar gemeint.
+--
+--   (A) Der 10-Byte-Envelope (Kap. 6.2.4.2) sowie die APDU-Rahmung
+--       CLA/INS/P1/P2/Lc/Le (Kap. 5.1) sind FESTE Byte-Strukturen nach
+--       ISO/IEC 7816-4 und NICHT BER-codiert.
+--       --> Hier dienen die SEQUENCE-Definitionen rein der Dokumentation
+--           des Byte-Aufbaus (Offsets/Laengen siehe Kommentare).
+--
+-- Tag-Codierung der DOs (Kap. 5.5.10.3, Tabelle 18):
+--   Identifier-Oktett b8 b7 = Klasse (00=Univ, 01=Appl, 10=Context, 11=Priv)
+--                     b6     = 0 primitiv / 1 constructed
+--                     b5..b1 = Tag-Nummer 0..30 (sonst 2-Byte-Tag)
+--   Hinweis: SICCT erlaubt ausdruecklich Mehrfachnennungen identischer
+--   Tag-Werte; Bedeutung und Gueltigkeit ergeben sich aus dem Kontext
+--   (Kommando). Tag-Nummern werden teils primitiv/constructed wiederverwendet
+--   (z.B. CTM '46' = [APPLICATION 6] primitiv vs. INTFC '66' = [APPLICATION 6]
+--   constructed). Diese Modulfassung bildet das ueber separate Typen ab.
+-- =====================================================================
+
+SICCT-Protocol-1-3-0 DEFINITIONS IMPLICIT TAGS ::=
+BEGIN
+
+-- =====================================================================
+-- TEIL A:  TRANSPORT-ENVELOPE  (Kap. 6.2.4.2, Tabelle 30)
+--          DOKUMENTARISCH -- feste 10-Byte-Struktur, network-byte-order,
+--          KEIN BER.
+-- =====================================================================
+
+-- Nachrichtentyp (Offset 0, 1 Byte)
+SicctMessageType ::= ENUMERATED {
+    c-command   (107),   -- '6B' : C-Kommando (Host -> Terminal)
+    r-command   (131),   -- '83' : R-Kommando (Terminal -> Host, Quittung)
+    event        (80)    -- '50' : Ereignisnachricht (Terminal -> Host)
+}
+
+-- Quell-/Zieladresse einer Functional Unit (Offset 1, 2 Byte)
+-- '0000'         = SICCT-Kommando-APDU bzw. FU "Terminal" / Terminal-Ereignis
+-- '0001'..'00FF' = ICC 1..255   (kontaktbehaftete Kartenschnittstelle)
+-- '1001'..'10FF' = CL-IF 1..255 (kontaktlose Schnittstelle)
+SicctFuAddress ::= INTEGER (0..65535)
+
+-- Sequenznummer (Offset 3, 2 Byte)
+-- '0000'..'FCFF' = C-/R-Kommandos ; 'FD00'..'FFFF' = Ereignisse
+SicctSequenceNumber ::= INTEGER (0..65535)
+
+SicctEnvelope ::= SEQUENCE {
+    bMessageType    SicctMessageType,       -- Offset 0, 1 Byte
+    wSrcOrDesAddr   SicctFuAddress,         -- Offset 1, 2 Byte (n.b.o.)
+    wSeq            SicctSequenceNumber,    -- Offset 3, 2 Byte (n.b.o.)
+    abRFU           OCTET STRING (SIZE(1)), -- Offset 5, 1 Byte, reserved
+    dwLength        INTEGER (0..4294967295),-- Offset 6, 4 Byte (n.b.o.):
+                                            --   Laenge von abCmd (ohne Envelope)
+    abCmd           SicctPayload            -- Offset 10, <dwLength> Bytes
+}
+
+-- Nutzlast je nach Nachrichtentyp
+SicctPayload ::= CHOICE {
+    commandApdu     CommandAPDU,            -- bei '6B' (SICCT-Kommando)
+    iso7816Apdu     OCTET STRING,           -- bei '6B'/'83' (durchgereichte ICC-APDU)
+    responseApdu    ResponseAPDU,           -- bei '83' (SICCT-Antwort)
+    eventData       EventNotification       -- bei '50' (TLV-codierte Ereignisse)
+}
+
+-- =====================================================================
+-- TEIL B:  APDU-RAHMUNG  (Kap. 5.1 - 5.4)
+--          DOKUMENTARISCH -- Byte-Folge nach ISO/IEC 7816-4, KEIN BER.
+-- =====================================================================
+
+-- CLASS-Byte: SICCT-Kommandosatz = '80'
+SicctClass ::= INTEGER { sicct (128) } (0..255)
+
+-- INSTRUCTION-Byte: SICCT Command Set (Kap. 5.5.7, Tabelle 9)
+SicctInstruction ::= ENUMERATED {
+    reset-ct-icc                (17),   -- '11'  RESET CT / ICC
+    request-icc                 (18),   -- '12'  REQUEST ICC
+    get-status                  (19),   -- '13'  GET STATUS
+    eject-icc                   (21),   -- '15'  EJECT ICC
+    input                       (22),   -- '16'  INPUT
+    output                      (23),   -- '17'  OUTPUT
+    perform-verification        (24),   -- '18'  PERFORM VERIFICATION
+    modify-verification-data    (25),   -- '19'  MODIFY VERIFICATION DATA
+    select-ct-mode              (32),   -- '20'  SELECT CT MODE
+    comfort-authentication      (33),   -- '21'  COMFORT AUTHENTICATION
+    comfort-enroll              (34),   -- '22'  COMFORT ENROLL
+    set-status                  (35),   -- '23'  SET STATUS
+    download-init               (36),   -- '24'  DOWNLOAD INIT
+    download-data               (37),   -- '25'  DOWNLOAD DATA
+    download-finish             (38),   -- '26'  DOWNLOAD FINISH
+    control-command             (39),   -- '27'  CONTROL COMMAND
+    init-ct-session             (40),   -- '28'  INIT CT SESSION
+    close-ct-session            (41)    -- '29'  CLOSE CT SESSION
+}
+
+-- P1 = Functional-Unit-Referenz (Direct- oder Referenced-Coding);
+-- P2 = Command Qualifier (kommandospezifisch). 1 Byte je.
+CommandHeader ::= SEQUENCE {
+    cla     SicctClass,
+    ins     SicctInstruction,
+    p1      INTEGER (0..255),   -- Functional Unit (Kap. 5.2.3)
+    p2      INTEGER (0..255)    -- Command Qualifier (Kap. 5.2.4)
+}
+
+-- Command Data Field = konkatenierte Folge von TLV-DOs.
+-- Lc/Le folgen den ISO-7816-4-Regeln (short/extended) und werden hier
+-- nicht als ASN.1 modelliert (reine Laengenqualifizierer).
+CommandAPDU ::= SEQUENCE {
+    header      CommandHeader,
+    commandData SEQUENCE OF SicctDataObject OPTIONAL   -- <Nc Bytes>, optional
+    -- le: implizit ueber ISO-7816-4-Laengenfeld
+}
+
+-- Status Word SW1SW2 (Kap. 5.4.1)
+StatusWord ::= SEQUENCE {
+    sw1     INTEGER (0..255),
+    sw2     INTEGER (0..255)
+}
+
+ResponseAPDU ::= SEQUENCE {
+    responseData    SEQUENCE OF SicctDataObject OPTIONAL,  -- bis Ne Bytes
+    trailer         StatusWord                             -- 2 Byte, mandatory
+}
+
+-- =====================================================================
+-- TEIL C:  TLV-DATENOBJEKTE  (Kap. 5.5.10.x)
+--          NORMATIV -- echtes ASN.1-BER.
+-- =====================================================================
+
+-- Sammeltyp aller im Command-/Response-Data-Field zulaessigen DOs.
+-- (Auswahl nach Kontext/Kommando, vgl. Tabelle 16/17.)
+SicctDataObject ::= CHOICE {
+    atr         ATR-DO,
+    hb          HB-DO,
+    ctm         CTM-DO,
+    appl        APPL-DO,
+    cmd         CMD-DO,
+    ppsr        PPSR-DO,
+    iccs        ICCS-DO,        -- bzw. WT-DO (gleicher Tag '80', s. Hinweis)
+    fu          FU-DO,
+    clif        CLIF-DO,
+    fui         FUI-DO,
+    cs          CS-DO,
+    smtbd       SMTBD-DO,
+    fuName      FU-NAME-DO,
+    fuCon       FU-CON-DO,
+    cts         CTS-DO,
+    intfs       INTFS-DO,
+    intfc       INTFC-DO,
+    dsplc       DSPLC-DO,
+    seqno       SEQNO-DO,
+    ctsess      CTSESS-DO,
+    kpc         KPC-DO,
+    dlparam     DLPARAM-DO,     -- Tag '73' kontextabhaengig =
+    dldata      DLDATA-DO,      --   DLPARAM / DLDATA / DLTERM
+    dlterm      DLTERM-DO
+}
+
+-- ---------- Answer-To-Reset (Kap. 5.5.10.4) -------------------------
+-- Tag '5F41' = [APPLICATION 65] primitiv (2-Byte-Tag), 0..255 Byte
+ATR-DO ::= [APPLICATION 65] IMPLICIT OCTET STRING (SIZE(0..255))
+
+-- ---------- Historical Bytes (Kap. 5.5.10.5) ------------------------
+-- Tag '5F52' = [APPLICATION 82] primitiv (2-Byte-Tag), 0..252 Byte
+HB-DO ::= [APPLICATION 82] IMPLICIT OCTET STRING (SIZE(0..252))
+
+-- ---------- CardTerminal Manufacturer DO (Kap. 5.5.10.6) ------------
+-- Tag '46' = [APPLICATION 6] primitiv. Feste Teilfelder im Value.
+CTM-DO ::= [APPLICATION 6] IMPLICIT SEQUENCE {
+    ctm     OCTET STRING (SIZE(5)),         -- Hersteller (RID, ASCII, Space-padded)
+    ctt     OCTET STRING (SIZE(5)),         -- SICCT-Version (ASCII)
+    ctsv    OCTET STRING (SIZE(5)),         -- Software-Version (ASCII)
+    dd      OCTET STRING (SIZE(0..112)) OPTIONAL  -- Discretionary Data (z.B. Seriennr.)
+}
+-- Gesamtlaenge: 15 <= LEN <= 127
+
+-- ---------- Application Label DO (Kap. 5.5.10.x) --------------------
+-- Tag '50' = [APPLICATION 16] primitiv. Anzuzeigende Nachricht.
+APPL-DO ::= [APPLICATION 16] IMPLICIT OCTET STRING
+
+-- ---------- Command-To-Perform DO (Kap. 5.5.10.22) ------------------
+-- Tag '52' = [APPLICATION 18] primitiv.
+CMD-DO ::= [APPLICATION 18] IMPLICIT OCTET STRING
+
+-- ---------- PPS Request/Response DO --------------------------------
+-- Tag '53' = [APPLICATION 19] primitiv.
+PPSR-DO ::= [APPLICATION 19] IMPLICIT OCTET STRING
+
+-- ---------- ICC Status DO (Kap. 5.5.10.7) ---------------------------
+-- Tag '80' = [0] context-specific primitiv. 1..255 Statusbytes,
+-- je Byte = Status eines Slots/einer Kontaktiereinheit.
+ICCS-DO ::= [0] IMPLICIT OCTET STRING (SIZE(1..255))
+-- Bekannte Bytewerte: '00' CC absent, '01' CC present, '03' swallowed,
+-- '05' powered, '0D' negotiable, '15' specific, '80' unknown.
+
+-- ---------- Waiting Time DO (Kap. 5.5.10.21) ------------------------
+-- Achtung: identischer Tag '80' wie ICCS-DO; Unterscheidung KONTEXTUELL
+-- (WT = IN bei REQUEST/EJECT/INPUT/...; ICCS = OUT bei GET STATUS/RESET).
+WT-DO ::= [0] IMPLICIT OCTET STRING (SIZE(1..255))
+
+-- ---------- Functional Unit DO (Kap. 5.5.10.8) ----------------------
+-- Tag '81' = [1] context-specific primitiv.
+-- BCS-Mode: Liste von 1-Byte-FU-Werten; SICCT-Mode: Liste von 2-Byte-Werten.
+FU-DO ::= [1] IMPLICIT OCTET STRING (SIZE(0..512))
+
+-- ---------- CL-IF Status DO (Kap. 5.5.10.12) ------------------------
+-- Tag '83' = [3] context-specific primitiv.
+CLIF-DO ::= [3] IMPLICIT OCTET STRING
+
+-- ---------- Functional Unit Index DO (Kap. 5.5.10.9) ----------------
+-- Tag '84' = [4] context-specific primitiv. Genau 2 Byte:
+-- Byte 1 = FU-Typqualifizierer ('00'..'A0'), Byte 2 = Index ('00'..'FF').
+FUI-DO ::= [4] IMPLICIT SEQUENCE {
+    fuType  INTEGER (0..255),
+    fuIndex INTEGER (0..255)
+}
+-- Codierung als 2-Byte-OCTET-STRING; SEQUENCE hier nur zur Strukturierung.
+
+-- ---------- Character Set DO (Kap. 5.5.10.x) ------------------------
+-- Tag '85' = [5] context-specific primitiv.
+CS-DO ::= [5] IMPLICIT OCTET STRING
+
+-- ---------- SICCT Message-To-Be-Displayed DO (Kap. 5.5.10.20) -------
+-- Tag 'A0' = [0] context-specific CONSTRUCTED.
+-- Kombiniert Application Label mit Character-Set-DO.
+SMTBD-DO ::= [0] IMPLICIT SEQUENCE {
+    appl    APPL-DO,
+    cs      CS-DO OPTIONAL
+}
+
+-- ---------- Functional Unit Name DO (Kap. 5.5.10.11) ----------------
+-- Tag 'A1' = [1] context-specific CONSTRUCTED. PrintableString-Name + FUI.
+FU-NAME-DO ::= [1] IMPLICIT SEQUENCE {
+    fui     FUI-DO,
+    name    [1] IMPLICIT PrintableString (SIZE(0..32))   -- inneres Tag 'A1'/'81'
+}
+
+-- ---------- Functional Unit Context DO (Kap. 5.5.10.10) -------------
+-- Tag 'A2' = [2] context-specific CONSTRUCTED. 2..3 FUI-DOs.
+FU-CON-DO ::= [2] IMPLICIT SEQUENCE (SIZE(2..3)) OF FUI-DO
+
+-- ---------- Reduced / Cardterminal Status DO (Kap. 5.5.10.13) -------
+-- Tag '63' = [APPLICATION 3] CONSTRUCTED.
+CTS-DO ::= [APPLICATION 3] IMPLICIT SEQUENCE {
+    fu      FU-DO OPTIONAL,
+    iccs    ICCS-DO,
+    clif    CLIF-DO OPTIONAL
+}
+
+-- ---------- ICC Interface Status DO (Kap. 5.5.10.14) ----------------
+-- Tag '65' = [APPLICATION 5] CONSTRUCTED.
+INTFS-DO ::= [APPLICATION 5] IMPLICIT OCTET STRING
+
+-- ---------- ICC Interface Capabilities DO (Kap. 5.5.10.15) ----------
+-- Tag '66' = [APPLICATION 6] CONSTRUCTED.
+-- (Gleiche Tag-Nummer 6 wie CTM-DO, aber constructed -- s. Kopfhinweis.)
+INTFC-DO ::= [APPLICATION 6] IMPLICIT OCTET STRING
+
+-- ---------- Display Capabilities DO (Kap. 5.5.10.x) -----------------
+-- Tag '67' = [APPLICATION 7] CONSTRUCTED.
+DSPLC-DO ::= [APPLICATION 7] IMPLICIT OCTET STRING
+
+-- ---------- Sequence Number DO (Kap. 5.5.10.23) ---------------------
+-- Tag '68' = [APPLICATION 8] CONSTRUCTED. LEN 4..8.
+-- Enthaelt im Value je ein OCTET STRING (UNIVERSAL 4, Tag '04', SIZE 2):
+--   Request : nur Command Sequence Number.
+--   Response: zusaetzlich Command Sequence Status Word.
+SEQNO-DO ::= [APPLICATION 8] IMPLICIT SEQUENCE {
+    commandSequenceNumber       OCTET STRING (SIZE(2)),  -- '04' '02' <HB><LB>
+    commandSequenceStatusWord   OCTET STRING (SIZE(0..2)) OPTIONAL
+        -- nur in Antworten; z.B. '9000' queued, '62xx' in processing,
+        -- '64xx' state fixed, '6F00' not found
+}
+
+-- ---------- Cardterminal Session DO (Kap. 5.5.10.x) -----------------
+-- Tag '69' = [APPLICATION 9] CONSTRUCTED. Genutzt bei INIT/CLOSE CT SESSION.
+CTSESS-DO ::= [APPLICATION 9] IMPLICIT OCTET STRING
+
+-- ---------- Keypad Capabilities DO (Kap. 5.5.10.x) ------------------
+-- Tag '6A' = [APPLICATION 10] CONSTRUCTED.
+KPC-DO ::= [APPLICATION 10] IMPLICIT OCTET STRING
+
+-- ---------- Download Parameter DO (Kap. 5.5.10.24) ------------------
+-- Tag '73' = [APPLICATION 19] CONSTRUCTED. LEN 6..8.
+-- Value = Folge von OCTET-STRING-Elementen (UNIVERSAL 4): Timeout + MaxSize.
+DLPARAM-DO ::= [APPLICATION 19] IMPLICIT SEQUENCE {
+    timeoutSeconds      OCTET STRING (SIZE(1..2)),  -- Wartezeit in Sekunden
+    maxDownloadDataSize OCTET STRING (SIZE(1..2))   -- max. DLDATA-Groesse (Bytes)
+}
+
+-- ---------- Download Data DO (Kap. 5.5.10.25) -----------------------
+-- Tag '73' = [APPLICATION 19] CONSTRUCTED. LEN 0..65531. Herstellerspezifisch.
+DLDATA-DO ::= [APPLICATION 19] IMPLICIT OCTET STRING (SIZE(0..65531))
+
+-- ---------- Download Termination DO (Kap. 5.5.10.26) ----------------
+-- Tag '73' = [APPLICATION 19] CONSTRUCTED. LEN 5..7. Optionales Timeout.
+DLTERM-DO ::= [APPLICATION 19] IMPLICIT SEQUENCE {
+    timeoutSeconds  OCTET STRING (SIZE(0..1)) OPTIONAL
+}
+
+-- =====================================================================
+-- TEIL D:  EREIGNISNACHRICHTEN  (Kap. 6.2.4.4, Tabelle 31)
+--          NORMATIV -- TLV-codiert (Tags '80'..'87').
+--          Werden unidirektional Terminal -> Host gesendet (nur bei
+--          geoeffneter Session); Absender stets FU "Terminal" ('0000').
+-- =====================================================================
+
+EventNotification ::= CHOICE {
+    -- Protokollereignisse
+    keepAlive       [0] IMPLICIT FuNumber,        -- '80', 2 Byte: FU-Nummer
+    terminalSignOff [1] IMPLICIT FuNumber,        -- '81', 2 Byte: FU-Nummer
+    protocolError   [6] IMPLICIT ProtocolErrorCode, -- '86', 1 Byte: Error Code
+
+    -- FU- und Kartenereignisse (jeweils 2 Byte FU-Nummer = Typ+Index)
+    fuAdded         [2] IMPLICIT FuNumber,        -- '82'
+    fuRemoved       [3] IMPLICIT FuNumber,        -- '83'
+    cardInserted    [4] IMPLICIT FuNumber,        -- '84'
+    cardRemoved     [5] IMPLICIT FuNumber,        -- '85'
+
+    -- Kommandospezifische Ereignisse
+    keypadEvent     [7] IMPLICIT KeypadEvent      -- '87', 3 Byte
+}
+
+FuNumber ::= OCTET STRING (SIZE(2))   -- entspricht Typ + Index der FU
+
+ProtocolErrorCode ::= ENUMERATED {
+    timeout-reading-envelope    (0),    -- '00'
+    timeout-reading-data        (1),    -- '01'
+    unsupported-message-type    (16),   -- '10'
+    address-fu-not-present      (17),   -- '11'
+    wrong-sequence-number       (18)    -- '12'
+}
+
+KeypadEvent ::= SEQUENCE {
+    fuNumber    FuNumber,               -- 2 Byte: ereignisgenerierende Tastatur
+    keyCode     INTEGER (0..255)        -- 1 Byte: Tastencode (Tabelle 32)
+}
+
+END
