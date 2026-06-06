@@ -1,93 +1,142 @@
 @startuml component
 title Basis Consumer — Component Diagram (Maven Modules)
-
 skinparam componentStyle rectangle
 
-package "basis-consumer-server\n(Quarkus application, main deployable)" {
-  [CDI Tenant Context\n& Authorization] as CDI
-  [Hawtio Management\nConsole Panels] as HAWTIO
-  [SmallRye Health\n(readiness checks)] as HEALTH
-  [JPA / JavaDB\n(CardTerminalRecord, AuditLog)] as JPA
+' ── Git Submodules ──────────────────────────────────────────────────
+package "api-telematik\n(git submodule: med-united/api-telematik)" {
+  [conn/ WSDLs\nCertificateService · EncryptionService · SignatureService] as CONN_WSDL
+  [consumer/ WSDLs\nAuthSig · Card · CardTerminal · Cert · Enc · Event · Sig\n+ ServiceDirectory.xsd] as CONS_WSDL
 }
 
-package "konnektor-server\n(Apache CXF SOAP endpoints)" {
-  [SignatureService\n(SignDocument, ExternalAuthenticate)] as SIG_SVC
-  [EncryptionService\n(EncryptDocument, DecryptDocument)] as ENC_SVC
-  [CertificateService\n(ReadCertificate, VerifyCertificate)] as CERT_SVC
-  [CardService\n(VerifyPin, ChangePin, StartCardSession...)] as CARD_SVC
-  [CardTerminalService\n(RequestCard, EjectCard)] as KT_SVC
-  [EventService\n(Subscribe, CETP push)] as EVT_SVC
-  [AufrufKontext Interceptor\n(mandantId / clientSystemId / userId)] as CTX
+package "openkim-server\n(git submodule: sberg-net/openkim)" {
+  [KimSmtpServer\n(port 25/587)] as SMTP
+  [KimPop3Server\n(port 110/995)] as POP3
+  [KimMessageProcessor\n(S/MIME: encrypt + sign)] as KIM_MSG
 }
 
-package "ldap-proxy-server\n(Netty LDAPv3 proxy)" {
-  [LDAP Server Codec\n(port 389 / 636)] as LDAP_IN
-  [VZD LDAP Client\n(LDAPS to TI VZD)] as LDAP_OUT
-  [Operation Filter\n(allow: Bind, Unbind,\nSearch, Abandon only)] as LDAP_FILT
+' ── crypto-lib ─────────────────────────────────────────────────────
+package "crypto-lib\n(gemLibPki@4.0.2 · incl. Bouncy Castle)" {
+  [TslDownloader\n(auto-update trust list)] as TSL
+  [CertificateParser\n(RegNr · SMC-B · eHBA attributes)] as CPARS
+  [TrustService\n(CDI @ApplicationScoped)] as TSVC
 }
 
-package "signature-lib\n(CryptoProvider CDI interface + adapters)" {
-  [CryptoProvider\n(CDI @ApplicationScoped)] as CP
-  [P12KeySourceAdapter] as P12
-  [Pkcs11KeySourceAdapter\n(SunPKCS11)] as PKCS11
-  [PcscKeySourceAdapter\n(javax.smartcardio)] as PCSC
-  [SicctKeySourceAdapter] as SICCT_ADAPT
-  [AuditLogger] as AUDIT
+' ── sicct-lib ──────────────────────────────────────────────────────
+package "sicct-lib\n(crypto-lib · javax.smartcardio · beanit jASN1 codegen)" {
+  [SICCT.asn1\n→ jASN1 Generated Classes\n(Maven generate-sources)] as ASN1
+  [EhealthAuthenticator\n(CREATE · VALIDATE · ADD Phase1/2)] as EAUTH
+  [JceKeyStoreSPI\n(SMC-B · eHBA — APDU generation)] as KSSPI
 }
 
-package "sicct-lib\n(SICCT Quarkus Extension — deployment+runtime)" {
-  [SicctExtensionProcessor\n(build-time CDI setup)] as PROC
-  [SicctTerminalManager\n(Netty TCP client pool)] as TM
-  [EhealthAuthenticator\n(CREATE / VALIDATE / ADD)] as EAUTH
-  [CardSlotTracker\n(@Scheduled watchdog)] as SLOT
-  [SicctHealthCheck\n(@Readiness)] as SICT_HEALTH
+' ── quarkus-sicct-extension ────────────────────────────────────────
+package "quarkus-sicct-extension\n(sicct-lib · Quarkus · Netty)" {
+  [SicctExtensionProcessor\n(build-time CDI registration)] as PROC
+  [SicctTerminalManager\n(UDP discovery · Netty TCP client pool)] as STM
+  [CardSlotTracker (@Scheduled)] as SLOT
+  [SicctHealthCheck (@Readiness)] as SHCK
 }
 
-package "openkim (git submodule)\n(KIM/KOM-LE — Spring Boot embedded)" {
-  [KimSmtpServer] as SMTP
-  [KimPop3Server] as POP3
-  [KimMessageProcessor\n(encrypt / sign / send)] as KIM_PROC
+' ── crypto-services-lib ────────────────────────────────────────────
+package "crypto-services-lib\n(crypto-lib · NO sicct-lib dependency)" {
+  [SignatureService\n(sign · ExternalAuthenticate)] as SIGI
+  [EncryptionService\n(encrypt · decrypt)] as ENCI
+  [CertificateService\n(read · verify)] as CERTI
 }
 
-' Main app wires everything
-CDI --> CTX
-JPA --> TM : load CardTerminalRecord at startup
-JPA --> HAWTIO : CRUD via management panels
-HEALTH --> SICT_HEALTH
-HEALTH --> CP
+' ── quarkus-ldap-proxy-server-extension ────────────────────────────
+package "quarkus-ldap-proxy-server-extension\n(Quarkus · Netty)" {
+  [LdapServerCodec\n(port 389/636)] as LDAP_SRV
+  [OperationFilter\n(Bind · Unbind · Search · Abandon)] as LDAP_FLT
+  [VzdLdapClient\n(LDAPS → TI VZD)] as LDAP_CLI
+}
 
-' konnektor-server uses signature-lib
-SIG_SVC --> CP : sign / decrypt
-ENC_SVC --> CP : encrypt / decrypt
-CERT_SVC --> CP : read certificate
-CARD_SVC --> CP : PIN ops / card session
-KT_SVC --> TM : RequestCard / EjectCard
-CTX --> SIG_SVC
-CTX --> ENC_SVC
-CTX --> CERT_SVC
-CTX --> CARD_SVC
-CTX --> KT_SVC
+' ── consumer-soap-server ─────────────────────────────────────
+package "consumer-soap-server\n(Apache CXF · URL /consumer)" {
+  [CertificateService\n(conn/CertSvc.wsdl)] as BCS_C
+  [EncryptionService\n(conn/EncSvc.wsdl)] as BCS_E
+  [SignatureService\n(conn/SigSvc.wsdl)] as BCS_S
+  [AufrufKontextInterceptor] as BCS_AKI
+  [MtomInterceptor] as BCS_MTOM
+}
 
-' ldap-proxy-server internal chain
-LDAP_IN --> LDAP_FILT
-LDAP_FILT --> LDAP_OUT
+' ── konnektor-soap-server ──────────────────────────────────────────
+package "konnektor-soap-server\n(Apache CXF · URL /conn)" {
+  [AuthSignatureService] as KS_AUTH
+  [CardService] as KS_CARD
+  [CardTerminalService] as KS_CT
+  [CertificateService] as KS_CERT
+  [EncryptionService] as KS_ENC
+  [EventService] as KS_EVT
+  [SignatureService] as KS_SIG
+  [connector.sds\n(ServiceDirectory.xsd)] as KS_SDS
+  [AufrufKontextInterceptor] as KS_AKI
+}
 
-' signature-lib CryptoProvider routes to adapters
-CP --> P12
-CP --> PKCS11
-CP --> PCSC
-CP --> SICCT_ADAPT
-CP --> AUDIT
+' ── Intra-module wiring ────────────────────────────────────────────
+TSL --> TSVC
+CPARS --> TSVC
+ASN1 --> EAUTH
+KSSPI --> EAUTH
+PROC --> STM
+STM --> SLOT
+SHCK --> STM
+LDAP_SRV --> LDAP_FLT
+LDAP_FLT --> LDAP_CLI
+BCS_AKI --> BCS_C
+BCS_AKI --> BCS_E
+BCS_AKI --> BCS_S
+BCS_MTOM --> BCS_E
+BCS_MTOM --> BCS_S
+KS_AKI --> KS_AUTH
+KS_AKI --> KS_CARD
+KS_AKI --> KS_CT
+KS_AKI --> KS_CERT
+KS_AKI --> KS_ENC
+KS_AKI --> KS_SIG
+SMTP --> KIM_MSG
+POP3 --> KIM_MSG
 
-' sicct-lib integration
-SICCT_ADAPT --> TM : send APDU
-TM --> EAUTH : session setup
-TM --> SLOT
-PROC --> TM : extension lifecycle
+' ── Cross-module dependencies ─────────────────────────────────────
+' sicct-lib → crypto-lib
+EAUTH ..> TSVC : cert validation
+KSSPI ..> CPARS : SAK.AUT cert parsing
 
-' KIM uses CryptoProvider for crypto
-KIM_PROC --> CP : sign / encrypt outgoing
-SMTP --> KIM_PROC
-POP3 --> KIM_PROC
+' quarkus-sicct-extension → sicct-lib
+STM ..> EAUTH : EHEALTH AUTHENTICATE
+STM ..> KSSPI : card slot access
+
+' crypto-services-lib → crypto-lib
+SIGI ..> TSVC
+ENCI ..> TSVC
+CERTI ..> CPARS
+
+' api-telematik WSDLs → SOAP servers (CXF wsdl2java)
+CONN_WSDL ..> BCS_C : wsdl2java
+CONN_WSDL ..> BCS_E : wsdl2java
+CONN_WSDL ..> BCS_S : wsdl2java
+CONS_WSDL ..> KS_AUTH : wsdl2java
+CONS_WSDL ..> KS_CARD : wsdl2java
+CONS_WSDL ..> KS_CT : wsdl2java
+CONS_WSDL ..> KS_CERT : wsdl2java
+CONS_WSDL ..> KS_ENC : wsdl2java
+CONS_WSDL ..> KS_EVT : wsdl2java
+CONS_WSDL ..> KS_SIG : wsdl2java
+CONS_WSDL ..> KS_SDS : ServiceDirectory.xsd
+
+' consumer-soap-server → crypto-services-lib
+BCS_C ..> CERTI
+BCS_E ..> ENCI
+BCS_S ..> SIGI
+
+' konnektor-soap-server → crypto-services-lib + quarkus-sicct-extension
+KS_CERT ..> CERTI
+KS_ENC ..> ENCI
+KS_SIG ..> SIGI
+KS_AUTH ..> SIGI
+KS_CARD ..> STM : card ops via SICCT
+KS_CT ..> STM : terminal lifecycle
+
+' openkim-server → crypto-lib
+KIM_MSG ..> TSVC : sign/encrypt KIM messages
 
 @enduml

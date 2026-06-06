@@ -129,7 +129,7 @@ Test sequence (verified in `SicctTerminalManagerTest`):
 1. `SicctTerminalManager` starts and attempts TCP connection to `localhost:<dynamicPort>`
 2. Mock server accepts; extension logs `[SICCT] terminal-1 CONNECTED`
 3. Mock server sends simulated card-insertion event for slot 0
-4. Within 5 seconds: `CryptoProvider.listAliases()` includes `sicct/terminal-1-slot0`
+4. Within 5 seconds: `CryptoProvider.listKeyStores()` includes `sicct/terminal-1-slot0`
 5. Sign request for `sicct/terminal-1-slot0` → mock server responds with test signature bytes → `CryptoOperationResult.result` is non-empty
 6. Test closes mock server → within 10 seconds: `CryptoProvider.getAvailability("sicct/terminal-1-slot0")` returns `UNAVAILABLE`
 7. Mock server restarts → within 15 seconds: alias returns to `AVAILABLE`
@@ -178,7 +178,7 @@ mvn test -pl crypto-provider -Dtest=P12HotReloadTest
 1. Alias `p12/test-ecc` starts as AVAILABLE
 2. Test removes the key source config entry and triggers config reload
 3. Within 60 seconds: `getAvailability("p12/test-ecc")` returns `UNAVAILABLE`
-4. Sign request for `p12/test-ecc` returns `KeySourceUnavailableException`
+4. Sign request for `p12/test-ecc` returns `KeyStoreUnavailableException`
 5. Other aliases (P12, PKCS#11, etc.) remain AVAILABLE throughout
 
 ---
@@ -227,3 +227,91 @@ Simulate a SICCT terminal disconnection (stop mock server or unplug network). Wi
   }]
 }
 ```
+
+---
+
+## Scenario 7: JMX Management Beans via Hawtio
+
+**Goal**: Verify all JMX MBeans (FR-220–FR-234) are registered, visible in Hawtio, and correctly invoke the underlying services.
+
+### Setup
+
+No extra tools required. Hawtio is embedded in the running Quarkus application.
+
+```bash
+# Start the application in dev mode
+mvn quarkus:dev -pl consumer-soap-server
+
+# Open Hawtio in a browser
+open http://localhost:8080/q/hawtio
+```
+
+### Scenario 7a: Verify MBean registration
+
+In the Hawtio JMX browser, expand the `de.servicehealtherx` domain. The following module sub-nodes MUST be visible, each containing the named MBean:
+
+| Module node | MBean name |
+|-------------|------------|
+| `crypto-lib` | `TslManagement`, `CryptoProviderManagement`, `KeyStoreReloadManagement` |
+| `sicct-lib` | `BackupRestoreManagement` |
+| `quarkus-sicct-extension` | `SicctTerminalDiscoveryManagement`, `SicctTerminalConnectionManagement`, `CardPinManagement` |
+| `quarkus-ldap-proxy-server-extension` | `DnsServiceDiscoveryManagement` |
+| `crypto-services-lib` | `SignatureServiceManagement`, `EncryptionServiceManagement`, `CertificateServiceManagement` |
+
+### Scenario 7b: TSL reload via JMX
+
+In Hawtio, navigate to `de.servicehealtherx → crypto-lib → TslManagement → Operations → reloadTsl`.
+
+Click **Execute**. Expected result:
+
+```json
+{ "status": "OK", "sequenceNumber": 123, "expiry": "2026-07-01T00:00:00Z", "downloadedAt": "2026-06-06T12:00:00Z", "error": null }
+```
+
+The application log MUST contain `[TSL] download completed, seq=123`.
+
+### Scenario 7c: TSL reload via unit test (automated)
+
+```bash
+mvn test -pl crypto-lib -Dtest=TslManagementTest
+```
+
+Expected output:
+```
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+```
+
+Test assertions (verify via `MBeanServer.invoke()`):
+1. `reloadTsl()` calls `TslDownloader.download()` exactly once and returns JSON with `"status":"OK"`
+2. `getTslStatus()` returns JSON with `sequenceNumber` and `status` fields
+3. `getTslUrl()` returns the configured URL string
+
+### Scenario 7d: Crypto service invocation via JMX (SignatureServiceManagement)
+
+```bash
+# Generate test data (Base64-encode 32 bytes)
+TEST_HASH=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64)
+
+# Invoke sign via JMX programmatically (using jconsole or the Hawtio UI, or via a test)
+mvn test -pl crypto-services-lib -Dtest=SignatureServiceManagementTest
+```
+
+Expected test assertions:
+1. `sign("p12/test-ecc", "SHA256withECDSA", base64Data)` returns a non-empty Base64 string
+2. The returned signature is verifiable: `Signature.verify(Base64.decode(result))` returns `true`
+3. An audit log entry with `"event":"crypto_operation","operationType":"SIGN"` is emitted
+4. `verify("p12/test-ecc", "SHA256withECDSA", base64Data, signatureBase64)` returns `true` for the just-produced signature
+5. Tampering one byte of `signatureBase64`: `verify()` returns `false`
+
+### Scenario 7e: Backup export/import round-trip
+
+```bash
+mvn test -pl sicct-lib -Dtest=BackupRestoreManagementTest
+```
+
+Test sequence:
+1. Set up two paired `CardTerminal` entities with mock TPM that can seal/unseal
+2. Invoke `exportBackup()` via `MBeanServer.invoke()` — returns a backup password string; `backupEncryptedSharedSecret` is non-null for both terminals
+3. Simulate new-host TPM (different mock TPM instance) 
+4. Invoke `importBackup(password)` — both terminals' `sealedSharedSecret` is updated; `backupEncryptedSharedSecret` cleared
+5. CRITICAL-level audit entries (one per terminal) are present in the log

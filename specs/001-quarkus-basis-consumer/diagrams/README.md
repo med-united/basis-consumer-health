@@ -30,7 +30,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 ## 3. Component Diagram
 
-> Maven module breakdown: how `basis-consumer-server`, `konnektor-server`, `ldap-proxy-server`, `signature-lib`, `sicct-lib` (Quarkus extension), and `openkim` (KIM submodule) relate to each other.
+> Maven module breakdown: `api-telematik` (git submodule, WSDL/XSD), `crypto-lib` (gemLibPki + Bouncy Castle, TSL, cert parsing), `sicct-lib` (ASN.1 codegen, EHEALTH AUTHENTICATE, JCE KeyStoreSPI), `quarkus-sicct-extension` (UDP discovery, Netty TCP), `crypto-services-lib` (SignatureService, EncryptionService, CertificateService — no card dependency), `quarkus-ldap-proxy-server-extension` (VZD LDAP proxy), `openkim-server` (KIM submodule), `consumer-soap-server` (Apache CXF `/consumer`, 3 services from conn/), `konnektor-soap-server` (Apache CXF `/conn`, 7 services from consumer/ + connector.sds).
 
 ![Component](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/refs/heads/develop/specs/001-quarkus-basis-consumer/diagrams/component.puml)
 
@@ -88,7 +88,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 ## 6. Class Diagram
 
-> Core domain model: `CryptoProvider`, `KeySourceAdapter` hierarchy, `CardTerminalRecord` (JPA), `SicctTerminal` (runtime), `CardHandle`, and `AuditLogEntry`.
+> Core domain model: `CryptoProvider`, `KeyStoreAdapter` hierarchy, `CardTerminalRecord` (JPA), `SicctTerminal` (runtime), `CardHandle`, and `AuditLogEntry`.
 
 ![Class Diagram](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/refs/heads/develop/specs/001-quarkus-basis-consumer/diagrams/class-domain.puml)
 

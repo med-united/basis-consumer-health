@@ -1,7 +1,40 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.4.0 → 1.5.0
+Version change: 1.6.0 → 1.7.0
+Modified principles: none (existing principles I–VII unchanged)
+Added sections:
+  - Principle VIII — Standard Interface Adoption (new)
+    Mandates researching established JDK/framework interfaces (JCE, JPA, JSSE, JMX,
+    etc.) before designing custom abstractions. Implementations MUST extend or implement
+    those interfaces. Methods not required by the system MUST throw
+    UnsupportedOperationException rather than be left unimplemented or silently ignored.
+    This principle formalises the pattern already applied in this project:
+    KeyStoreAdapter → java.security.KeyStoreSpi; KeyReference → java.security.Key;
+    PrivateKeyReference → java.security.PrivateKey; SecretKeyReference → javax.crypto.SecretKey.
+Removed sections: none
+Templates requiring updates:
+  - .specify/templates/plan-template.md ⚠ Constitution Check placeholder dynamically
+    references constitution; no structural change needed.
+  - .specify/templates/spec-template.md ⚠ No mandatory sections conflict; no change needed.
+  - .specify/templates/tasks-template.md ⚠ No change needed; interface research is a
+    Phase 0 artifact captured in research.md.
+Deferred TODOs: none
+
+Previous sync report (1.5.0 → 1.6.0):
+Modified principles: Principle I — Code Quality (two new rules: no single-implementation
+  interfaces; no Impl suffix on implementation class names)
+Added sections: none
+Removed sections: none
+Templates requiring updates:
+  - .specify/templates/plan-template.md ⚠ Constitution Check placeholder already
+    dynamically references constitution; no structural change needed.
+  - specs/001-quarkus-basis-consumer/diagrams/component.puml ✅ renamed Impl classes
+    to concrete names: SignatureService, EncryptionService, CertificateService
+    (single implementation — no interface, no prefix needed per Principle I)
+Deferred TODOs: none
+
+Previous sync report (1.4.0 → 1.5.0):
 Modified principles: none (existing principles I–VI unchanged)
 Added sections:
   - Principle VII — External Library Evaluation & Security Review (new)
@@ -38,6 +71,8 @@ All code merged into the main branch MUST meet the following non-negotiable stan
 
 - **Readability first**: Every module, function, and variable MUST have a name that communicates intent without requiring comments to explain *what* it does. Comments are reserved for *why* non-obvious decisions were made.
 - **Single responsibility**: Each module, class, and function MUST have one clearly stated purpose. Violations require explicit justification in the PR description.
+- **No premature abstractions**: An interface or abstract class MUST NOT be introduced when only one implementation exists or is planned. The concrete class MUST be used directly. The abstraction is added only when a second, distinct implementation is created — never speculatively. A WSDL-generated service interface (from Apache CXF wsdl2java) is exempt because the interface is externally mandated, not internally invented.
+- **Implementation class naming**: Implementations MUST NOT use the suffix `Impl`. The class name MUST describe the concrete implementation — its algorithm, technology, or backing system. Examples: an interface `CryptoProvider` with two implementations would produce `BouncyCastleCryptoProvider` and `SunPkcs11CryptoProvider`; a `ChessStrategy` interface yields `RandomChessStrategy` and `AlphaBetaChessStrategy`. A name that only repeats the interface name with `Impl` appended is a naming violation and MUST be corrected before merge.
 - **No dead code**: Unused imports, commented-out blocks, and orphaned utilities MUST be removed before merge. Code is deleted, not archived in-place.
 - **Consistent style**: All code MUST pass the project linter and formatter at zero warnings. No linter rule suppressions are permitted without a documented rationale in the suppression comment.
 - **Dependency hygiene**: Every new external dependency MUST be justified by capability gap (not convenience) and reviewed for license compatibility and maintenance status.
@@ -461,6 +496,69 @@ certification expectations. Reusing them reduces implementation risk, accelerate
 ensures alignment with gematik reference implementations — directly supporting the SSDLC obligations
 in Principle V and the supply-chain requirements of [A_27430].
 
+### VIII. Standard Interface Adoption
+
+Before defining any custom interface or abstract class for a domain that the JDK or an adopted
+framework already abstracts, the team MUST research and adopt the standard interface where one
+exists.
+
+#### Research mandate
+
+- **Research before design**: For every new abstraction, the team MUST check whether the JDK,
+  Jakarta EE, MicroProfile, or an adopted framework already provides a standard interface or SPI for
+  the same domain. The research outcome MUST be documented in `research.md` (Phase 0).
+- **Adopt when available**: If a standard interface exists and the security review (Principle VII)
+  of its host library is satisfactory, the implementation MUST extend or implement that interface
+  rather than introducing a parallel, bespoke one. Parallel custom interfaces that duplicate a
+  standard are a naming violation and MUST be removed.
+- **Throw, never stub**: Methods mandated by the standard interface that are not required by this
+  system MUST throw `UnsupportedOperationException` with a descriptive message. They MUST NOT be
+  silently ignored (empty body), return `null` without documentation, or be left `abstract` when
+  the concrete class is expected to be instantiated.
+
+#### Known standard interfaces (non-exhaustive)
+
+| Domain | Standard interface / SPI | JDK / spec |
+|--------|--------------------------|-----------|
+| Custom key store / HSM | `java.security.KeyStoreSpi` | JDK — JCA |
+| Key references | `java.security.Key`, `PrivateKey`, `PublicKey`, `javax.crypto.SecretKey` | JDK — JCA |
+| Custom JCE provider | `java.security.Provider` | JDK — JCE |
+| Signature algorithm | `java.security.SignatureSpi` | JDK — JCA |
+| Cipher algorithm | `javax.crypto.CipherSpi` | JDK — JCE |
+| JPA entity persistence | `jakarta.persistence.EntityManager` | Jakarta EE — JPA |
+| Health checks | `org.eclipse.microprofile.health.HealthCheck` | MicroProfile Health |
+| Config source | `org.eclipse.microprofile.config.spi.ConfigSource` | MicroProfile Config |
+| CDI extension | `jakarta.enterprise.inject.spi.Extension` | CDI |
+| SOAP handler | `jakarta.xml.ws.handler.Handler` | Jakarta XML WS |
+
+This list is not exhaustive. Whenever a domain not listed above is being designed, a JDK/framework
+search MUST be performed and documented before custom interfaces are introduced.
+
+#### Applied examples (this project)
+
+The following design decisions in this project were made in direct compliance with this principle:
+
+- `KeyStoreAdapter` extends `java.security.KeyStoreSpi` — the JCA standard SPI for custom key
+  store implementations. Hardware adapters (`Pkcs11KeyStoreAdapter`, `PcscKeyStoreAdapter`,
+  `SicctKeyStoreAdapter`) throw `KeyStoreException("store not supported for hardware key stores")`
+  for `engineStore`, `engineSetKeyEntry`, and `engineDeleteEntry`, which are inapplicable to
+  read-only hardware stores.
+- `KeyReference` extends `java.security.Key`; `PrivateKeyReference` extends both `KeyReference`
+  and `java.security.PrivateKey`; `PublicKeyReference` extends both `KeyReference` and
+  `java.security.PublicKey`; `SecretKeyReference` extends both `KeyReference` and
+  `javax.crypto.SecretKey`. This makes all key references compatible with the JCA engine methods
+  without casting.
+- `CryptoProviderHealthCheck` implements `org.eclipse.microprofile.health.HealthCheck` and is
+  registered as `@Readiness`, aligning with the MicroProfile Health SPI.
+
+**Rationale**: Inventing parallel abstractions for domains that already have well-established JDK
+or framework interfaces is a primary source of accidental complexity in enterprise Java systems.
+Standard interfaces carry implicit contracts understood by every Java developer, enable interop with
+JCA tooling (keytool, security providers, HSM drivers), reduce onboarding friction, and produce
+code that is auditor-readable without domain-specific documentation. In a TI-connected system under
+gematik certification, alignment with JCA and JPA standards also simplifies interoperability testing
+(Principle V §gematik TI Testing & Certification).
+
 ## Quality Gates
 
 Every pull request MUST pass all of the following gates before merge is permitted:
@@ -481,6 +579,11 @@ Every pull request MUST pass all of the following gates before merge is permitte
 - External library evaluation: for any new significant functionality, a documented library evaluation
   MUST exist in `research.md` before a custom implementation is merged; if a library was rejected,
   the rejection rationale MUST be present; adopted libraries MUST appear in the SBOM [Principle VII]
+- Standard interface adoption: for any new abstraction in a domain covered by the JDK, Jakarta EE,
+  or MicroProfile, a documented research outcome MUST exist in `research.md` confirming whether a
+  standard interface was found; if found and adopted, the implementation MUST extend/implement it;
+  if found but rejected, the rationale MUST be recorded; unneeded interface methods MUST throw
+  `UnsupportedOperationException` [Principle VIII]
 
 Manual exceptions to any gate require written approval from a tech lead and MUST be tracked as a
 follow-up ticket with a resolution deadline within two sprints.
@@ -508,6 +611,6 @@ This constitution supersedes all other written and verbal engineering norms with
 - MINOR: New principle or section added, or existing principle materially expanded.
 - PATCH: Wording clarifications, typo fixes, non-semantic refinements.
 
-**Compliance review**: Constitution compliance is reviewed quarterly. The review produces a compliance report noting any systemic violations, drift in test coverage trends, performance budget adherence, UX consistency findings, gematik TI security requirement adherence (Principle V), UML diagram currency (Principle VI), and library evaluation completeness (Principle VII — checking that research.md artifacts document the required evaluations and that adopted libraries appear in the SBOM).
+**Compliance review**: Constitution compliance is reviewed quarterly. The review produces a compliance report noting any systemic violations, drift in test coverage trends, performance budget adherence, UX consistency findings, gematik TI security requirement adherence (Principle V), UML diagram currency (Principle VI), library evaluation completeness (Principle VII — checking that research.md artifacts document the required evaluations and that adopted libraries appear in the SBOM), and standard interface adoption (Principle VIII — checking that research.md records interface lookups for all new abstractions and that parallel custom interfaces duplicating JDK/framework standards are absent from the codebase).
 
-**Version**: 1.5.0 | **Ratified**: 2026-06-05 | **Last Amended**: 2026-06-06
+**Version**: 1.7.0 | **Ratified**: 2026-06-05 | **Last Amended**: 2026-06-06

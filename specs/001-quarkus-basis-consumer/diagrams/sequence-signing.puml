@@ -5,7 +5,7 @@ skinparam sequenceMessageAlign center
 participant "Primärsystem\n(Client System)" as PS
 participant "konnektor-server\n(CXF SOAP)" as SOAP
 participant "signature-lib\n(CryptoProvider)" as CP
-participant "KeySourceAdapter\n(SICCT / PKCS11 / P12 / PC/SC)" as KSA
+participant "SicctKeyStoreAdapter\n(extends KeyStoreSpi)" as KSA
 participant "sicct-server\n(Netty TCP)" as SICCT
 participant "SICCT Terminal\n+ SMC-B Card" as KT
 
@@ -13,9 +13,10 @@ PS -> SOAP : SignDocument (SOAP, MTOM)\nAufrufKontext: {mandantId, clientSystemI
 SOAP -> SOAP : Validate AufrufKontext\n(FR-150: mandantId/clientSystemId/workplaceId mandatory)
 SOAP -> SOAP : TUC_KON_000 access check\n(tenant authorization, error 4021 / 4204 on failure)
 SOAP -> CP : sign(alias="sicct/praxis-a-slot0",\nalgorithm=ECDSA, data=DTBS)
-CP -> CP : Resolve alias → SicctKeySourceAdapter\n(prefix "sicct/", FR-011)
+CP -> CP : Resolve alias → SicctKeyStoreAdapter\n(prefix "sicct/", FR-011)
 CP -> CP : Emit audit log entry\n(alias, operation, caller, timestamp — FR-016)
-CP -> KSA : sign(cardSlot, algorithm, data)
+CP -> CP : keyRef = (PrivateKeyReference) adapter.engineGetKey(alias, null)
+CP -> KSA : sign(keyRef, params, data)
 KSA -> SICCT : Acquire card lock (exclusive, FR-154)
 SICCT -> KT : SICCT PERFORM SECURITY OPERATION\n(PSO: COMPUTE DS)\nover active TLS session
 KT -> KT : Card executes ECDSA\nPrivate key never leaves chip (FR-094)
@@ -34,7 +35,7 @@ SICCT -> SICCT : Discard session keys\nTerminal → DISCONNECTED
 SICCT -> KSA : SicctConnectionException
 KSA -> CP : operation FAILED
 CP -> CP : Emit audit log (FAILURE)
-CP -> SOAP : KeySourceException (alias UNAVAILABLE)
+CP -> SOAP : KeyStoreException (alias UNAVAILABLE)
 SOAP -> PS : SOAP-Fault (Trace: error 4001, FR-153)
 
 @enduml

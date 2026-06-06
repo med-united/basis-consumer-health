@@ -3,27 +3,151 @@ title Basis Consumer — Domain Class Diagram (Key Entities)
 skinparam classAttributeIconSize 0
 
 interface CryptoProvider <<CDI @ApplicationScoped>> {
-  + sign(alias: String, algorithm: AlgorithmId, data: byte[]): byte[]
-  + decrypt(alias: String, algorithm: AlgorithmId, ciphertext: byte[]): byte[]
-  + listAliases(): List<KeyAlias>
+  + sign(alias: String, params: CryptoParameters, data: byte[]): byte[]
+  + verify(alias: String, params: CryptoParameters, data: byte[], signature: byte[]): boolean
+  + decrypt(alias: String, params: CryptoParameters, ciphertext: byte[]): byte[]
+  + encrypt(alias: String, params: CryptoParameters, plaintext: byte[]): byte[]
+  + listKeyStores(): List<KeyStoreAdapter>
   + getAvailability(alias: String): AvailabilityStatus
   + getAvailabilities(): Map<String, AvailabilityStatus>
 }
 
-interface KeySourceAdapter <<internal>> {
-  + sign(keyRef: KeyReference, algorithm: AlgorithmId, data: byte[]): byte[]
-  + decrypt(keyRef: KeyReference, algorithm: AlgorithmId, ciphertext: byte[]): byte[]
+' ── JDK standard interfaces ──────────────────────────────────────────────────
+abstract class "java.security.KeyStoreSpi" <<JDK>> {
+  # engineGetKey(alias: String, password: char[]): Key
+  # engineGetCertificate(alias: String): Certificate
+  # engineGetCertificateChain(alias: String): Certificate[]
+  # engineAliases(): Enumeration<String>
+  # engineContainsAlias(alias: String): boolean
+  # engineSize(): int
+  # engineIsKeyEntry(alias: String): boolean
+  # engineIsCertificateEntry(alias: String): boolean
+  # engineGetCertificateAlias(cert: Certificate): String
+  # engineLoad(stream: InputStream, password: char[]): void
+  # engineStore(stream: OutputStream, password: char[]): void
+  # engineSetKeyEntry(alias: String, key: Key, password: char[], chain: Certificate[]): void
+  # engineSetCertificateEntry(alias: String, cert: Certificate): void
+  # engineDeleteEntry(alias: String): void
+}
+
+interface "java.security.Key" <<JDK>> {
+  + getAlgorithm(): String   ' e.g. "EC", "RSA", "AES"
+  + getFormat(): String      ' "PKCS#8" / "X.509" / null for non-extractable
+  + getEncoded(): byte[]     ' key bytes; null for hardware-backed non-extractable keys
+}
+interface "java.security.PrivateKey" <<JDK>>
+interface "java.security.PublicKey" <<JDK>>
+interface "javax.crypto.SecretKey" <<JDK>>
+
+"java.security.PrivateKey" -[hidden]--|> "java.security.Key"
+"java.security.PublicKey"  -[hidden]--|> "java.security.Key"
+"javax.crypto.SecretKey"   -[hidden]--|> "java.security.Key"
+
+' ── Project KeyReference hierarchy ───────────────────────────────────────────
+interface KeyReference <<internal>> {
+  + getAlias(): String            ' format: <type>/<name>, e.g. p12/signing-key
+  + getStoreType(): KeyStoreType
+}
+
+interface PrivateKeyReference <<internal>> {
+  + getCertificate(): X509Certificate  ' associated certificate; null if unknown
+}
+
+interface PublicKeyReference <<internal>> {
+  + getCertificate(): X509Certificate  ' certificate wrapping this public key
+}
+
+interface SecretKeyReference <<internal>>
+
+KeyReference        --|> "java.security.Key"
+PrivateKeyReference --|> KeyReference
+PrivateKeyReference --|> "java.security.PrivateKey"
+PublicKeyReference  --|> KeyReference
+PublicKeyReference  --|> "java.security.PublicKey"
+SecretKeyReference  --|> KeyReference
+SecretKeyReference  --|> "javax.crypto.SecretKey"
+
+' ── KeyStoreAdapter — abstract base extending KeyStoreSpi ────────────────────
+abstract class KeyStoreAdapter <<JCA extension>> {
+  ' Overrides engineGetKey with covariant return type:
+  # engineGetKey(alias: String, password: char[]): KeyReference
+  ' Added crypto operation methods (beyond KeyStoreSpi):
+  + sign(keyRef: PrivateKeyReference, params: CryptoParameters, data: byte[]): byte[]
+  + verify(keyRef: PublicKeyReference, params: CryptoParameters, data: byte[], signature: byte[]): boolean
+  + encrypt(keyRef: PublicKeyReference, params: CryptoParameters, plaintext: byte[]): byte[]
+  + decrypt(keyRef: PrivateKeyReference, params: CryptoParameters, ciphertext: byte[]): byte[]
   + getAvailability(): AvailabilityStatus
-  + listKeyReferences(): List<KeyReference>
+}
+
+KeyStoreAdapter --|> "java.security.KeyStoreSpi"
+
+' ── Concrete KeyStoreAdapter implementations ─────────────────────────────────
+class P12KeyStoreAdapter extends KeyStoreAdapter {
+  - entryAlias: String         ' keystore entry alias selecting the private key
+  - keystorePath: String
+  - keystorePassword: char[]   ' password to open the PKCS#12 file
+  - entryPassword: char[]      ' password for the private key entry (may differ)
+  - keyStore: KeyStore
+}
+
+class Pkcs11KeyStoreAdapter extends KeyStoreAdapter {
+  - providerName: String   ' SunPKCS11-<name>
+  - slotIndex: int
+  - tokenPin: char[]
+  - provider: AuthProvider
+}
+
+class PcscKeyStoreAdapter extends KeyStoreAdapter {
+  - readerName: String
+  - pin: char[]
+  - cardTerminals: CardTerminals
+}
+
+class SicctKeyStoreAdapter extends KeyStoreAdapter {
+  - terminalManager: SicctTerminalManager
+}
+
+' ── CryptoParameters ─────────────────────────────────────────────────────────
+class CryptoParameters <<value object>> {
+  + algorithm: AlgorithmType
+  + eccCurve: EccCurve           ' null for non-ECC algorithms
+  + hashAlgorithm: HashAlgorithm ' SHA256 in all current TI profiles
+  + iv: byte[]                   ' AES-GCM: 96-bit random IV; null = caller generates
+  + aad: byte[]                  ' AES-GCM additional authenticated data; null if unused
+  + saltLength: int              ' RSA-PSS only; -1 = hash-length (256 bit per GS-A_5091)
+  + kdfInfo: byte[]              ' ECIES HKDF info string; null for non-ECIES algorithms
+}
+
+enum AlgorithmType {
+  ECDSA          ' ECDSA [BSI-TR-03111]; curve via EccCurve
+  RSA_PSS        ' RSASSA-PSS [PKCS#1]; saltLength = hashLen per GS-A_5091
+  RSA_PKCS1      ' RSASSA-PKCS1-v1_5; legacy / compatibility
+  RSAES_OAEP     ' RSA-OAEP key transport for XML hybrid encryption
+  AES_128_GCM    ' AES-128/GCM/NoPadding; IV=96 bit, Tag=128 bit
+  AES_256_GCM    ' AES-256/GCM/NoPadding; IV=96 bit, Tag=128 bit (GS-A_4373)
+  AES_128_CBC    ' AES-128/CBC/PKCS5Padding; Card-to-Server (Tab_KRYPT_012)
+  ECIES          ' TI-ECIES [SEC1-2009]: ECDH + HKDF-SHA-256 + AES-GCM
+}
+
+enum EccCurve {
+  NIST_P256        ' P-256 [FIPS-186-5]; ePA-VAU, ECIES
+  NIST_P384        ' P-384 [FIPS-186-5]; TLS ECDHE (optional), cert verification
+  BRAINPOOLP256R1  ' brainpoolP256r1 [RFC-5639]; SICCT pairing, KOM-LE ECIES (primary TI curve)
+  BRAINPOOLP384R1  ' brainpoolP384r1 [RFC-7027]; TLS ECDHE (optional)
+}
+
+enum HashAlgorithm {
+  SHA256  ' mandatory; ECDSA, RSA-PSS, HKDF, DigestMethod
+  SHA384  ' optional; BNetzA-VL verification (A_27608)
+  SHA512  ' optional; BNetzA-VL verification (A_27608)
 }
 
 class KeyAlias {
-  + alias: String     ' format: <type>/<name>, e.g. sicct/praxis-a-slot0
-  + sourceType: KeySourceType   ' P12 | PKCS11 | PCSC | SICCT
-  + tenantId: String
+  + alias: String        ' format: <type>/<name>, e.g. sicct/praxis-a-slot0
+  + storeType: KeyStoreType
 }
 
-enum KeySourceType {
+enum KeyStoreType {
   P12
   PKCS11
   PCSC
@@ -36,33 +160,10 @@ enum AvailabilityStatus {
   ERROR
 }
 
-class P12KeySourceAdapter implements KeySourceAdapter {
-  - keystorePath: String
-  - password: char[]
-  - keyStore: KeyStore
-}
-
-class Pkcs11KeySourceAdapter implements KeySourceAdapter {
-  - providerName: String   ' SunPKCS11-<name>
-  - slotIndex: int
-  - tokenPin: char[]
-  - provider: AuthProvider
-}
-
-class PcscKeySourceAdapter implements KeySourceAdapter {
-  - readerName: String
-  - pin: char[]
-  - cardTerminals: CardTerminals
-}
-
-class SicctKeySourceAdapter implements KeySourceAdapter {
-  - terminalManager: SicctTerminalManager
-}
-
-entity CardTerminalRecord <<JPA entity>> {
+' ── SICCT Runtime Entities ───────────────────────────────────────────────────
+entity CardTerminal <<JPA entity>> {
   + id: UUID           ' PK
-  + tenantId: String   ' FK
-  + name: String       ' unique per tenant
+  + name: String       ' unique
   + host: String
   + port: int          ' 1–65535
   + connectTimeoutMs: Integer   ' nullable → global default
@@ -72,7 +173,7 @@ entity CardTerminalRecord <<JPA entity>> {
 }
 
 class SicctTerminal <<runtime>> {
-  + record: CardTerminalRecord
+  + record: CardTerminal
   + correlation: CorrelationState
   + connected: boolean
   + slots: List<SicctCardSlot>
@@ -92,7 +193,6 @@ class SicctCardSlot <<runtime>> {
 
 class CardHandle <<runtime>> {
   + handleId: UUID
-  + tenantId: String
   + alias: String          ' maps to KeyAlias
   + cardType: CardType     ' SMC_B_KTR | SMC_B_ORG | HBA
   + expiresAt: Instant
@@ -119,27 +219,35 @@ enum CardType {
   HBA
 }
 
+' ── Audit Log ────────────────────────────────────────────────────────────────
 class AuditLogEntry <<JPA entity>> {
   + id: UUID
-  + tenantId: String
   + timestamp: Instant
   + alias: String
-  + operationType: String    ' SIGN | DECRYPT | PIN | TERMINAL_MGMT
+  + operationType: String    ' SIGN | VERIFY | DECRYPT | ENCRYPT | PIN | TERMINAL_MGMT
   + callerId: String
   + result: String           ' SUCCESS | FAILURE
   + durationMs: long
 }
 
-' Relationships
-CryptoProvider o-- "1..*" KeySourceAdapter : routes by alias prefix
-CryptoProvider --> "0..*" KeyAlias : manages
-KeyAlias --> KeySourceType
-KeySourceAdapter --> AvailabilityStatus
+' ── Relationships ─────────────────────────────────────────────────────────────
+CryptoProvider o-- "1..*" KeyStoreAdapter : routes by alias prefix / listKeyStores
+CryptoProvider ..> CryptoParameters : <<uses>>
+KeyStoreAdapter ..> CryptoParameters  : <<uses>>
+KeyStoreAdapter ..> PrivateKeyReference : sign / decrypt (via engineGetKey)
+KeyStoreAdapter ..> PublicKeyReference  : verify / encrypt (via engineGetCertificate)
+KeyStoreAdapter ..> KeyReference        : engineGetKey / engineAliases
 
-SicctKeySourceAdapter --> SicctTerminalManager
+CryptoParameters --> AlgorithmType
+CryptoParameters --> EccCurve
+CryptoParameters --> HashAlgorithm
+KeyAlias --> KeyStoreType
+KeyStoreAdapter --> AvailabilityStatus
+
+SicctKeyStoreAdapter --> SicctTerminalManager
 SicctTerminalManager --> "0..*" SicctTerminal : manages
 
-SicctTerminal --> CardTerminalRecord : backed by
+SicctTerminal --> CardTerminal : backed by
 SicctTerminal --> CorrelationState
 SicctTerminal --> "1..*" SicctCardSlot
 
@@ -150,10 +258,10 @@ CardHandle --> CardType
 CardHandle --> KeyAlias : resolves to
 
 class SicctTerminalManager <<CDI @ApplicationScoped>> {
-  + connect(record: CardTerminalRecord): void
+  + connect(record: CardTerminal): void
   + disconnect(name: String): void
   + sendApdu(slot: SicctCardSlot, apdu: byte[]): byte[]
-  + listTerminals(tenantId: String): List<SicctTerminal>
+  + listTerminals(): List<SicctTerminal>
 }
 
 @enduml
