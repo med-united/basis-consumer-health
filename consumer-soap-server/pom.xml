@@ -53,14 +53,14 @@
             <artifactId>quarkus-cxf</artifactId>
         </dependency>
 
-        <!-- JPA + Derby for AppConfigProperty and CardTerminal -->
+        <!-- JPA + H2 for AppConfigProperty and CardTerminal -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-hibernate-orm-panache</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-jdbc-derby</artifactId>
+            <artifactId>quarkus-jdbc-h2</artifactId>
         </dependency>
 
         <!-- Test dependencies -->

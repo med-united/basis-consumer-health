@@ -53,14 +53,14 @@
             <artifactId>quarkus-cxf</artifactId>
         </dependency>
 
-        <!-- JPA + Derby -->
+        <!-- JPA + H2 -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-hibernate-orm-panache</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-jdbc-derby</artifactId>
+            <artifactId>quarkus-jdbc-h2</artifactId>
         </dependency>
 
         <!-- Test dependencies -->

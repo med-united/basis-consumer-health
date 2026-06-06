@@ -174,14 +174,14 @@ class SicctTerminalManagerIT {
 
     // -------------------------------------------------------------------------
     // Test profile — isolated in-memory DB so the IT container does not share
-    // the Derby instance used by the unit-test QuarkusTest container.
+    // the H2 instance used by the unit-test QuarkusTest container.
     // -------------------------------------------------------------------------
 
     public static class ItProfile implements QuarkusTestProfile {
         @Override
         public Map<String, String> getConfigOverrides() {
             return Map.of(
-                "quarkus.datasource.jdbc.url",          "jdbc:derby:memory:sicct-it-db;create=true",
+                "quarkus.datasource.jdbc.url",          "jdbc:h2:mem:sicct-it-db;DB_CLOSE_DELAY=-1",
                 "quarkus.hibernate-orm.database.generation", "drop-and-create"
             );
         }

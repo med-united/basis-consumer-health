@@ -358,7 +358,7 @@ class CardTerminalDiscoveryIT {
     }
 
     // -------------------------------------------------------------------------
-    // Test profile — isolated Derby DB, discovery disabled (scheduler won't fire)
+    // Test profile — isolated H2 in-memory DB, discovery disabled (scheduler won't fire)
     // -------------------------------------------------------------------------
 
     public static class ItProfile implements QuarkusTestProfile {
@@ -366,7 +366,7 @@ class CardTerminalDiscoveryIT {
         public Map<String, String> getConfigOverrides() {
             return Map.of(
                 "quarkus.datasource.jdbc.url",
-                    "jdbc:derby:memory:sicct-discovery-it-db;create=true",
+                    "jdbc:h2:mem:sicct-discovery-it-db;DB_CLOSE_DELAY=-1",
                 "quarkus.hibernate-orm.database.generation", "drop-and-create",
                 // Keep scheduler suppressed — tests invoke discover() directly
                 "sicct.discovery.enabled", "false"
