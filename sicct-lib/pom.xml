@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.servicehealtherx</groupId>
+        <artifactId>basis-consumer-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>sicct-lib</artifactId>
+    <name>Basis Consumer :: SICCT Library</name>
+    <description>SICCT ASN.1 codec, TCP/IP client pool (Netty 4), CardTerminal JPA entity, TPM 2.0 key sealing, BackupRestoreManagement JMX bean</description>
+
+    <dependencies>
+        <!-- Internal: crypto-lib for CryptoProvider access -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>crypto-lib</artifactId>
+        </dependency>
+
+        <!-- Quarkus CDI -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+
+        <!-- JPA for CardTerminal entity -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-orm-panache</artifactId>
+        </dependency>
+
+        <!-- Netty for SICCT TCP/IP client pool -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-all</artifactId>
+        </dependency>
+
+        <!-- beanit jASN1 runtime (codegen output dependency) -->
+        <dependency>
+            <groupId>com.beanit</groupId>
+            <artifactId>jasn1</artifactId>
+        </dependency>
+
+        <!-- TPM 2.0 for sealing ShS.KT.AUT to PCR 0/1/7 -->
+        <dependency>
+            <groupId>com.microsoft.tss</groupId>
+            <artifactId>tss</artifactId>
+        </dependency>
+
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- jASN1 code generation from SICCT.asn1 -->
+            <plugin>
+                <groupId>com.beanit</groupId>
+                <artifactId>jasn1-compiler</artifactId>
+                <version>${jasn1.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-sicct-asn1</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <baseOutputDir>${project.build.directory}/generated-sources/asn1</baseOutputDir>
+                            <berFiles>
+                                <berFile>src/main/asn1/SICCT.asn1</berFile>
+                            </berFiles>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>add-asn1-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.build.directory}/generated-sources/asn1</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

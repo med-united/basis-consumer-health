@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>de.servicehealtherx</groupId>
+    <artifactId>basis-consumer-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Basis Consumer for the German Telematikinfrastruktur</name>
+    <description>Multi-tenant cloud-native TI platform: encryption, signature, LDAP proxy, SICCT card terminal, Konnektor SOAP compatibility</description>
+
+    <modules>
+        <module>crypto-lib</module>
+        <module>sicct-lib</module>
+        <module>quarkus-sicct-extension</module>
+        <module>crypto-services-lib</module>
+        <module>quarkus-ldap-proxy-server-extension</module>
+        <module>consumer-soap-server</module>
+        <module>konnektor-soap-server</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- Framework versions -->
+        <quarkus.platform.version>3.12.0</quarkus.platform.version>
+        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+
+        <!-- Library versions -->
+        <gemLibPki.version>4.0.2</gemLibPki.version>
+        <bouncy-castle.version>1.77</bouncy-castle.version>
+        <bc-fips.version>1.0.2.5</bc-fips.version>
+        <jasn1.version>1.13.0</jasn1.version>
+        <quarkus-cxf.version>3.12.0</quarkus-cxf.version>
+        <configsource-db.version>2.0.0</configsource-db.version>
+        <tss-java.version>0.3.0</tss-java.version>
+
+        <!-- Plugin versions -->
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
+        <maven-enforcer-plugin.version>3.4.1</maven-enforcer-plugin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Quarkus BOM -->
+            <dependency>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>quarkus-bom</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>quarkus-cxf-bom</artifactId>
+                <version>${quarkus-cxf.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Internal modules -->
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>crypto-lib</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>sicct-lib</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>quarkus-sicct-extension-deployment</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>quarkus-sicct-extension</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>crypto-services-lib</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>quarkus-ldap-proxy-server-extension</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- TI PKI library from gematik -->
+            <dependency>
+                <groupId>de.gematik.pki</groupId>
+                <artifactId>gemLibPki</artifactId>
+                <version>${gemLibPki.version}</version>
+            </dependency>
+
+            <!-- Bouncy Castle (BC FIPS for production crypto) -->
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bc-fips</artifactId>
+                <version>${bc-fips.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcpkix-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+
+            <!-- beanit jASN1 runtime -->
+            <dependency>
+                <groupId>com.beanit</groupId>
+                <artifactId>jasn1</artifactId>
+                <version>${jasn1.version}</version>
+            </dependency>
+
+            <!-- MicroProfile Config backed by DB -->
+            <dependency>
+                <groupId>org.microprofile-ext.config-ext</groupId>
+                <artifactId>configsource-db</artifactId>
+                <version>${configsource-db.version}</version>
+            </dependency>
+
+            <!-- TPM 2.0 binding (Microsoft TSS for Java) -->
+            <dependency>
+                <groupId>com.microsoft.tss</groupId>
+                <artifactId>tss</artifactId>
+                <version>${tss-java.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>io.quarkus</groupId>
+                    <artifactId>quarkus-maven-plugin</artifactId>
+                    <version>${quarkus.platform.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven-compiler-plugin.version}</version>
+                    <configuration>
+                        <source>21</source>
+                        <target>21</target>
+                        <release>21</release>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>${maven-enforcer-plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <repositories>
+        <repository>
+            <id>gematik-maven</id>
+            <name>Gematik Maven Repository</name>
+            <url>https://nexus.prod.ccs.gematik.solutions/repository/maven-releases/</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+        <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </repository>
+    </repositories>
+
+    <profiles>
+        <profile>
+            <id>pkcs11-ci</id>
+            <properties>
+                <softhsm2.enabled>true</softhsm2.enabled>
+            </properties>
+        </profile>
+    </profiles>
+</project>

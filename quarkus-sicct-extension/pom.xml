@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.servicehealtherx</groupId>
+        <artifactId>basis-consumer-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>quarkus-sicct-extension-parent</artifactId>
+    <packaging>pom</packaging>
+    <name>Basis Consumer :: SICCT Quarkus Extension (Parent)</name>
+    <description>Parent POM for the Quarkus SICCT extension — manages deployment and runtime sub-modules</description>
+
+    <modules>
+        <module>deployment</module>
+        <module>runtime</module>
+    </modules>
+</project>

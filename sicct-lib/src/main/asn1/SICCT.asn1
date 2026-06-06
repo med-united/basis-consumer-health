@@ -346,4 +346,58 @@ KeypadEvent ::= SEQUENCE {
     keyCode     INTEGER (0..255)        -- 1 Byte: Tastencode (Tabelle 32)
 }
 
+-- =====================================================================
+-- TEIL E:  EHEALTH TERMINAL AUTHENTICATE  (FR-160 – FR-175)
+--          Pairing- und Wartungs-Protokoll nach gemSpec_KT_V3.17.0 §3.7.2
+-- =====================================================================
+
+-- INS-Wert fuer EHEALTH AUTHENTICATE (FR-160, FR-175)
+-- Erweitert SicctInstruction um ehealth-terminal-authenticate = 0xAA (170 dezimal).
+-- Referenz: gemSpec_KT_V3.17.0 §3.7.2
+SicctInstructionEhealth ::= ENUMERATED {
+    ehealth-terminal-authenticate   (170)  -- INS '0xAA'; Pairing/Wartung
+}
+
+-- P2-Parameter fuer EHEALTH AUTHENTICATE (FR-161)
+-- Referenz: gemSpec_KT_V3.17.0 §3.7.2 Tabelle P2-Werte
+EhealthAuthP2 ::= ENUMERATED {
+    create      (1),    -- Phase 1: neues SharedSecret erzeugen
+    validate    (2),    -- Phase 1: SharedSecret validieren
+    add-phase-1 (3),    -- Wartung Phase 1: Challenge senden
+    add-phase-2 (4)     -- Wartung Phase 2: Response senden
+}
+
+-- SharedSecretDO: das geteilte Geheimnis (genau 16 Byte) (FR-162)
+-- Constraint SIZE(16) wird vom jASN1-Encoder vor dem Schreiben geprueft.
+SharedSecretDO ::= OCTET STRING (SIZE(16))
+
+-- SharedSecretChallengeDO: Challenge (mindestens 16 Byte) (FR-163)
+SharedSecretChallengeDO ::= OCTET STRING (SIZE(16..MAX))
+
+-- SharedSecretResponseDO: Response (genau 32 Byte = SHA-256) (FR-164)
+SharedSecretResponseDO ::= OCTET STRING (SIZE(32))
+
+-- CREATE-Request: SharedSecret + optionales Applikations-DO (FR-165)
+EhealthAuthCreateRequest ::= SEQUENCE {
+    sharedSecret    SharedSecretDO,
+    applicationDo   OCTET STRING OPTIONAL
+}
+
+-- VALIDATE-Request: Challenge fuer das Terminal (FR-166)
+EhealthAuthValidateRequest ::= SEQUENCE {
+    challenge   SharedSecretChallengeDO
+}
+
+-- ADD Phase 2 Request: Response des Hosts (FR-167)
+EhealthAuthAddPhase2Request ::= SEQUENCE {
+    response    SharedSecretResponseDO
+}
+
+-- CREATE-Response: ECDSA-Signatur (64 Byte) oder RSA-Signatur (100 Byte) (FR-168)
+-- SIZE-Constraint prueft Laenge nach dem Dekodieren.
+EhealthAuthCreateResponse ::= OCTET STRING (SIZE(64|100))
+
+-- ADD Phase 1 Response: Challenge des Terminals (mindestens 16 Byte) (FR-169)
+EhealthAuthAddPhase1Response ::= OCTET STRING (SIZE(16..MAX))
+
 END
