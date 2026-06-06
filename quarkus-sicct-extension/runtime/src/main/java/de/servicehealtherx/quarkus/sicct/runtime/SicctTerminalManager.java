@@ -1,5 +1,7 @@
 package de.servicehealtherx.quarkus.sicct.runtime;
 
+import de.servicehealtherx.quarkus.sicct.runtime.tls.KonnektorSslHandler;
+import de.servicehealtherx.quarkus.sicct.runtime.tls.SICCTKonnektorTLSChannelInitializer;
 import de.servicehealtherx.sicct.EhealthAuthenticator;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
 import io.netty.bootstrap.Bootstrap;
@@ -9,6 +11,8 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.logging.LogLevel;
+import io.netty.handler.logging.LoggingHandler;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -25,7 +29,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Manages SICCT card terminal TCP/TLS connections.
- * Loads CardTerminal JPA records at startup; initiates connections via shared NioEventLoopGroup.
+ * Loads CardTerminal JPA records at startup; initiates connections via shared
+ * NioEventLoopGroup.
  * One terminal failure MUST NOT prevent others per FR-023, FR-097.
  */
 @ApplicationScoped
@@ -58,7 +63,7 @@ public class SicctTerminalManager {
             } catch (Exception e) {
                 // One terminal failure MUST NOT prevent others per FR-023
                 LOG.errorf(e, "[SicctTerminalManager] failed to initiate connection for terminalId=%s, continuing",
-                    terminal.terminalId);
+                        terminal.terminalId);
             }
         }
     }
@@ -84,28 +89,23 @@ public class SicctTerminalManager {
 
     private void connectTerminalAsync(CardTerminal terminal) {
         SicctTerminalConnection conn = connections.computeIfAbsent(terminal.terminalId,
-            id -> new SicctTerminalConnection(terminal));
+                id -> new SicctTerminalConnection(terminal));
 
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(eventLoopGroup)
-            .channel(NioSocketChannel.class)
-            .handler(new ChannelInitializer<SocketChannel>() {
-                @Override
-                protected void initChannel(SocketChannel ch) {
-                    // Pipeline: TLS → SICCT framing → APDU handler
-                    // Full TLS mutual auth implementation per FR-133 (ECC/RSA, DES MUST NOT)
-                    ch.pipeline().addLast(new SicctApduChannelHandler(conn, SicctTerminalManager.this));
-                }
-            });
+                .channel(NioSocketChannel.class)
+                .handler(new LoggingHandler(LogLevel.DEBUG))
+                .handler(new SICCTKonnektorTLSChannelInitializer(this, conn));
 
         ChannelFuture future = bootstrap.connect(terminal.host, terminal.port);
         future.addListener(f -> {
             if (f.isSuccess()) {
                 conn.onConnected(future.channel());
-                LOG.infof("[SICCT] connected to terminal=%s at %s:%d", terminal.terminalId, terminal.host, terminal.port);
+                LOG.infof("[SICCT] connected to terminal=%s at %s:%d", terminal.terminalId, terminal.host,
+                        terminal.port);
             } else {
                 LOG.warnf("[SICCT] failed to connect to terminal=%s at %s:%d, scheduling reconnect",
-                    terminal.terminalId, terminal.host, terminal.port);
+                        terminal.terminalId, terminal.host, terminal.port);
                 scheduleReconnect(terminal, conn, terminal.initialBackoffMs);
             }
         });

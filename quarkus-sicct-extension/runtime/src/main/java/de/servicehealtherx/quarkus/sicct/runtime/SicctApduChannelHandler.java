@@ -39,6 +39,52 @@ public class SicctApduChannelHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         // Process SICCT response APDUs
         LOG.debugf("[SICCT] received APDU from terminal=%s", connection.getTerminalId());
+
+        // Handle APDU response, update correlation state, trigger pending operations as
+        // needed
+
+        // Events
+
+        // Responses
+
+        // SICCT INIT CT SESSION
+
+        // SICCT REQUEST ICC
+
+        // SICCT EJECT ICC
+
+        // SICCT GET STATUS CARD TERMINAL
+
+        // SICCT GET STATUS ALL ICC
+
+        // SICCT GET STATUS CARD TERMINAL MANUFACTURER
+
+        // SICCT Interface Capabilities Data Object For Display
+
+        // SICCT Interface Capabilities Data Object For Slot
+
+        // SICCT ICC STATUS
+
+        // SICCT Interface Capabilities Functional Unit Data Object
+
+        // SICCT CLOSE CT SESSION
+
+        // EHEALTH TERMINAL AUTHENTICATE CREATE
+
+        // EHEALTH TERMINAL AUTHENTICATE VALIDATE
+
+        // EHEALTH TERMINAL AUTHENTICATE ADD NOT EXPECTING
+
+        // EHEALTH TERMINAL AUTHENTICATE ADD EXPECTING
+
+        // SICCT RESET CT
+
+        // SICCT OUTPUT
+
+        // SICCT PERFORM VERIFICATION
+
+        // SICCT APDU Response
+
     }
 
     @Override
@@ -49,8 +95,16 @@ public class SicctApduChannelHandler extends ChannelInboundHandlerAdapter {
 
     private void initCtSession(ChannelHandlerContext ctx) {
         // INIT CT SESSION APDU per FR-092
+
+        sendInitCtSessionApdu(ctx);
+
         // After successful INIT, advance correlation state to ZUGEWIESEN
         connection.onCtSessionInit();
         LOG.infof("[SICCT] CT session initialized for terminal=%s", connection.getTerminalId());
+    }
+
+    private void sendInitCtSessionApdu(ChannelHandlerContext ctx) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'sendInitCtSessionApdu'");
     }
 }

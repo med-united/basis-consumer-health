@@ -27,6 +27,7 @@
   - **`openkim-server`** — git submodule to https://github.com/sberg-net/openkim; implements KOM-LE/KIM secure messaging (SMTP + POP3 interfaces); deployed as a standalone Spring Boot pod per tenant Kubernetes namespace — NOT bundled inside the Quarkus basis-consumer-server pod
   - **`consumer-soap-server`** — implements with Apache CXF under URL `/consumer` the `CertificateService`, `EncryptionService`, and `SignatureService` using WSDL definitions from `api-telematik/consumer/`
   - **`konnektor-soap-server`** — implements with Apache CXF under URL `/conn` the `AuthSignatureService`, `CardService`, `CardTerminalService`, `CertificateService`, `EncryptionService`, `EventService`, and `SignatureService` using WSDL definitions from `api-telematik/conn/`; also provides a `connector.sds` file based on `ServiceDirectory.xsd`
+  - **`quarkus-server`** — this bundles all applications and it is the runnable quarkus application of the project
 - ASN.1 code generation for the SICCT schema MUST use the [beanit jASN1 library](https://www.beanit.com/asn1/)
 - SOAP web services MUST be implemented using Apache CXF
 - Frontend/management console: Hawtio — embedded inside the Quarkus basis-consumer-server pod (NOT a shared sidecar or separate deployment); one Hawtio instance per tenant pod
@@ -513,29 +514,29 @@ An operator uses the embedded Hawtio management console to invoke JMX management
 
 - **FR-201**: `ExternalAuthenticate` (both consumer `SignatureService` and konnektor `AuthSignatureService`) MUST implement the following error table derived from Tab_Fehler_ExternalAuthenticate (gemSpec_Basis_Consumer §6.2.4):
 
-  | Code | ErrorType | Fehlertext | Condition |
-  |------|-----------|-----------|-----------|
-  | 4000 | Technical | Syntaxfehler | Parameter validation failure in `checkArguments` step — invalid or inconsistent parameters |
-  | 4111 | Technical | Ungültiger Signaturtyp oder Signaturvariante | `dss:SignatureType` URI is not a recognised PKCS#1 or ECDSA URI |
+  | Code | ErrorType | Fehlertext                                   | Condition                                                                                  |
+  | ---- | --------- | -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+  | 4000 | Technical | Syntaxfehler                                 | Parameter validation failure in `checkArguments` step — invalid or inconsistent parameters |
+  | 4111 | Technical | Ungültiger Signaturtyp oder Signaturvariante | `dss:SignatureType` URI is not a recognised PKCS#1 or ECDSA URI                            |
 
   Result codes from the underlying `PL_TUC_SIGN_HASH_nonQES` (`SecurityStatusNotSatisfied`, `ObjectNotFound`, `KeyInvalid`, `CardTerminated`, `WrongToken`) MUST be mapped to appropriate gematik fault codes and propagated as SOAP faults.
 
 - **FR-202**: `ReadCertificate` (consumer `CertificateService`) MUST implement the following error table derived from Tab_Fehler_ReadCertificate (gemSpec_Basis_Consumer §6.3.1):
 
-  | Code | ErrorType | Fehlertext | Condition |
-  |------|-----------|-----------|-----------|
-  | 4000 | Technical | Syntaxfehler | `checkArguments` step — invalid or inconsistent parameters |
-  | 4090 | Security  | Zugriff auf Identität nicht gestattet | CardHandle references an eGK or HBAx (HBA, HBA-VK) — forbidden per A_24782-02 |
-  | 4149 | Technical | Ungültige Zertifikatsreferenz | `CertRef` value not resolvable to a known EF |
-  | 4258 | Technical | Zertifikate nicht vorhanden auf Identität | EF not found on the identity carrier (HSM / card) |
+  | Code | ErrorType | Fehlertext                                | Condition                                                                     |
+  | ---- | --------- | ----------------------------------------- | ----------------------------------------------------------------------------- |
+  | 4000 | Technical | Syntaxfehler                              | `checkArguments` step — invalid or inconsistent parameters                    |
+  | 4090 | Security  | Zugriff auf Identität nicht gestattet     | CardHandle references an eGK or HBAx (HBA, HBA-VK) — forbidden per A_24782-02 |
+  | 4149 | Technical | Ungültige Zertifikatsreferenz             | `CertRef` value not resolvable to a known EF                                  |
+  | 4258 | Technical | Zertifikate nicht vorhanden auf Identität | EF not found on the identity carrier (HSM / card)                             |
 
 - **FR-203**: `VerifyCertificate` (consumer `CertificateService`) MUST NOT return numeric fault codes for the verification outcome itself; instead it MUST populate `CERT:VerificationStatus/CERT:VerificationResult` with one of three normative values (gemSpec_Basis_Consumer §6.3.2):
 
-  | `CERT:VerificationResult` | Condition |
-  |--------------------------|-----------|
-  | `VALID` | Temporal validity OK, mathematical validity OK, OCSP online valid |
-  | `INVALID` | At least one of: temporal validity invalid, mathematical validity invalid, OCSP revoked |
-  | `INCONCLUSIVE` | OCSP status unknown AND all other checks valid |
+  | `CERT:VerificationResult` | Condition                                                                               |
+  | ------------------------- | --------------------------------------------------------------------------------------- |
+  | `VALID`                   | Temporal validity OK, mathematical validity OK, OCSP online valid                       |
+  | `INVALID`                 | At least one of: temporal validity invalid, mathematical validity invalid, OCSP revoked |
+  | `INCONCLUSIVE`            | OCSP status unknown AND all other checks valid                                          |
 
   If the verification *process itself* fails (e.g. unreachable OCSP, internal error), the operation MUST return a SOAP `FaultMessage` with code **4001**. INCONCLUSIVE and INVALID details MUST be carried in `CERT:VerificationStatus/GERROR:Error`.
 
@@ -543,14 +544,14 @@ An operator uses the embedded Hawtio management console to invoke JMX management
 
 - **FR-205**: For all SOAP operations, if a `CryptoProvider` operation returns a card TUC error code, the SICCT extension MUST map the TUC result to the following SOAP fault codes:
 
-  | TUC Result Code | SOAP Fault Code |
-  |----------------|----------------|
-  | `SecurityStatusNotSatisfied` | 4029 (security status not satisfied) |
-  | `ObjectNotFound` | 4000 (invalid parameter / key reference) |
-  | `KeyInvalid` | 4001 (technical error — key unusable) |
-  | `CardTerminated` | 4001 (technical error — card no longer usable) |
-  | `PasswordBlocked` | 4029 (PIN blocked) |
-  | `WrongSecretWarning.X` | 4029 (wrong PIN, X retries remaining — include remaining count in Trace text) |
+  | TUC Result Code              | SOAP Fault Code                                                               |
+  | ---------------------------- | ----------------------------------------------------------------------------- |
+  | `SecurityStatusNotSatisfied` | 4029 (security status not satisfied)                                          |
+  | `ObjectNotFound`             | 4000 (invalid parameter / key reference)                                      |
+  | `KeyInvalid`                 | 4001 (technical error — key unusable)                                         |
+  | `CardTerminated`             | 4001 (technical error — card no longer usable)                                |
+  | `PasswordBlocked`            | 4029 (PIN blocked)                                                            |
+  | `WrongSecretWarning.X`       | 4029 (wrong PIN, X retries remaining — include remaining count in Trace text) |
 
 - **FR-206**: Client-system authentication failure MUST return SOAP fault code **4204** (authentication required / invalid credentials) per TIP1-A_4516. A missing or invalid `AufrufKontext` mandatory field on the Konnektor interface MUST return code **4021** per TUC_KON_000. An `AufrufKontext.workplaceId` that exists in the system but does not belong to the `mandantId` in the same request MUST return code **4021**.
 
@@ -568,25 +569,25 @@ An operator uses the embedded Hawtio management console to invoke JMX management
 
 - **FR-212**: The KOM-LE SMTP interface (`openkim-server`) MUST respond to client commands in the CONNECT state per Tab_SMTP_Ant_Init (gemSpec_Basis_Consumer §6.5.4.1):
 
-  | Condition | SMTP Response |
-  |-----------|--------------|
-  | EHLO received | `250 OK` + capability list (SIZE ≥ 35882577, AUTH LOGIN PLAIN, 8BITMIME, ENHANCEDSTATUSCODES, DSN) |
-  | MAIL/RCPT/DATA before AUTH | `530 5.7.0` (authentication required) |
-  | Unknown or unsupported command | `502 5.5.1` (command not implemented) |
-  | AUTH with unsupported mechanism (not PLAIN or LOGIN) | `504 5.7.4` (security feature not supported) |
-  | Connection to MTA fails | `454 4.7.0` (temporary authentication failure) |
-  | MTA authentication fails | `535 5.7.8` (authentication credentials invalid) |
-  | Successful MTA authentication | `235 2.7.0` (authentication successful) |
+  | Condition                                            | SMTP Response                                                                                      |
+  | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+  | EHLO received                                        | `250 OK` + capability list (SIZE ≥ 35882577, AUTH LOGIN PLAIN, 8BITMIME, ENHANCEDSTATUSCODES, DSN) |
+  | MAIL/RCPT/DATA before AUTH                           | `530 5.7.0` (authentication required)                                                              |
+  | Unknown or unsupported command                       | `502 5.5.1` (command not implemented)                                                              |
+  | AUTH with unsupported mechanism (not PLAIN or LOGIN) | `504 5.7.4` (security feature not supported)                                                       |
+  | Connection to MTA fails                              | `454 4.7.0` (temporary authentication failure)                                                     |
+  | MTA authentication fails                             | `535 5.7.8` (authentication credentials invalid)                                                   |
+  | Successful MTA authentication                        | `235 2.7.0` (authentication successful)                                                            |
 
 - **FR-213**: The KOM-LE POP3 interface MUST respond per Tab_POP3_Ant_Init (gemSpec_Basis_Consumer §6.5.4.2):
 
-  | Condition | POP3 Response |
-  |-----------|--------------|
-  | AUTH with unsupported mechanism (not USER/PASS or PLAIN) | `-ERR` |
-  | Connection to POP3 server fails | `-ERR` |
-  | POP3 server authentication fails | `-ERR` |
-  | Any unrecognised command | `-ERR` |
-  | Successful authentication | `+OK` |
+  | Condition                                                | POP3 Response |
+  | -------------------------------------------------------- | ------------- |
+  | AUTH with unsupported mechanism (not USER/PASS or PLAIN) | `-ERR`        |
+  | Connection to POP3 server fails                          | `-ERR`        |
+  | POP3 server authentication fails                         | `-ERR`        |
+  | Any unrecognised command                                 | `-ERR`        |
+  | Successful authentication                                | `+OK`         |
 
 - **FR-214**: KOM-LE MUST abort outgoing message processing and return an error to the sending client if (A_17337) the required SM-B identity is not available, or (A_17338) the SM-B activation (`Freischaltung`) fails. The error MUST distinguish between the two abort conditions in the logged event; the SMTP client MUST receive a `4xx` temporary failure code so that the mail client can retry.
 

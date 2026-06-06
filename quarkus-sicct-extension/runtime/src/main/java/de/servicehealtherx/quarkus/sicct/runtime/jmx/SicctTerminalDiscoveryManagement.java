@@ -1,17 +1,16 @@
 package de.servicehealtherx.quarkus.sicct.runtime.jmx;
 
+import de.servicehealtherx.quarkus.sicct.runtime.discovery.CardTerminalDiscovery;
+import de.servicehealtherx.quarkus.sicct.runtime.discovery.CardTerminalDiscovery.DiscoveredTerminal;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import java.lang.management.ManagementFactory;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,11 +20,11 @@ public class SicctTerminalDiscoveryManagement implements SicctTerminalDiscoveryM
     private static final Logger LOG = Logger.getLogger(SicctTerminalDiscoveryManagement.class);
     private static final String OBJECT_NAME =
         "de.servicehealtherx:module=quarkus-sicct-extension,name=SicctTerminalDiscoveryManagement";
-    private static final int SICCT_UDP_PORT = 4876;
+
+    @Inject
+    CardTerminalDiscovery cardTerminalDiscovery;
 
     private final List<DiscoveredTerminal> lastDiscovery = new ArrayList<>();
-
-    record DiscoveredTerminal(String terminalId, String host, int port, Instant discoveredAt) {}
 
     @PostConstruct
     void registerMBean() {
@@ -54,32 +53,42 @@ public class SicctTerminalDiscoveryManagement implements SicctTerminalDiscoveryM
 
     @Override
     public void triggerDiscovery() {
-        LOG.infof("[SICCT] JMX triggerDiscovery: sending UDP broadcast on port %d", SICCT_UDP_PORT);
-        try (DatagramSocket socket = new DatagramSocket()) {
-            socket.setBroadcast(true);
-            byte[] discover = "SICCT-DISCOVER".getBytes("UTF-8");
-            DatagramPacket packet = new DatagramPacket(discover, discover.length,
-                InetAddress.getByName("255.255.255.255"), SICCT_UDP_PORT);
-            socket.send(packet);
-            lastDiscovery.clear();
-            LOG.infof("[SICCT] discovery broadcast sent");
+        LOG.infof("[SICCT] JMX triggerDiscovery: sending SICCT Dienstanfrage broadcast on port %d",
+            CardTerminalDiscovery.SICCT_DISCOVERY_PORT);
+        try {
+            List<DiscoveredTerminal> found = cardTerminalDiscovery.discover();
+            synchronized (lastDiscovery) {
+                lastDiscovery.clear();
+                lastDiscovery.addAll(found);
+            }
         } catch (Exception e) {
-            LOG.warnf("[SICCT] discovery broadcast failed: %s", e.getMessage());
+            LOG.warnf("[SICCT] discovery failed: %s", e.getMessage());
         }
     }
 
     @Override
     public String getLastDiscoveryResult() {
+        List<DiscoveredTerminal> snapshot;
+        synchronized (lastDiscovery) {
+            snapshot = new ArrayList<>(lastDiscovery);
+        }
         StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < lastDiscovery.size(); i++) {
-            DiscoveredTerminal t = lastDiscovery.get(i);
+        for (int i = 0; i < snapshot.size(); i++) {
+            DiscoveredTerminal t = snapshot.get(i);
             if (i > 0) sb.append(",");
-            sb.append("{\"terminalId\":\"").append(t.terminalId())
-              .append("\",\"host\":\"").append(t.host())
-              .append("\",\"port\":").append(t.port())
-              .append(",\"discoveredAt\":\"").append(t.discoveredAt()).append("\"}");
+            sb.append("{\"name\":\"").append(escapeJson(t.name()))
+              .append("\",\"ipAddress\":\"").append(t.ipAddress())
+              .append("\",\"macAddress\":\"").append(t.macAddressHex())
+              .append("\",\"commandPort\":").append(t.commandPort())
+              .append(",\"protocolVersion\":\"")
+              .append(t.protocolVersionMajor()).append('.').append(t.protocolVersionMinor())
+              .append("\"}");
         }
         sb.append("]");
         return sb.toString();
+    }
+
+    private static String escapeJson(String s) {
+        return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

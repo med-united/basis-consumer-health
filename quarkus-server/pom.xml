@@ -11,26 +11,19 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>consumer-soap-server</artifactId>
-    <name>Basis Consumer :: Consumer SOAP Server</name>
-    <description>Quarkus application exposing the Basis Consumer SOAP interface (api-telematik/consumer); integrates all internal services via CDI; embeds Hawtio</description>
+    <artifactId>quarkus-server</artifactId>
+    <name>Basis Consumer :: Quarkus Server</name>
+    <description>Quarkus application bundling all basic consumer services; integrates all internal services via CDI; embeds Hawtio</description>
 
     <dependencies>
 
-        <!-- Service definitions -->
-        <dependency>
-            <groupId>de.servicehealtherx</groupId>
-            <artifactId>api-telematik</artifactId>
-        </dependency>
-
-        <!-- Internal services -->
-        <dependency>
-            <groupId>de.servicehealtherx</groupId>
-            <artifactId>crypto-services-lib</artifactId>
-        </dependency>
         <dependency>
             <groupId>de.servicehealtherx</groupId>
             <artifactId>quarkus-sicct-extension</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>quarkus-ldap-proxy-server-extension</artifactId>
         </dependency>
 
         <!-- Quarkus application core -->
@@ -61,6 +54,13 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-jdbc-derby</artifactId>
+        </dependency>
+
+        <!-- Hawtio for JMX management UI -->
+        <dependency>
+            <groupId>io.hawt</groupId>
+            <artifactId>hawtio-quarkus</artifactId>
+            <version>4.0.0</version>
         </dependency>
 
         <!-- Test dependencies -->

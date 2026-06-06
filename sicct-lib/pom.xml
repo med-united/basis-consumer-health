@@ -56,6 +56,41 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Source: https://mvnrepository.com/artifact/com.beanit/asn1bean-compiler -->
+        <dependency>
+            <groupId>com.beanit</groupId>
+            <artifactId>asn1bean-compiler</artifactId>
+            <version>1.16.0</version>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <id>generate-asn1-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.beanit.asn1bean.compiler.Compiler</mainClass>
+                            <arguments>
+                                <argument>-f</argument>
+                                <argument>${project.basedir}/src/main/asn1/SICCT.asn1</argument>
+                                <argument>-o</argument>
+                                <argument>${project.build.directory}/generated-sources</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

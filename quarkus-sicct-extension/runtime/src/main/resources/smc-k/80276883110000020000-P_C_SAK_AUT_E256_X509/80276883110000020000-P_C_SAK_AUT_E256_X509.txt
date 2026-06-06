@@ -1,0 +1,52 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 682993173608458 (0x26d2dbd7f380a)
+        Signature Algorithm: ecdsa-with-SHA256
+        Issuer: C = DE, O = gematik GmbH NOT-VALID, OU = Komponenten-CA der Telematikinfrastruktur, CN = GEM.KOMP-CA51 TEST-ONLY
+        Validity
+            Not Before: May 29 22:00:00 2023 GMT
+            Not After : May 29 21:59:59 2028 GMT
+        Subject: C = DE, O = gematik TEST-ONLY - NOT-VALID, CN = 80276883110000020000-20230502
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (256 bit)
+                pub:
+                    04:1d:7d:20:45:37:21:9a:0c:27:04:9f:6e:95:6e:
+                    d4:ed:07:7b:49:59:b0:bf:43:0b:90:c7:e0:fd:05:
+                    95:d8:f0:a3:e2:67:11:0b:85:a2:94:17:99:a3:22:
+                    82:a5:0d:37:15:bc:6e:a8:13:3a:b2:9c:d7:b6:dc:
+                    ce:97:86:a1:46
+                ASN1 OID: brainpoolP256r1
+        X509v3 extensions:
+            X509v3 Extended Key Usage: 
+                TLS Web Server Authentication, TLS Web Client Authentication
+            Professional Information or basis for Admission: 
+                Entry 1:
+                  Profession Info Entry 1:
+                    Info Entries:
+                      Signaturanwendungskomponente
+                    Profession OIDs:
+                      undefined (1.2.276.0.76.4.119)
+
+            X509v3 Certificate Policies: 
+                Policy: 1.2.276.0.76.4.163
+                Policy: 1.2.276.0.76.4.113
+
+            X509v3 Subject Key Identifier: 
+                A9:07:A4:A6:66:8F:A3:96:5C:FF:06:3C:40:9B:0E:C1:EA:AE:14:E8
+            Authority Information Access: 
+                OCSP - URI:http://ehca.gematik.de/ocsp/
+
+            X509v3 Key Usage: critical
+                Digital Signature
+            X509v3 Basic Constraints: critical
+                CA:FALSE
+            X509v3 Authority Key Identifier: 
+                keyid:62:95:BB:EE:46:D9:2A:2F:F2:E9:C8:CC:6C:97:24:D4:55:95:31:77
+
+    Signature Algorithm: ecdsa-with-SHA256
+         30:44:02:20:61:0b:ad:10:5c:f1:8e:91:e6:6c:f2:76:72:d0:
+         35:90:22:14:41:df:1e:b7:22:03:ae:6c:4e:ad:37:fd:a2:81:
+         02:20:26:ca:96:b2:ad:27:05:61:1f:8d:ac:09:b0:7b:ab:f2:
+         c2:e8:ba:6e:6c:8d:bb:28:ac:b6:89:ee:c0:e9:68:cd

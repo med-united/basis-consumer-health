@@ -38,10 +38,16 @@
             <artifactId>quarkus-hibernate-orm-panache</artifactId>
         </dependency>
 
-        <!-- Netty for SICCT TCP/IP client channel pool -->
+        <!-- Netty for SICCT TCP/IP client channel pool and UDP discovery -->
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
+        </dependency>
+
+        <!-- Quarkus scheduler for periodic SICCT service discovery -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler</artifactId>
         </dependency>
 
         <!-- Test dependencies -->
@@ -51,10 +57,94 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5-mockito</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jdbc-derby</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <profiles>
+        <profile>
+            <!--
+                Integration tests that require a live SICCT card terminal.
+                Activate with: mvn verify -Pit [-Dsicct.it.host=...] [-Dsicct.it.port=...]
+                Defaults: host=192.168.100.90, port=3001
+            -->
+            <id>it</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.awaitility</groupId>
+                    <artifactId>awaitility</artifactId>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>add-it-sources</id>
+                                <phase>generate-test-sources</phase>
+                                <goals><goal>add-test-source</goal></goals>
+                                <configuration>
+                                    <sources>
+                                        <source>src/it/java</source>
+                                    </sources>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>add-it-resources</id>
+                                <phase>generate-test-resources</phase>
+                                <goals><goal>add-test-resource</goal></goals>
+                                <configuration>
+                                    <resources>
+                                        <resource>
+                                            <directory>src/it/resources</directory>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <systemPropertyVariables>
+                                <sicct.it.host>${sicct.it.host}</sicct.it.host>
+                                <sicct.it.port>${sicct.it.port}</sicct.it.port>
+                                <sicct.it.connectTimeoutMs>${sicct.it.connectTimeoutMs}</sicct.it.connectTimeoutMs>
+                            </systemPropertyVariables>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+            <properties>
+                <sicct.it.host>192.168.100.90</sicct.it.host>
+                <sicct.it.port>3001</sicct.it.port>
+                <sicct.it.connectTimeoutMs>10000</sicct.it.connectTimeoutMs>
+            </properties>
+        </profile>
+    </profiles>
 
 </project>
