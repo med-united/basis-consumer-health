@@ -13,6 +13,7 @@
     <description>Multi-tenant cloud-native TI platform: encryption, signature, LDAP proxy, SICCT card terminal, Konnektor SOAP compatibility</description>
 
     <modules>
+        <module>api-telematik</module>
         <module>crypto-lib</module>
         <module>sicct-lib</module>
         <module>quarkus-sicct-extension</module>
@@ -58,14 +59,18 @@
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>${quarkus.platform.group-id}</groupId>
+                <groupId>io.quarkiverse.cxf</groupId>
                 <artifactId>quarkus-cxf-bom</artifactId>
                 <version>${quarkus-cxf.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
             <!-- Internal modules -->
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>api-telematik</artifactId>
+                <version>basis-consumer-health</version>
+            </dependency>
             <dependency>
                 <groupId>de.servicehealtherx</groupId>
                 <artifactId>crypto-lib</artifactId>
@@ -178,10 +183,6 @@
             <url>https://nexus.prod.ccs.gematik.solutions/repository/maven-releases/</url>
             <releases><enabled>true</enabled></releases>
             <snapshots><enabled>false</enabled></snapshots>
-        </repository>
-        <repository>
-            <id>central</id>
-            <url>https://repo.maven.apache.org/maven2</url>
         </repository>
     </repositories>
 

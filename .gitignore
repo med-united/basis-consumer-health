@@ -1,0 +1,39 @@
+# Maven build output
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Quarkus
+.quarkus/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment / secrets
+.env
+.env.*
+*.p12
+*.pem
+*.key
+*.jks
+*.pfx
+
+# Derby embedded databases
+*-db/
+*.lck

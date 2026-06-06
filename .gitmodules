@@ -1,6 +1,6 @@
 [submodule "api-telematik"]
 	path = api-telematik
-	url = https://github.com/gematik/api-telematik.git
+	url = git@github.com:med-united/api-telematik.git
 	branch = ebk_6.0.3
 
 [submodule "openkim-server"]
