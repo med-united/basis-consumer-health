@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -28,10 +27,10 @@ public class CryptoProviderRouter implements CryptoProvider {
     private static final Logger LOG = Logger.getLogger(CryptoProviderRouter.class);
 
     @Inject
-    Optional<P12KeyStoreConfig> p12Config;
+    P12KeyStoreConfig p12Config;
 
     @Inject
-    Optional<Pkcs11KeyStoreConfig> pkcs11Config;
+    Pkcs11KeyStoreConfig pkcs11Config;
 
     private final Map<String, KeyStoreAdapter> adapters = new ConcurrentHashMap<>();
 
@@ -39,10 +38,10 @@ public class CryptoProviderRouter implements CryptoProvider {
     void initialize() {
         List<String> registeredAliases = new ArrayList<>();
 
-        p12Config.ifPresent(cfg -> cfg.keystores().forEach(entry -> {
+        p12Config.keystores().forEach(entry -> {
             checkDuplicateAlias(entry.alias(), registeredAliases);
             P12KeyStoreAdapter adapter = new P12KeyStoreAdapter(
-                entry.alias(), entry.path(), entry.keystorePassword(), entry.entryPassword());
+                entry.alias(), entry.path(), entry.keystorePassword(), entry.entryPassword().orElse(null));
             try {
                 adapter.engineLoad(null, null);
             } catch (IOException e) {
@@ -50,9 +49,9 @@ public class CryptoProviderRouter implements CryptoProvider {
             }
             adapters.put(entry.alias(), adapter);
             registeredAliases.add(entry.alias());
-        }));
+        });
 
-        pkcs11Config.ifPresent(cfg -> cfg.keystores().forEach(entry -> {
+        pkcs11Config.keystores().forEach(entry -> {
             checkDuplicateAlias(entry.alias(), registeredAliases);
             Pkcs11KeyStoreAdapter adapter = new Pkcs11KeyStoreAdapter(
                 entry.alias(), entry.name(), entry.libraryPath(), entry.tokenPin(), entry.slotListIndex());
@@ -63,7 +62,7 @@ public class CryptoProviderRouter implements CryptoProvider {
             }
             adapters.put(entry.alias(), adapter);
             registeredAliases.add(entry.alias());
-        }));
+        });
 
         LOG.infof("[CryptoProviderRouter] initialized with %d adapter(s): %s", adapters.size(),
             String.join(", ", adapters.keySet()));

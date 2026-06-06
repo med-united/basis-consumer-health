@@ -1,6 +1,7 @@
 package de.servicehealtherx.crypto.jmx;
 
 import de.servicehealtherx.crypto.TslDownloader;
+import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -11,15 +12,13 @@ import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import java.lang.management.ManagementFactory;
 import java.time.Instant;
-import java.util.concurrent.TimeoutException;
 
+@Startup
 @ApplicationScoped
 public class TslManagement implements TslManagementMBean {
 
     private static final Logger LOG = Logger.getLogger(TslManagement.class);
     private static final String OBJECT_NAME = "de.servicehealtherx:module=crypto-lib,name=TslManagement";
-    private static final int RELOAD_TIMEOUT_SECONDS = 60;
-
     @Inject
     TslDownloader tslDownloader;
 
@@ -73,7 +72,7 @@ public class TslManagement implements TslManagementMBean {
     }
 
     @Override
-    public String getTslStatus() {
+    public String tslStatus() {
         TslDownloader.TslState state = tslDownloader.getCurrentState();
         return "{\"sequenceNumber\":" + state.sequenceNumber() +
             ",\"expiry\":\"" + state.expiry() + "\",\"downloadedAt\":\"" + state.downloadedAt() +

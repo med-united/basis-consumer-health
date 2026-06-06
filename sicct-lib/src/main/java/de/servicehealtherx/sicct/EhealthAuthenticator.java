@@ -73,6 +73,14 @@ public class EhealthAuthenticator {
      * Builds ADD Phase 2 request: response = SHA-256(terminalChallenge ‖ ShS.KT.AUT).
      */
     public CommandApdu buildAddPhase2Request(byte[] terminalChallenge, byte[] sharedSecret) throws Exception {
+        if (terminalChallenge.length < CHALLENGE_SIZE) {
+            throw new IllegalArgumentException(
+                "SharedSecretChallengeDO MUST be ≥" + CHALLENGE_SIZE + " bytes, was " + terminalChallenge.length);
+        }
+        if (sharedSecret.length != SHARED_SECRET_SIZE) {
+            throw new IllegalArgumentException(
+                "SharedSecretDO MUST be exactly " + SHARED_SECRET_SIZE + " bytes, was " + sharedSecret.length);
+        }
         byte[] response = computeResponse(terminalChallenge, sharedSecret);
         if (response.length != RESPONSE_SIZE) {
             throw new IllegalStateException("Response MUST be " + RESPONSE_SIZE + " bytes, was " + response.length);

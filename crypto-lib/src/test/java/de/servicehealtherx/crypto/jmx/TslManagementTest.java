@@ -55,7 +55,7 @@ class TslManagementTest {
         MBeanServer server = ManagementFactory.getPlatformMBeanServer();
         ObjectName name = new ObjectName("de.servicehealtherx:module=crypto-lib,name=TslManagement");
 
-        String result = (String) server.invoke(name, "getTslStatus", new Object[0], new String[0]);
+        String result = (String) server.invoke(name, "tslStatus", new Object[0], new String[0]);
 
         assertNotNull(result, "getTslStatus must return JSON");
         assertTrue(result.contains("sequenceNumber"), "Result must contain sequenceNumber field");

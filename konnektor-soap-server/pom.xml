@@ -16,6 +16,13 @@
     <description>Quarkus application exposing Konnektor SOAP compatibility interface (api-telematik/conn); routes operations to crypto-services-lib</description>
 
     <dependencies>
+
+        <!-- Service definitions -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>api-telematik</artifactId>
+        </dependency>
+
         <!-- Internal services -->
         <dependency>
             <groupId>de.servicehealtherx</groupId>
@@ -63,11 +70,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.quarkiverse.cxf</groupId>
-            <artifactId>quarkus-cxf-client</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
@@ -86,30 +88,6 @@
                             <goal>generate-code</goal>
                             <goal>generate-code-tests</goal>
                         </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <!-- wsdl2java for api-telematik konnektor WSDLs -->
-            <plugin>
-                <groupId>io.quarkiverse.cxf</groupId>
-                <artifactId>quarkus-cxf-maven-plugin</artifactId>
-                <version>${quarkus-cxf.version}</version>
-                <executions>
-                    <execution>
-                        <id>generate-konnektor-sources</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>wsdl2java</goal>
-                        </goals>
-                        <configuration>
-                            <wsdlRoot>${project.basedir}/../api-telematik/conn</wsdlRoot>
-                            <includes>
-                                <include>**/*.wsdl</include>
-                            </includes>
-                            <outputDirectory>${project.build.directory}/generated-sources/cxf-konnektor</outputDirectory>
-                            <packageName>de.servicehealtherx.konnektor.soap</packageName>
-                        </configuration>
                     </execution>
                 </executions>
             </plugin>

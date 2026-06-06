@@ -6,5 +6,5 @@ public interface TslManagementMBean {
 
     String reloadTsl();
 
-    String getTslStatus();
+    String tslStatus();
 }

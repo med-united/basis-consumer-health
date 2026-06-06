@@ -40,22 +40,15 @@
             <artifactId>netty-all</artifactId>
         </dependency>
 
-        <!-- beanit jASN1 runtime (codegen output dependency) -->
-        <dependency>
-            <groupId>com.beanit</groupId>
-            <artifactId>jasn1</artifactId>
-        </dependency>
-
-        <!-- TPM 2.0 for sealing ShS.KT.AUT to PCR 0/1/7 -->
-        <dependency>
-            <groupId>com.microsoft.tss</groupId>
-            <artifactId>tss</artifactId>
-        </dependency>
-
         <!-- Test dependencies -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jdbc-h2</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -65,49 +58,4 @@
         </dependency>
     </dependencies>
 
-    <build>
-        <plugins>
-            <!-- jASN1 code generation from SICCT.asn1 -->
-            <plugin>
-                <groupId>com.beanit</groupId>
-                <artifactId>jasn1-compiler</artifactId>
-                <version>${jasn1.version}</version>
-                <executions>
-                    <execution>
-                        <id>generate-sicct-asn1</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>generate</goal>
-                        </goals>
-                        <configuration>
-                            <baseOutputDir>${project.build.directory}/generated-sources/asn1</baseOutputDir>
-                            <berFiles>
-                                <berFile>src/main/asn1/SICCT.asn1</berFile>
-                            </berFiles>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>build-helper-maven-plugin</artifactId>
-                <version>3.5.0</version>
-                <executions>
-                    <execution>
-                        <id>add-asn1-sources</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>add-source</goal>
-                        </goals>
-                        <configuration>
-                            <sources>
-                                <source>${project.build.directory}/generated-sources/asn1</source>
-                            </sources>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
 </project>

@@ -16,6 +16,13 @@
     <description>Quarkus application exposing the Basis Consumer SOAP interface (api-telematik/consumer); integrates all internal services via CDI; embeds Hawtio</description>
 
     <dependencies>
+
+        <!-- Service definitions -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>api-telematik</artifactId>
+        </dependency>
+
         <!-- Internal services -->
         <dependency>
             <groupId>de.servicehealtherx</groupId>
@@ -74,11 +81,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.quarkiverse.cxf</groupId>
-            <artifactId>quarkus-cxf-client</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
@@ -97,30 +99,6 @@
                             <goal>generate-code</goal>
                             <goal>generate-code-tests</goal>
                         </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <!-- wsdl2java for api-telematik consumer WSDL -->
-            <plugin>
-                <groupId>io.quarkiverse.cxf</groupId>
-                <artifactId>quarkus-cxf-maven-plugin</artifactId>
-                <version>${quarkus-cxf.version}</version>
-                <executions>
-                    <execution>
-                        <id>generate-consumer-sources</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>wsdl2java</goal>
-                        </goals>
-                        <configuration>
-                            <wsdlRoot>${project.basedir}/../api-telematik/consumer</wsdlRoot>
-                            <includes>
-                                <include>**/*.wsdl</include>
-                            </includes>
-                            <outputDirectory>${project.build.directory}/generated-sources/cxf-consumer</outputDirectory>
-                            <packageName>de.servicehealtherx.consumer.soap</packageName>
-                        </configuration>
                     </execution>
                 </executions>
             </plugin>
