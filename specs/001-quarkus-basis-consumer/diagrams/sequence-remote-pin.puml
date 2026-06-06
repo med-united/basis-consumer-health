@@ -1,0 +1,36 @@
+@startuml sequence-remote-pin
+title Remote-PIN via gSMC-KT Trusted Channel (TIP1-A_5012 / FR-141)
+skinparam sequenceMessageAlign center
+
+participant "Primärsystem" as PS
+participant "konnektor-server\n(CardService SOAP)" as SOAP
+participant "signature-lib\n(CryptoProvider / TUC_KON_012)" as CP
+participant "sicct-server" as SICCT
+participant "SICCT Terminal\ngSMC-KT + HBA" as KT
+
+PS -> SOAP : VerifyPin(cardHandle=HBA-slot0,\npinRef=PIN.CH)\nAufrufKontext: {mandantId, ..., userId}
+SOAP -> CP : TUC_KON_012 (PIN verify, cardSession, pinRef=PIN.CH)
+CP -> CP : Determine: remote-PIN required\n(HBA in SICCT terminal, FR-144)
+CP -> SICCT : TUC_KON_005 (Card-to-Card auth)\nauthMode=gegenseitig+TC\nsource=gSMC-KT, target=HBA
+
+note over SICCT, KT
+  Card-to-Card authentication via SICCT APDU forwarding
+  (PSO Verify Certificate → INTERNAL AUTHENTICATE → session key negotiation)
+end note
+
+SICCT -> KT : PSO Verify Certificate (gSMC-KT → HBA CVC chain)
+KT -> SICCT : SW 9000
+SICCT -> KT : INTERNAL AUTHENTICATE (HBA generates challenge)
+KT -> SICCT : challenge response
+SICCT -> SICCT : Compute shared session key (E256 ECC key agreement)
+CP -> CP : Trusted Channel established (session key)
+
+CP -> SICCT : SICCT PERFORM VERIFICATION\n(PIN.CH, display PIN prompt on KT)
+SICCT -> KT : Display: "Bitte PIN eingeben" on trusted screen (TIP1-A_2979)
+KT -> KT : Operator enters PIN on PIN pad\nPIN encrypted with TC session key
+KT -> SICCT : Encrypted PIN command (APDU on TC logical channel)
+SICCT -> CP : PIN verification result
+CP -> SOAP : emit VERIFY_STARTED event\nresult: OK / REJECTED(leftTries) / BLOCKED (FR-144)
+SOAP -> PS : VerifyPinResponse
+
+@enduml

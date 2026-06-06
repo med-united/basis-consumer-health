@@ -32,6 +32,59 @@
       },
       "registered_skills": [],
       "installed_at": "2026-06-05T22:30:27.481481+00:00"
+    },
+    "threatmodel": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:61387aba7be1b4f8a1c93c5aa8bbfe0be60caf37fe6c9103a99ec5883b3c77f1",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "claude": [
+          "speckit.threatmodel.analyze"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-06-06T12:58:33.193132+00:00"
+    },
+    "security-review": {
+      "version": "1.5.3",
+      "source": "local",
+      "manifest_hash": "sha256:4d22ce856396f7142eff759194678e29e88110742f5006c09bf8fbc73a2099d2",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "claude": [
+          "speckit.security-review.audit",
+          "speckit.security-review.staged",
+          "speckit.security-review.branch",
+          "speckit.security-review.plan",
+          "speckit.security-review.tasks",
+          "speckit.security-review.followup",
+          "speckit.security-review.apply",
+          "speckit.security-review.export",
+          "speckit.security-review.init"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-06-06T13:03:35.618918+00:00"
+    },
+    "jira": {
+      "version": "3.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:9b7336792cf27361a78b8dac29e94833c23f7968aac6f5a8c65fcdfb598915e4",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "claude": [
+          "speckit.jira.specstoissues",
+          "speckit.specstoissues",
+          "speckit.jira.discover-fields",
+          "speckit.jira.sync-status"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-06-06T13:09:16.110574+00:00"
     }
   }
 }

@@ -53,6 +53,14 @@ specs/[###-feature]/
 ├── data-model.md        # Phase 1 output (/speckit-plan command)
 ├── quickstart.md        # Phase 1 output (/speckit-plan command)
 ├── contracts/           # Phase 1 output (/speckit-plan command)
+├── diagrams/            # Phase 1 output (/speckit-plan command) — PlantUML diagrams
+│   ├── README.md        # Diagram index with GitHub proxy image links
+│   ├── use-case.puml
+│   ├── deployment.puml
+│   ├── component.puml
+│   ├── sequence-*.puml
+│   ├── state-*.puml
+│   └── class-*.puml
 └── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
 ```
 

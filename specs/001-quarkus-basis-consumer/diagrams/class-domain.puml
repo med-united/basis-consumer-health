@@ -1,0 +1,159 @@
+@startuml class-domain
+title Basis Consumer — Domain Class Diagram (Key Entities)
+skinparam classAttributeIconSize 0
+
+interface CryptoProvider <<CDI @ApplicationScoped>> {
+  + sign(alias: String, algorithm: AlgorithmId, data: byte[]): byte[]
+  + decrypt(alias: String, algorithm: AlgorithmId, ciphertext: byte[]): byte[]
+  + listAliases(): List<KeyAlias>
+  + getAvailability(alias: String): AvailabilityStatus
+  + getAvailabilities(): Map<String, AvailabilityStatus>
+}
+
+interface KeySourceAdapter <<internal>> {
+  + sign(keyRef: KeyReference, algorithm: AlgorithmId, data: byte[]): byte[]
+  + decrypt(keyRef: KeyReference, algorithm: AlgorithmId, ciphertext: byte[]): byte[]
+  + getAvailability(): AvailabilityStatus
+  + listKeyReferences(): List<KeyReference>
+}
+
+class KeyAlias {
+  + alias: String     ' format: <type>/<name>, e.g. sicct/praxis-a-slot0
+  + sourceType: KeySourceType   ' P12 | PKCS11 | PCSC | SICCT
+  + tenantId: String
+}
+
+enum KeySourceType {
+  P12
+  PKCS11
+  PCSC
+  SICCT
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  UNAVAILABLE
+  ERROR
+}
+
+class P12KeySourceAdapter implements KeySourceAdapter {
+  - keystorePath: String
+  - password: char[]
+  - keyStore: KeyStore
+}
+
+class Pkcs11KeySourceAdapter implements KeySourceAdapter {
+  - providerName: String   ' SunPKCS11-<name>
+  - slotIndex: int
+  - tokenPin: char[]
+  - provider: AuthProvider
+}
+
+class PcscKeySourceAdapter implements KeySourceAdapter {
+  - readerName: String
+  - pin: char[]
+  - cardTerminals: CardTerminals
+}
+
+class SicctKeySourceAdapter implements KeySourceAdapter {
+  - terminalManager: SicctTerminalManager
+}
+
+entity CardTerminalRecord <<JPA entity>> {
+  + id: UUID           ' PK
+  + tenantId: String   ' FK
+  + name: String       ' unique per tenant
+  + host: String
+  + port: int          ' 1–65535
+  + connectTimeoutMs: Integer   ' nullable → global default
+  + apduTimeoutMs: Integer      ' nullable → global default
+  + createdAt: Instant
+  + updatedAt: Instant
+}
+
+class SicctTerminal <<runtime>> {
+  + record: CardTerminalRecord
+  + correlation: CorrelationState
+  + connected: boolean
+  + slots: List<SicctCardSlot>
+  + smktAut: X509Certificate
+  + sharedSecret: byte[]       ' 16 bytes ShS.KT.AUT
+  # connect(): void
+  # validate(challenge: byte[]): boolean
+  # close(): void
+}
+
+class SicctCardSlot <<runtime>> {
+  + slotIndex: int
+  + state: SlotState
+  + cardHandle: CardHandle
+  + iccsn: String
+}
+
+class CardHandle <<runtime>> {
+  + handleId: UUID
+  + tenantId: String
+  + alias: String          ' maps to KeyAlias
+  + cardType: CardType     ' SMC_B_KTR | SMC_B_ORG | HBA
+  + expiresAt: Instant
+}
+
+enum CorrelationState {
+  BEKANNT
+  ZUGEWIESEN
+  GEPAIRT
+  AKTIV
+}
+
+enum SlotState {
+  EMPTY
+  CARD_INSERTED
+  CARD_READY
+  CARD_ACTIVATED
+  CARD_EJECTED
+}
+
+enum CardType {
+  SMC_B_KTR
+  SMC_B_ORG
+  HBA
+}
+
+class AuditLogEntry <<JPA entity>> {
+  + id: UUID
+  + tenantId: String
+  + timestamp: Instant
+  + alias: String
+  + operationType: String    ' SIGN | DECRYPT | PIN | TERMINAL_MGMT
+  + callerId: String
+  + result: String           ' SUCCESS | FAILURE
+  + durationMs: long
+}
+
+' Relationships
+CryptoProvider o-- "1..*" KeySourceAdapter : routes by alias prefix
+CryptoProvider --> "0..*" KeyAlias : manages
+KeyAlias --> KeySourceType
+KeySourceAdapter --> AvailabilityStatus
+
+SicctKeySourceAdapter --> SicctTerminalManager
+SicctTerminalManager --> "0..*" SicctTerminal : manages
+
+SicctTerminal --> CardTerminalRecord : backed by
+SicctTerminal --> CorrelationState
+SicctTerminal --> "1..*" SicctCardSlot
+
+SicctCardSlot --> SlotState
+SicctCardSlot --> CardHandle : "0..1"
+
+CardHandle --> CardType
+CardHandle --> KeyAlias : resolves to
+
+class SicctTerminalManager <<CDI @ApplicationScoped>> {
+  + connect(record: CardTerminalRecord): void
+  + disconnect(name: String): void
+  + sendApdu(slot: SicctCardSlot, apdu: byte[]): byte[]
+  + listTerminals(tenantId: String): List<SicctTerminal>
+}
+
+@enduml

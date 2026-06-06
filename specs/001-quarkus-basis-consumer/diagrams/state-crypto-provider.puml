@@ -1,0 +1,57 @@
+@startuml state-crypto-provider
+title CryptoProvider Key Source Adapter — Availability State Machine
+skinparam state {
+  BackgroundColor LightBlue
+  BorderColor Navy
+}
+
+[*] --> Initializing : Application startup\nor hot-add (P12 / PC/SC)
+
+state Initializing {
+  [*] --> Loading : Load config / DB record
+  Loading --> Probing : Open connection\n(PKCS#11 session / SICCT TCP / P12 load)
+}
+
+state Available {
+  state "Operations routed here" as OPS
+  state "Periodic health check" as HC
+  OPS --> HC : health watchdog tick\n(every 30 s)
+  HC --> OPS : check OK
+}
+
+state Unavailable {
+  state "Error logged\nHealth: DOWN" as ERR
+}
+
+state Reconnecting {
+  state "Exponential backoff\n1s → 30s max (FR-025)" as BACKOFF
+}
+
+Initializing --> Available : P12 loaded OK\nor PKCS#11 session open\nor SICCT session AKTIV\nor PC/SC card present
+Initializing --> Unavailable : Initialization failed\n(wrong PIN, library missing,\nnetwork unreachable)
+
+Available --> Unavailable : CKR_TOKEN_NOT_PRESENT (FR-019)\nor PC/SC card removed (FR-020)\nor P12 source removed from config
+
+Available --> Reconnecting : SICCT TLS lost (FR-136)\nor PKCS#11 session closed
+
+Reconnecting --> Available : Reconnect + VALIDATE OK\n(SICCT) or session re-open (PKCS#11)
+Reconnecting --> Unavailable : Max retries exceeded\nor permanent error
+
+Unavailable --> Reconnecting : Retry timer fires\n(SICCT: backoff cycle)\nor hot-reload event (P12 / PC/SC)
+
+Unavailable --> [*] : Alias removed from config\nor terminal decommissioned
+
+note right of Available
+  Alias registered in CryptoProvider.listAliases()
+  Health readiness: UP (FR-014)
+  Audit log: operation result = SUCCESS
+end note
+
+note right of Unavailable
+  Alias absent from listAliases()
+  Health readiness: DOWN
+  In-flight ops: fail with clear error (FR-015)
+  Audit log: operation result = FAILURE
+end note
+
+@enduml

@@ -1,0 +1,93 @@
+@startuml component
+title Basis Consumer — Component Diagram (Maven Modules)
+
+skinparam componentStyle rectangle
+
+package "basis-consumer-server\n(Quarkus application, main deployable)" {
+  [CDI Tenant Context\n& Authorization] as CDI
+  [Hawtio Management\nConsole Panels] as HAWTIO
+  [SmallRye Health\n(readiness checks)] as HEALTH
+  [JPA / JavaDB\n(CardTerminalRecord, AuditLog)] as JPA
+}
+
+package "konnektor-server\n(Apache CXF SOAP endpoints)" {
+  [SignatureService\n(SignDocument, ExternalAuthenticate)] as SIG_SVC
+  [EncryptionService\n(EncryptDocument, DecryptDocument)] as ENC_SVC
+  [CertificateService\n(ReadCertificate, VerifyCertificate)] as CERT_SVC
+  [CardService\n(VerifyPin, ChangePin, StartCardSession...)] as CARD_SVC
+  [CardTerminalService\n(RequestCard, EjectCard)] as KT_SVC
+  [EventService\n(Subscribe, CETP push)] as EVT_SVC
+  [AufrufKontext Interceptor\n(mandantId / clientSystemId / userId)] as CTX
+}
+
+package "ldap-proxy-server\n(Netty LDAPv3 proxy)" {
+  [LDAP Server Codec\n(port 389 / 636)] as LDAP_IN
+  [VZD LDAP Client\n(LDAPS to TI VZD)] as LDAP_OUT
+  [Operation Filter\n(allow: Bind, Unbind,\nSearch, Abandon only)] as LDAP_FILT
+}
+
+package "signature-lib\n(CryptoProvider CDI interface + adapters)" {
+  [CryptoProvider\n(CDI @ApplicationScoped)] as CP
+  [P12KeySourceAdapter] as P12
+  [Pkcs11KeySourceAdapter\n(SunPKCS11)] as PKCS11
+  [PcscKeySourceAdapter\n(javax.smartcardio)] as PCSC
+  [SicctKeySourceAdapter] as SICCT_ADAPT
+  [AuditLogger] as AUDIT
+}
+
+package "sicct-lib\n(SICCT Quarkus Extension — deployment+runtime)" {
+  [SicctExtensionProcessor\n(build-time CDI setup)] as PROC
+  [SicctTerminalManager\n(Netty TCP client pool)] as TM
+  [EhealthAuthenticator\n(CREATE / VALIDATE / ADD)] as EAUTH
+  [CardSlotTracker\n(@Scheduled watchdog)] as SLOT
+  [SicctHealthCheck\n(@Readiness)] as SICT_HEALTH
+}
+
+package "openkim (git submodule)\n(KIM/KOM-LE — Spring Boot embedded)" {
+  [KimSmtpServer] as SMTP
+  [KimPop3Server] as POP3
+  [KimMessageProcessor\n(encrypt / sign / send)] as KIM_PROC
+}
+
+' Main app wires everything
+CDI --> CTX
+JPA --> TM : load CardTerminalRecord at startup
+JPA --> HAWTIO : CRUD via management panels
+HEALTH --> SICT_HEALTH
+HEALTH --> CP
+
+' konnektor-server uses signature-lib
+SIG_SVC --> CP : sign / decrypt
+ENC_SVC --> CP : encrypt / decrypt
+CERT_SVC --> CP : read certificate
+CARD_SVC --> CP : PIN ops / card session
+KT_SVC --> TM : RequestCard / EjectCard
+CTX --> SIG_SVC
+CTX --> ENC_SVC
+CTX --> CERT_SVC
+CTX --> CARD_SVC
+CTX --> KT_SVC
+
+' ldap-proxy-server internal chain
+LDAP_IN --> LDAP_FILT
+LDAP_FILT --> LDAP_OUT
+
+' signature-lib CryptoProvider routes to adapters
+CP --> P12
+CP --> PKCS11
+CP --> PCSC
+CP --> SICCT_ADAPT
+CP --> AUDIT
+
+' sicct-lib integration
+SICCT_ADAPT --> TM : send APDU
+TM --> EAUTH : session setup
+TM --> SLOT
+PROC --> TM : extension lifecycle
+
+' KIM uses CryptoProvider for crypto
+KIM_PROC --> CP : sign / encrypt outgoing
+SMTP --> KIM_PROC
+POP3 --> KIM_PROC
+
+@enduml

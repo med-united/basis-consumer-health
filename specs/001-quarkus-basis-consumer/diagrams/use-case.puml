@@ -1,0 +1,62 @@
+@startuml use-case
+title Basis Consumer — Use Case Diagram
+
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Primärsystem\n(Client System)" as PS
+actor "TI-Operator\n(Tenant Admin)" as OP
+actor "gematik / TI" as TI
+actor "SICCT Terminal" as KT
+
+rectangle "Basis Consumer (per Tenant Namespace)" {
+  usecase "Encrypt Document" as UC_ENC
+  usecase "Decrypt Document" as UC_DEC
+  usecase "Sign Document (nonQES)" as UC_SIGN
+  usecase "Verify Document" as UC_VER
+  usecase "External Authenticate" as UC_AUTH
+  usecase "Read Card Certificate" as UC_CERT
+  usecase "Verify Certificate" as UC_VCERT
+  usecase "Verify / Change / Unblock PIN" as UC_PIN
+  usecase "Request / Eject Card" as UC_CARD
+  usecase "Start / Stop Card Session" as UC_SESSION
+  usecase "Get Card Terminals / Cards" as UC_GET
+  usecase "Subscribe to Events" as UC_EVT
+  usecase "Search VZD via LDAP" as UC_LDAP
+  usecase "Send / Receive KOM-LE Mail" as UC_KIM
+  usecase "Manage Card Terminals (DB)" as UC_TERM
+  usecase "Pair Terminal\n(EHEALTH AUTHENTICATE)" as UC_PAIR
+  usecase "Onboard / Offboard Tenant" as UC_TENANT
+}
+
+PS --> UC_ENC
+PS --> UC_DEC
+PS --> UC_SIGN
+PS --> UC_VER
+PS --> UC_AUTH
+PS --> UC_CERT
+PS --> UC_VCERT
+PS --> UC_PIN
+PS --> UC_CARD
+PS --> UC_SESSION
+PS --> UC_GET
+PS --> UC_EVT
+PS --> UC_LDAP
+PS --> UC_KIM
+
+OP --> UC_TERM
+OP --> UC_PAIR
+OP --> UC_TENANT
+
+KT --> UC_PAIR
+KT --> UC_CARD
+
+TI --> UC_LDAP : VZD directory
+TI <-- UC_KIM : MTA / KIM server
+
+UC_SIGN ..> UC_AUTH : <<extend>> SM-B AUT
+UC_TERM ..> UC_PAIR : <<include>>
+UC_ENC ..> UC_CERT : <<include>> validate recipient cert
+UC_SIGN ..> UC_CERT : <<include>> read signing cert
+
+@enduml

@@ -1,0 +1,10 @@
+{
+  "java.compile.nullAnalysis.mode": "automatic",
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "editor.formatOnSave": true,
+
+  "plantuml.render": "Local",
+  "plantuml.diagramsRoot": "specs",
+  "plantuml.exportOutDir": "specs",
+  "plantuml.fileExtensions": ".puml"
+}

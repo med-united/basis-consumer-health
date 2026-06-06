@@ -1,6 +1,9 @@
 installed:
 - agent-context
 - git
+- jira
+- security-review
+- threatmodel
 settings:
   auto_execute_hooks: true
 hooks:
@@ -122,6 +125,14 @@ hooks:
     prompt: Execute speckit.agent-context.update?
     description: Refresh agent context after planning
     condition: null
+  - extension: security-review
+    command: speckit.security-review.plan
+    enabled: true
+    optional: true
+    prompt: Would you like to perform a security review on the proposed technical
+      plan?
+    description: ''
+    condition: null
   after_tasks:
   - extension: git
     command: speckit.git.commit
@@ -130,6 +141,21 @@ hooks:
     prompt: Commit task changes?
     description: Auto-commit after task generation
     condition: null
+  - extension: security-review
+    command: speckit.security-review.tasks
+    enabled: true
+    optional: true
+    prompt: Would you like to verify that security boundaries are represented in the
+      tasks?
+    description: ''
+    condition: null
+  - extension: jira
+    command: speckit.jira.specstoissues
+    enabled: true
+    optional: true
+    prompt: Create Jira issues from tasks?
+    description: Automatically create Jira hierarchy after task generation
+    condition: null
   after_implement:
   - extension: git
     command: speckit.git.commit
@@ -137,6 +163,20 @@ hooks:
     optional: true
     prompt: Commit implementation changes?
     description: Auto-commit after implementation
+    condition: null
+  - extension: threatmodel
+    command: speckit.threatmodel.analyze
+    enabled: true
+    optional: true
+    prompt: Run OWASP LLM threat analysis on this feature?
+    description: Post-implementation security review
+    condition: null
+  - extension: security-review
+    command: speckit.security-review.branch
+    enabled: true
+    optional: true
+    prompt: Would you like to scan the new implementation for security vulnerabilities?
+    description: ''
     condition: null
   after_checklist:
   - extension: git

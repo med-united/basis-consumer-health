@@ -1,0 +1,60 @@
+@startuml state-sicct-terminal
+title SICCT Terminal — State Chart (CORRELATION + Connection)
+skinparam state {
+  BackgroundColor LightYellow
+  BorderColor DarkOrange
+}
+
+[*] --> Bekannt : CardTerminalRecord created\nin DB via Hawtio console (FR-096)
+
+state "CORRELATION = bekannt" as Bekannt {
+  state "CONNECTED = Nein" as B_DC
+}
+
+state "CORRELATION = zugewiesen" as Zugewiesen
+
+state "CORRELATION = gepairt" as Gepairt {
+  state "TLS handshake\n+ cert validation" as G_TLS
+  state "VALIDATE shared secret\n(SHA-256 challenge)" as G_VAL
+  G_TLS --> G_VAL : TLS OK,\nC.SMKT.AUT verified
+}
+
+state "CORRELATION = aktiv" as Aktiv {
+  state "CONNECTED = Ja" as A_CON
+  state "CONNECTED = Nein (reconnecting)" as A_RC
+
+  A_CON --> A_RC : TLS loss detected\nwithin 30 s (FR-136)\nSession keys discarded
+  A_RC --> A_CON : Reconnect + VALIDATE\nsucceeds (exp. backoff)
+}
+
+state "DISCONNECTED / FAILED" as Fail
+
+Bekannt --> Zugewiesen : TUC_KON_054\n(service discovery or manual)
+Zugewiesen --> Gepairt : TUC_KON_053\nAdmin opens TLS session
+Gepairt --> Aktiv : EHEALTH AUTH CREATE\noperator confirms pairing ✓\n(FR-130)
+
+G_VAL --> Aktiv : VALIDATE OK (FR-131)
+G_VAL --> Fail : VALIDATE FAILED\nerror 4029 (FR-131)
+
+Aktiv --> Fail : Decommission\n(delete CardTerminalRecord)
+Aktiv --> Gepairt : SAK.AUT key rotation\n→ maintenance pairing ADD (FR-132)
+
+Fail --> [*] : Record deleted\npairing data wiped (FR-135)
+
+note right of Aktiv
+  In CORRELATION=aktiv:
+  - Card slot states tracked (FR-093)
+  - CardHandles allocatable
+  - APDU forwarding permitted (FR-094)
+  - gSMC-KT cert expiry monitored (FR-137)
+end note
+
+note left of Bekannt
+  SICCT TLS state machine (A_22456):
+  NoSicctTls → no commands
+  InvalidClient → INIT/CLOSE/STATUS only
+  ClientWithoutPairing → + EHEALTH AUTH
+  ClientWithPairing → full command access (FR-134)
+end note
+
+@enduml

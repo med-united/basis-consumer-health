@@ -1,0 +1,60 @@
+@startuml sequence-ehealth-authenticate
+title EHEALTH TERMINAL AUTHENTICATE — Pairing (CREATE) & Session Validation (VALIDATE)
+skinparam sequenceMessageAlign center
+
+participant "Operator" as OP
+participant "Basis Consumer\n(SICCT Extension)" as BC
+participant "SICCT Terminal\n(eHealth-KT)" as KT
+
+== Initial Pairing (TUC_KON_053 / FR-130 / FR-138) ==
+
+OP -> BC : Add terminal via Hawtio console\n(name, host, port)
+BC -> BC : Persist CardTerminalRecord to DB
+BC -> KT : TCP connect
+BC -> KT : TLS ClientHello\n(SAK.AUT client cert, policy OID 1.2.276.0.76.4.113)
+KT -> BC : TLS ServerHello + C.SMKT.AUT
+BC -> BC : Verify C.SMKT.AUT (TUC_PKI_018)\nCheck expiry → event if < 35 days (FR-137)
+BC -> KT : SICCT INIT CT SESSION (Admin role)
+BC -> BC : Generate 16-byte random ShS.KT.AUT\n+ pairing label "KT:<MAC> MIT KON:<host> PAIREN OK?"
+BC -> KT : EHEALTH TERMINAL AUTHENTICATE\nCREATE (P2=01)\ndata: SharedSecretDO(16 bytes) + LabelDO
+KT -> OP : Display pairing label on trusted screen\n(operator must confirm)
+OP -> KT : Press confirm key
+KT -> KT : Store (SAK.AUT pubkey, ShS.KT.AUT)\nin pairing block
+KT -> BC : Signature over ShS.KT.AUT\n(SM-KT private key, per gemSpec_Krypt#A_17090)
+BC -> BC : Verify signature\nCORRELATION: bekannt → gepairt → aktiv
+BC -> KT : SICCT CLOSE CT SESSION
+BC -> OP : Terminal state: PAIRED / AKTIV ✓
+
+== Session Establishment (TUC_KON_050 / FR-131) — every reconnect ==
+
+BC -> KT : TCP connect + mutual TLS\n(SAK.AUT client cert)
+BC -> BC : Verify C.SMKT.AUT
+BC -> KT : SICCT INIT CT SESSION (Control role)
+BC -> BC : Generate challenge ≥ 16 bytes random
+BC -> KT : EHEALTH TERMINAL AUTHENTICATE\nVALIDATE (P2=02)\ndata: SharedSecretChallengeDO(challenge)
+KT -> KT : Compute SHA-256(challenge ‖ ShS.KT.AUT)
+KT -> BC : 32-byte SHA-256 hash
+BC -> BC : Verify: received == SHA-256(challenge ‖ stored ShS.KT.AUT)
+
+alt Validation OK
+  BC -> BC : Session ACTIVE\nCORRELATION = aktiv ✓
+  BC -> KT : SICCT GET STATUS (read slot count)
+  BC -> BC : Start card slot watchdog
+else Validation FAILED
+  BC -> KT : TLS close / TCP disconnect
+  BC -> BC : Terminal → DISCONNECTED\nError 4029 logged
+end
+
+== Maintenance Pairing (ADD, FR-132) — after SAK.AUT key rotation ==
+
+BC -> KT : TCP connect + mutual TLS (new SAK.AUT cert)
+BC -> KT : SICCT INIT CT SESSION (Admin role)
+BC -> KT : EHEALTH TERMINAL AUTHENTICATE\nADD Phase 1 (P2=03) — no data
+KT -> BC : Random challenge ≥ 16 bytes\nKT state: EHEALTH_EXPECT_CHALLENGE_RESPONSE
+BC -> BC : Compute SHA-256(challenge ‖ ShS.KT.AUT)
+BC -> KT : EHEALTH TERMINAL AUTHENTICATE\nADD Phase 2 (P2=04)\ndata: SharedSecretResponseDO(SHA-256, 32 bytes)
+KT -> KT : Verify response; store new SAK.AUT pubkey\nin oldest free / replaced pairing block
+KT -> BC : SW 9000 — maintenance pairing complete
+BC -> BC : Proceed to normal VALIDATE session establishment
+
+@enduml

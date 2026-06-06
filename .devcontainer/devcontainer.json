@@ -1,0 +1,57 @@
+{
+  "name": "Basis Consumer Health",
+  "image": "mcr.microsoft.com/devcontainers/java:1-21-bookworm",
+
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "jdkDistribution": "Temurin",
+      "installMaven": true,
+      "mavenVersion": "3.9"
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "ppa": true,
+      "version": "latest"
+    }
+  },
+
+  "onCreateCommand": "git submodule update --init --recursive",
+
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y softhsm2 libpcsclite-dev pcscd graphviz && softhsm2-util --init-token --slot 0 --label dev-hsm --pin 1234 --so-pin 0000 && mvn dependency:resolve -q && echo 'Dev container ready.'",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "redhat.java",
+        "redhat.vscode-quarkus",
+        "vscjava.vscode-maven",
+        "vscjava.vscode-java-debug",
+        "vscjava.vscode-java-test",
+        "redhat.vscode-xml",
+        "jebbs.plantuml"
+      ],
+      "settings": {
+        "java.compile.nullAnalysis.mode": "automatic",
+        "java.configuration.updateBuildConfiguration": "automatic",
+        "maven.executable.path": "/usr/local/sdkman/candidates/maven/current/bin/mvn",
+        "editor.formatOnSave": true
+      }
+    }
+  },
+
+  "mounts": [
+    "source=basis-consumer-health-maven-cache,target=/root/.m2,type=volume"
+  ],
+
+  "remoteEnv": {
+    "SOFTHSM2_LIB": "/usr/lib/softhsm/libsofthsm2.so"
+  },
+
+  "forwardPorts": [8080, 5005],
+  "portsAttributes": {
+    "8080": { "label": "Quarkus HTTP / Hawtio", "onAutoForward": "notify" },
+    "5005": { "label": "Quarkus Debug (JDWP)", "onAutoForward": "silent" }
+  },
+
+  "postStartCommand": "sudo systemctl start pcscd 2>/dev/null || true"
+}

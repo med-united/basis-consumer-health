@@ -1,0 +1,65 @@
+@startuml deployment
+title Basis Consumer — Deployment Diagram (Multi-Tenant Kubernetes)
+
+skinparam nodeStyle rectangle
+
+node "Kubernetes Cluster" {
+
+  node "Tenant A Namespace" <<Namespace>> {
+    artifact "basis-consumer-server\n(Quarkus JVM Pod)" as BCA {
+      component "konnektor-server\n(Apache CXF SOAP)" as SOAPA
+      component "ldap-proxy-server\n(Netty LDAPv3)" as LDAPA
+      component "signature-lib\n(CryptoProvider CDI)" as SIGA
+      component "sicct-server\n(Netty TCP client)" as SICSRVA
+      component "openkim\n(KIM/KOM-LE, Spring Boot embedded)" as KIMA
+    }
+    database "JavaDB (JPA)\nCardTerminalRecord\nAuditLog" as DBA
+  }
+
+  node "Tenant B Namespace" <<Namespace>> {
+    artifact "basis-consumer-server\n(Quarkus JVM Pod)" as BCB
+    database "JavaDB (JPA)" as DBB
+  }
+
+  node "Shared Infrastructure" {
+    component "Hawtio Management Console\n(per tenant)" as HAWTIO
+    component "SmallRye Health\n/health/ready" as HEALTH
+  }
+}
+
+node "Physical / Network Infrastructure" {
+  node "HSM (FIPS 140-2 Level 3)" as HSM
+  node "SICCT Card Terminals\n(TCP/IP, SICCT V1.3.0)" as KT
+  node "PC/SC USB Card Readers" as PCSC
+}
+
+node "TI Network (TI-VPN)" {
+  node "TI VZD\n(LDAPS :636)" as VZD
+  node "KIM / MTA Server" as MTA
+  node "TI DNS / NTP" as DNS
+}
+
+node "Primärsystem / Client Systems" {
+  node "PVS / KIS / AVS\n(SOAP client)" as PVS
+  node "Mail Client\n(SMTP/POP3)" as MAIL
+}
+
+BCA --> DBA : JPA / JDBC
+BCA --> HSM : PKCS#11 (SunPKCS11)
+BCA --> KT : Mutual TLS\nSICCT over TCP
+BCA --> PCSC : javax.smartcardio\n(pcscd / PC/SC)
+BCA --> VZD : LDAPS (TUC_KON_290)
+BCA --> MTA : SMTP / POP3 (KIM)
+BCA --> DNS : DNS-SD / NTP
+
+HAWTIO --> BCA : Hawtio CDI
+HEALTH --> BCA : health probes
+
+PVS --> BCA : SOAP / TLS\n(Konnektor WSDL)
+MAIL --> BCA : SMTP/POP3
+
+BCB --> DBB
+BCB --> HSM
+BCB --> KT
+
+@enduml
