@@ -1,22 +1,28 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.3.0 → 1.4.0
-Modified principles: none (existing principles I–V unchanged)
+Version change: 1.4.0 → 1.5.0
+Modified principles: none (existing principles I–VI unchanged)
 Added sections:
-  - Principle VI — UML Documentation Standards (new)
-    Mandates PlantUML diagrams in priority order: use case, deployment, component,
-    sequence, state charts, class diagrams.
-    Diagram files stored under specs/[feature]/diagrams/.
-    GitHub rendering via plantuml-for-github extension; README must recommend it.
+  - Principle VII — External Library Evaluation & Security Review (new)
+    Mandates evaluating established external libraries (e.g., Bouncy Castle for
+    cryptography, gematik/ref-GemLibPki for TI PKI) before writing custom
+    implementations. Requires a documented security review for every adopted
+    dependency. Library MUST be used when the security review is satisfactory.
+    Review outcome MUST appear in planning artifacts and in the SBOM.
 Removed sections: none
 Templates requiring updates:
-  - .specify/templates/plan-template.md ✅ diagrams/ added to project structure tree
+  - .specify/templates/plan-template.md ⚠ Constitution Check placeholder already
+    dynamically references constitution at plan time; no structural change needed.
+    The /speckit-plan command will surface Principle VII gates automatically.
   - .specify/templates/spec-template.md ⚠ No mandatory sections conflict; no change needed
-  - .specify/templates/tasks-template.md ⚠ No change needed
+  - .specify/templates/tasks-template.md ⚠ No change needed; library evaluation is a
+    Phase 0 research artifact captured in research.md, not a task-template concern.
+Previous sync report (1.3.0 → 1.4.0):
+  - Principle VI — UML Documentation Standards added
+  - .specify/templates/plan-template.md ✅ diagrams/ added to project structure tree
   - README.md ✅ Created with plantuml-for-github recommendation
   - specs/001-quarkus-basis-consumer/diagrams/ ✅ All 8 .puml files created
-  - specs/001-quarkus-basis-consumer/diagrams/README.md ✅ Created with proxy image links
 Deferred TODOs:
   - Proxy image URLs in diagrams/README.md use placeholder "your-org" — must be replaced
     with the actual GitHub organization name when the repo is pushed to GitHub.
@@ -394,6 +400,67 @@ code review, and audit. Diagrams reduce the risk of misimplementation, enable fa
 architectural decisions, and provide auditors with an unambiguous view of security-relevant flows
 (e.g., EHEALTH AUTHENTICATE, remote-PIN, CryptoProvider routing).
 
+### VII. External Library Evaluation & Security Review
+
+Before implementing any significant functionality from scratch, the team MUST evaluate whether a
+well-maintained external library already provides the required capability. Custom implementations of
+cryptographic operations, PKI validation, ASN.1 encoding, TLS, or TI-protocol handling introduce
+unnecessary risk when proven, audited alternatives exist.
+
+#### Evaluation mandate
+
+- **Evaluate before building**: For any non-trivial functionality — particularly cryptography, PKI,
+  certificate handling, ASN.1, smart-card protocols, or TI connector operations — the team MUST
+  document an evaluation of at least one established external library covering the same capability
+  before writing a custom implementation. This evaluation MUST appear in `research.md` (Phase 0).
+- **Security review required**: Every evaluated external library MUST be assessed on ALL of the
+  following dimensions before adoption:
+  - Active maintenance: last commit within 12 months; named maintainer or sponsoring organisation
+  - Known CVEs: query NVD and OSS-Index; no unpatched CVSS ≥ 7 vulnerabilities
+  - License compatibility: license is permissive (Apache 2, MIT, BSD) or LGPL with dynamic linking;
+    GPL requires explicit legal sign-off
+  - Certification status: where the library performs TI-regulated functions, verify gematik approval
+    or alignment with a normative specification (e.g., gemSpec_Krypt)
+  - Supply-chain integrity: signed releases, checksums or SLSA provenance available; artifact hosted
+    on Maven Central or an equivalent audited registry
+- **Use when secure**: If a library passes the security review, it MUST be preferred over a custom
+  implementation. Custom implementations are permitted only when no library passes the review, or when
+  a mandated architectural constraint (see spec Architectural Mandates) explicitly requires custom code.
+  The decision (adopt or reject + rationale) MUST be recorded in `research.md`.
+
+#### Known-good library candidates
+
+The following libraries have established track records in the TI ecosystem and MUST be the first
+candidates evaluated for their respective domains:
+
+| Domain | Library | Evaluation trigger |
+|--------|----------|--------------------|
+| Cryptography (JCE) | **Bouncy Castle** (`org.bouncycastle`) | Any symmetric/asymmetric cipher, ECDSA, RSA, OCSP, CMS, PKCS#7/12 |
+| TI PKI validation | **gematik/ref-GemLibPki** | Certificate validation, OCSP, TI trust anchor management |
+| ASN.1 encoding/decoding | **beanit jASN1** (mandated by spec) | All SICCT ASN.1 structures (architectural mandate) |
+| SOAP / WSDL | **Apache CXF** (mandated by spec) | All consumer and konnektor SOAP interfaces |
+| Smart-card / PKCS#11 | **SunPKCS11 / IAIK** | HSM and card communication |
+
+This list is not exhaustive. Any library not listed above MUST still be evaluated using the security
+review criteria above before adoption.
+
+#### SBOM and monitoring obligations
+
+- Every adopted external library MUST appear in the project SBOM (Principle V §Supply Chain) with
+  its version, license, and a reference to the documented security review outcome.
+- Adopted libraries are subject to the vulnerability monitoring obligations of Principle V §Vulnerability
+  Management. A library that receives a CVSS ≥ 7 CVE MUST be patched or replaced within the SLA
+  defined in Principle V — there is no exception for third-party libraries.
+- If a library's maintenance status changes (project archived, maintainer abandoned), the team MUST
+  initiate a replacement evaluation within 30 days of detection.
+
+**Rationale**: Custom cryptographic and PKI implementations are a primary source of security
+vulnerabilities in healthcare IT systems. Established libraries such as Bouncy Castle and gematik's
+own ref-GemLibPki are maintained by domain experts, regularly audited, and aligned with TI
+certification expectations. Reusing them reduces implementation risk, accelerates delivery, and
+ensures alignment with gematik reference implementations — directly supporting the SSDLC obligations
+in Principle V and the supply-chain requirements of [A_27430].
+
 ## Quality Gates
 
 Every pull request MUST pass all of the following gates before merge is permitted:
@@ -411,6 +478,9 @@ Every pull request MUST pass all of the following gates before merge is permitte
 - Afo traceability: every Afo commit references its Afo ID + Jira ticket; every Afo has a named test
 - UML diagrams: any architectural or protocol change MUST include updated or new `.puml` files;
   `diagrams/README.md` MUST be updated; diagrams MUST render without errors [Principle VI]
+- External library evaluation: for any new significant functionality, a documented library evaluation
+  MUST exist in `research.md` before a custom implementation is merged; if a library was rejected,
+  the rejection rationale MUST be present; adopted libraries MUST appear in the SBOM [Principle VII]
 
 Manual exceptions to any gate require written approval from a tech lead and MUST be tracked as a
 follow-up ticket with a resolution deadline within two sprints.
@@ -420,7 +490,7 @@ follow-up ticket with a resolution deadline within two sprints.
 - **Branching**: All work happens on short-lived feature branches. Branches MUST be named following the project convention (`[TICKET-ID]-short-description`). Long-lived branches are prohibited.
 - **PR size**: Pull requests SHOULD target fewer than 400 changed lines. Larger PRs require justification and MUST be split where logically separable.
 - **Review turnaround**: PRs MUST receive a first review within one business day of opening. Stale PRs (no activity > 3 business days) are escalated.
-- **Definition of Done**: A feature is done when: all acceptance scenarios pass, all quality gates are green, documentation is updated (including UML diagrams), and the feature is observable in production (metrics/logging confirmed).
+- **Definition of Done**: A feature is done when: all acceptance scenarios pass, all quality gates are green, documentation is updated (including UML diagrams and library evaluation in research.md), and the feature is observable in production (metrics/logging confirmed).
 - **Rollback readiness**: Every deployment MUST be reversible within 10 minutes. Features with no rollback path require a feature flag before production deployment.
 
 ## Governance
@@ -438,6 +508,6 @@ This constitution supersedes all other written and verbal engineering norms with
 - MINOR: New principle or section added, or existing principle materially expanded.
 - PATCH: Wording clarifications, typo fixes, non-semantic refinements.
 
-**Compliance review**: Constitution compliance is reviewed quarterly. The review produces a compliance report noting any systemic violations, drift in test coverage trends, performance budget adherence, UX consistency findings, gematik TI security requirement adherence (Principle V), and UML diagram currency (Principle VI).
+**Compliance review**: Constitution compliance is reviewed quarterly. The review produces a compliance report noting any systemic violations, drift in test coverage trends, performance budget adherence, UX consistency findings, gematik TI security requirement adherence (Principle V), UML diagram currency (Principle VI), and library evaluation completeness (Principle VII — checking that research.md artifacts document the required evaluations and that adopted libraries appear in the SBOM).
 
-**Version**: 1.4.0 | **Ratified**: 2026-06-05 | **Last Amended**: 2026-06-06
+**Version**: 1.5.0 | **Ratified**: 2026-06-05 | **Last Amended**: 2026-06-06

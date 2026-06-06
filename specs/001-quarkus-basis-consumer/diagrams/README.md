@@ -12,7 +12,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 > Actors and their interactions with the Basis Consumer system.
 
-![Use Case](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/your-org/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/use-case.puml)
+![Use Case](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/use-case.puml)
 
 [Source: use-case.puml](use-case.puml)
 
@@ -22,7 +22,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 > Multi-tenant Kubernetes deployment with TI network connectivity, HSM, SICCT terminals, and client systems.
 
-![Deployment](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/your-org/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/deployment.puml)
+![Deployment](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/deployment.puml)
 
 [Source: deployment.puml](deployment.puml)
 
@@ -32,7 +32,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 > Maven module breakdown: how `basis-consumer-server`, `konnektor-server`, `ldap-proxy-server`, `signature-lib`, `sicct-lib` (Quarkus extension), and `openkim` (KIM submodule) relate to each other.
 
-![Component](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/your-org/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/component.puml)
+![Component](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/component.puml)
 
 [Source: component.puml](component.puml)
 
@@ -44,7 +44,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 > Full protocol: initial pairing (CREATE), session establishment with VALIDATE challenge/response, and maintenance pairing (ADD) after SAK.AUT key rotation.
 
-![EHEALTH Authenticate](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/your-org/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/sequence-ehealth-authenticate.puml)
+![EHEALTH Authenticate](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/sequence-ehealth-authenticate.puml)
 
 [Source: sequence-ehealth-authenticate.puml](sequence-ehealth-authenticate.puml)
 
@@ -52,7 +52,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 > A `SignDocument` request routed from the SOAP endpoint through the CryptoProvider to a card in a SICCT terminal, including error path on TLS loss.
 
-![Signing](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/your-org/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/sequence-signing.puml)
+![Signing](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/sequence-signing.puml)
 
 [Source: sequence-signing.puml](sequence-signing.puml)
 
@@ -60,7 +60,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 > PIN entry on the SICCT terminal's secure PIN pad, with gSMC-KT card-to-card trusted channel protecting the PIN in transit to the HBA.
 
-![Remote PIN](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/your-org/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/sequence-remote-pin.puml)
+![Remote PIN](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/sequence-remote-pin.puml)
 
 [Source: sequence-remote-pin.puml](sequence-remote-pin.puml)
 
@@ -72,7 +72,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 > Terminal lifecycle from `bekannt` (registered in DB) through pairing to `aktiv`, including reconnection and decommission paths.
 
-![SICCT Terminal State](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/your-org/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/state-sicct-terminal.puml)
+![SICCT Terminal State](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/state-sicct-terminal.puml)
 
 [Source: state-sicct-terminal.puml](state-sicct-terminal.puml)
 
@@ -80,7 +80,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 > How each key source adapter moves between `Initializing`, `Available`, `Unavailable`, and `Reconnecting` states.
 
-![CryptoProvider State](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/your-org/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/state-crypto-provider.puml)
+![CryptoProvider State](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/state-crypto-provider.puml)
 
 [Source: state-crypto-provider.puml](state-crypto-provider.puml)
 
@@ -90,7 +90,7 @@ It renders `.puml` files inline — no server or plugin needed.
 
 > Core domain model: `CryptoProvider`, `KeySourceAdapter` hierarchy, `CardTerminalRecord` (JPA), `SicctTerminal` (runtime), `CardHandle`, and `AuditLogEntry`.
 
-![Class Diagram](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/your-org/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/class-domain.puml)
+![Class Diagram](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/main/specs/001-quarkus-basis-consumer/diagrams/class-domain.puml)
 
 [Source: class-domain.puml](class-domain.puml)
 
@@ -107,4 +107,4 @@ apt install plantuml         # Debian/Ubuntu
 plantuml specs/001-quarkus-basis-consumer/diagrams/*.puml
 ```
 
-> **Tip**: Replace `your-org` in the proxy URLs above with your actual GitHub organization/user name to enable live rendering on GitHub without the browser extension.
+> **Tip**: Replace `med-united` in the proxy URLs above with your actual GitHub organization/user name to enable live rendering on GitHub without the browser extension.
