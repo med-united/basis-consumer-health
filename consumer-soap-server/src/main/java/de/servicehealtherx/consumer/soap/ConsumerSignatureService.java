@@ -20,6 +20,7 @@ import de.gematik.ws.consumer.signatureservice.wsdl.v3_2.FaultMessage;
 import de.gematik.ws.consumer.signatureservice.wsdl.v3_2.SignatureServicePortType;
 import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.services.SignatureService;
+import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
@@ -32,7 +33,7 @@ import java.util.GregorianCalendar;
 
 import static de.servicehealtherx.consumer.soap.ConsumerServiceHelper.*;
 
-@ApplicationScoped
+@CXFEndpoint(value = "/ws/consumer/SignatureService")
 @WebService(portName = "SignatureServicePort", serviceName = "SignatureService", targetNamespace = "http://ws.gematik.de/consumer/SignatureService/WSDL/v3.2", endpointInterface = "de.gematik.ws.consumer.signatureservice.wsdl.v3_2.SignatureServicePortType")
 public class ConsumerSignatureService implements SignatureServicePortType {
 

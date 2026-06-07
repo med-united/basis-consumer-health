@@ -13,6 +13,7 @@ import de.gematik.ws.conn.cardservice.wsdl.v8_1.FaultMessage;
 import de.gematik.ws.conn.cardservicecommon.v2.PinResponseType;
 import de.gematik.ws.conn.cardservicecommon.v2.PinResultEnum;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
+import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
@@ -20,14 +21,8 @@ import jakarta.jws.soap.SOAPBinding;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
-@ApplicationScoped
-@WebService(
-    portName = "CardServicePort",
-    serviceName = "CardService",
-    targetNamespace = "http://ws.gematik.de/conn/CardService/WSDL/v8.1",
-    endpointInterface = "de.gematik.ws.conn.cardservice.wsdl.v8_1.CardServicePortType"
-)
-@SOAPBinding(parameterStyle = SOAPBinding.ParameterStyle.BARE)
+@CXFEndpoint(value = "/ws/conn/CardService")
+@WebService(portName = "CardServicePort", serviceName = "CardService", targetNamespace = "http://ws.gematik.de/conn/CardService/WSDL/v8.1", endpointInterface = "de.gematik.ws.conn.cardservice.wsdl.v8_1.CardServicePortType")
 public class KonnektorCardService implements CardServicePortType {
 
     @Inject
@@ -85,7 +80,7 @@ public class KonnektorCardService implements CardServicePortType {
         try {
             String cardHandle = parameter.getCardHandle();
             boolean connected = cardHandle != null
-                && sicctTerminalManager.getConnections().containsKey(cardHandle);
+                    && sicctTerminalManager.getConnections().containsKey(cardHandle);
 
             GetPinStatusResponse response = new GetPinStatusResponse();
             response.setStatus(okStatus());

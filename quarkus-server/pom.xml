@@ -34,6 +34,14 @@
             <groupId>de.servicehealtherx</groupId>
             <artifactId>quarkus-ldap-proxy-server-extension</artifactId>
         </dependency>
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>consumer-soap-server</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>konnektor-soap-server</artifactId>
+        </dependency>
 
         <!-- Quarkus application core -->
         <dependency>

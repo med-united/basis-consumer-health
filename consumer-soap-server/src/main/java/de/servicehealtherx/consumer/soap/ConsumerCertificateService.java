@@ -11,6 +11,9 @@ import de.gematik.ws.consumer.certificateservice.wsdl.v3_0.CertificateServicePor
 import de.gematik.ws.consumer.certificateservice.wsdl.v3_0.FaultMessage;
 import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.services.CertificateService;
+import io.quarkiverse.cxf.annotation.CXFEndpoint;
+import io.quarkus.runtime.Startup;
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
@@ -19,9 +22,14 @@ import java.security.cert.X509Certificate;
 
 import static de.servicehealtherx.consumer.soap.ConsumerServiceHelper.*;
 
-@ApplicationScoped
-@WebService(portName = "CertificateServicePort", serviceName = "CertificateService", targetNamespace = "http://ws.gematik.de/consumer/CertificateService/WSDL/v3.0", endpointInterface = "de.gematik.ws.consumer.certificateservice.wsdl.v3_0.CertificateServicePortType")
+@CXFEndpoint(value = "/ws/consumer/CertificateService")
+@WebService(portName = "CertificateServicePort", serviceName = "CertificateService", targetNamespace = "http://ws.gematik.de/consumer/CertificateService/WSDL/v3.0", wsdlLocation = "classpath:/consumer/CertificateService.wsdl", endpointInterface = "de.gematik.ws.consumer.certificateservice.wsdl.v3_0.CertificateServicePortType")
 public class ConsumerCertificateService implements CertificateServicePortType {
+
+    @PostConstruct
+    public void init() {
+        System.out.println("ConsumerCertificateService initialized");
+    }
 
     @Inject
     CertificateService certificateService;

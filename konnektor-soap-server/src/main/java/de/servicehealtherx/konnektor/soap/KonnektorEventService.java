@@ -3,6 +3,7 @@ package de.servicehealtherx.konnektor.soap;
 import de.gematik.ws._int.version.productinformation.v1.ProductInformation;
 import de.gematik.ws.conn.cardservice.v8.Cards;
 import de.gematik.ws.conn.cardterminalinfo.v8.CardTerminalInfoType;
+import de.gematik.ws.conn.cardterminalinfo.v8.CardTerminals;
 import de.gematik.ws.conn.eventservice.v7.GetCards;
 
 import de.gematik.ws.conn.eventservice.v7.GetCardsResponse;
@@ -21,6 +22,7 @@ import de.gematik.ws.conn.eventservice.v7.UnsubscribeResponse;
 import de.gematik.ws.conn.eventservice.wsdl.v7_2.EventServicePortType;
 import de.gematik.ws.conn.eventservice.wsdl.v7_2.FaultMessage;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
+import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
@@ -30,9 +32,8 @@ import java.util.UUID;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
-@ApplicationScoped
+@CXFEndpoint(value = "/ws/conn/EventService")
 @WebService(portName = "EventServicePort", serviceName = "EventService", targetNamespace = "http://ws.gematik.de/conn/EventService/WSDL/v7.2", endpointInterface = "de.gematik.ws.conn.eventservice.wsdl.v7_2.EventServicePortType")
-@SOAPBinding(parameterStyle = SOAPBinding.ParameterStyle.BARE)
 public class KonnektorEventService implements EventServicePortType {
 
     @Inject
@@ -89,6 +90,8 @@ public class KonnektorEventService implements EventServicePortType {
     public GetCardTerminalsResponse getCardTerminals(GetCardTerminals parameter) throws FaultMessage {
         try {
             GetCardTerminalsResponse response = new GetCardTerminalsResponse();
+
+            response.setCardTerminals(new CardTerminals());
 
             sicctTerminalManager.listAllTerminals().stream().map(t -> {
                 CardTerminalInfoType ct = new CardTerminalInfoType();

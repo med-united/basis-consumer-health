@@ -7,6 +7,7 @@ import de.gematik.ws.conn.signatureservice.v7.ExternalAuthenticate;
 import de.gematik.ws.conn.signatureservice.v7.ExternalAuthenticateResponse;
 import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.services.SignatureService;
+import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
@@ -16,14 +17,8 @@ import oasis.names.tc.dss._1_0.core.schema.SignatureObject;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
-@ApplicationScoped
-@WebService(
-    portName = "AuthSignatureServicePort",
-    serviceName = "AuthSignatureService",
-    targetNamespace = "http://ws.gematik.de/conn/AuthSignatureService/WSDL/v7.4",
-    endpointInterface = "de.gematik.ws.conn.authsignatureservice.wsdl.v7_4.AuthSignatureServicePortType"
-)
-@SOAPBinding(parameterStyle = SOAPBinding.ParameterStyle.BARE)
+@CXFEndpoint(value = "/ws/conn/AuthSignatureService")
+@WebService(portName = "AuthSignatureServicePort", serviceName = "AuthSignatureService", targetNamespace = "http://ws.gematik.de/conn/AuthSignatureService/WSDL/v7.4", endpointInterface = "de.gematik.ws.conn.authsignatureservice.wsdl.v7_4.AuthSignatureServicePortType")
 public class KonnektorAuthSignatureService implements AuthSignatureServicePortType {
 
     @Inject
@@ -35,10 +30,11 @@ public class KonnektorAuthSignatureService implements AuthSignatureServicePortTy
             KeyAlias alias = toKeyAlias(parameter.getCardHandle());
             byte[] hashBytes = extractBinaryBytes(parameter.getBinaryString());
             String signatureType = parameter.getOptionalInputs() != null
-                ? parameter.getOptionalInputs().getSignatureType() : null;
+                    ? parameter.getOptionalInputs().getSignatureType()
+                    : null;
 
             SignatureService.SignHashRequest req = new SignatureService.SignHashRequest(
-                alias, signatureType, hashBytes, "konnektor-soap");
+                    alias, signatureType, hashBytes, "konnektor-soap");
 
             byte[] signature = signatureService.externalAuthenticate(req);
 
@@ -58,7 +54,8 @@ public class KonnektorAuthSignatureService implements AuthSignatureServicePortTy
     }
 
     private static byte[] extractBinaryBytes(BinaryDocumentType doc) {
-        if (doc == null || doc.getBase64Data() == null) return new byte[0];
+        if (doc == null || doc.getBase64Data() == null)
+            return new byte[0];
         return doc.getBase64Data().getValue() != null ? doc.getBase64Data().getValue() : new byte[0];
     }
 }

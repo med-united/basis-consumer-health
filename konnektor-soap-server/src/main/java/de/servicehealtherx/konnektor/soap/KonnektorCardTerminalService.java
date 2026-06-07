@@ -7,6 +7,7 @@ import de.gematik.ws.conn.cardterminalservice.v1.RequestCardResponse;
 import de.gematik.ws.conn.cardterminalservice.wsdl.v1_1.CardTerminalServicePortType;
 import de.gematik.ws.conn.cardterminalservice.wsdl.v1_1.FaultMessage;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
+import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
@@ -14,13 +15,8 @@ import jakarta.jws.soap.SOAPBinding;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
-@ApplicationScoped
-@WebService(
-    portName = "CardTerminalServicePort",
-    serviceName = "CardTerminalService",
-    targetNamespace = "http://ws.gematik.de/conn/CardTerminalService/WSDL/v1.1",
-    endpointInterface = "de.gematik.ws.conn.cardterminalservice.wsdl.v1_1.CardTerminalServicePortType"
-)
+@CXFEndpoint(value = "/ws/conn/CardTerminalService")
+@WebService(portName = "CardTerminalServicePort", serviceName = "CardTerminalService", targetNamespace = "http://ws.gematik.de/conn/CardTerminalService/WSDL/v1.1", endpointInterface = "de.gematik.ws.conn.cardterminalservice.wsdl.v1_1.CardTerminalServicePortType")
 @SOAPBinding(parameterStyle = SOAPBinding.ParameterStyle.BARE)
 public class KonnektorCardTerminalService implements CardTerminalServicePortType {
 

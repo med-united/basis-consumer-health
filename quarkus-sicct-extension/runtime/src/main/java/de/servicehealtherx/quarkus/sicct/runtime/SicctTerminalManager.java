@@ -154,6 +154,7 @@ public class SicctTerminalManager {
         return connections;
     }
 
+    @Transactional
     public List<CardTerminal> listAllTerminals() {
         return CardTerminal.listAll();
     }

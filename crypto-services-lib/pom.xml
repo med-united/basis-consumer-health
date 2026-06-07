@@ -42,11 +42,11 @@
             <artifactId>quarkus-jdbc-h2</artifactId>
         </dependency>
 
-        <!-- MicroProfile Config backed by DB -->
+        <!-- MicroProfile Config backed by DB 
         <dependency>
             <groupId>org.microprofile-ext.config-ext</groupId>
             <artifactId>configsource-db</artifactId>
-        </dependency>
+        </dependency>-->
 
         <!-- Test dependencies -->
         <dependency>

@@ -9,6 +9,7 @@ import de.gematik.ws.consumer.encryptionservice.wsdl.v3_0.EncryptionServicePortT
 import de.gematik.ws.consumer.encryptionservice.wsdl.v3_0.FaultMessage;
 import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.services.EncryptionService;
+import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
@@ -19,7 +20,7 @@ import java.util.List;
 
 import static de.servicehealtherx.consumer.soap.ConsumerServiceHelper.*;
 
-@ApplicationScoped
+@CXFEndpoint(value = "/ws/consumer/EncryptionService")
 @WebService(portName = "EncryptionServicePort", serviceName = "EncryptionService", targetNamespace = "http://ws.gematik.de/consumer/EncryptionService/WSDL/v3.0", endpointInterface = "de.gematik.ws.consumer.encryptionservice.wsdl.v3_0.EncryptionServicePortType")
 public class ConsumerEncryptionService implements EncryptionServicePortType {
 

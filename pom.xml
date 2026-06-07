@@ -102,6 +102,16 @@
                 <artifactId>quarkus-ldap-proxy-server-extension</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>konnektor-soap-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>consumer-soap-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- TI PKI library from gematik -->
             <dependency>
