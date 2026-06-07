@@ -21,11 +21,11 @@ The Dev Container definition at [`.devcontainer/devcontainer.json`](.devcontaine
 
 ### Prerequisites
 
-| Tool | Minimum version | Notes |
-|------|-----------------|-------|
-| Docker Desktop or Docker Engine | 24+ | Engine mode on Linux; Desktop on macOS/Windows |
-| VS Code | 1.85+ | With the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension |
-| Git | any | Used for submodule checkout |
+| Tool                            | Minimum version | Notes                                                                                                                       |
+| ------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Docker Desktop or Docker Engine | 24+             | Engine mode on Linux; Desktop on macOS/Windows                                                                              |
+| VS Code                         | 1.85+           | With the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension |
+| Git                             | any             | Used for submodule checkout                                                                                                 |
 
 IntelliJ IDEA Ultimate 2024.1+ supports Dev Containers natively via **File → Remote Development → Dev Containers**.
 
@@ -141,16 +141,16 @@ quarkus version
 
 All commands are run from the repository root.
 
-| Goal | Command |
-|------|---------|
-| Full build (skip tests) | `mvn install -DskipTests` |
-| Full build + unit tests | `mvn verify` |
-| Single module build | `mvn install -pl sicct-lib -am` |
-| Dev mode (hot reload) | `mvn -pl basis-consumer-server quarkus:dev` |
-| Continuous test mode | `mvn -pl basis-consumer-server quarkus:test` |
-| Generate ASN.1 sources | `mvn generate-sources -pl sicct-lib` |
-| Dependency tree | `mvn dependency:tree` |
-| OWASP dependency check | `mvn org.owasp:dependency-check-maven:check` |
+| Goal                    | Command                                      |
+| ----------------------- | -------------------------------------------- |
+| Full build (skip tests) | `mvn install -DskipTests`                    |
+| Full build + unit tests | `mvn verify`                                 |
+| Single module build     | `mvn install -pl sicct-lib -am`              |
+| Dev mode (hot reload)   | `mvn -pl basis-consumer-server quarkus:dev`  |
+| Continuous test mode    | `mvn -pl basis-consumer-server quarkus:test` |
+| Generate ASN.1 sources  | `mvn generate-sources -pl sicct-lib`         |
+| Dependency tree         | `mvn dependency:tree`                        |
+| OWASP dependency check  | `mvn org.owasp:dependency-check-maven:check` |
 
 ### Module Build Order
 
@@ -185,7 +185,7 @@ Quarkus dev mode enables:
 - Hawtio management console at `http://localhost:8080/hawtio`
 - SmallRye Health at `http://localhost:8080/q/health`
 
-The embedded Apache Derby database is initialised automatically on first start. No external database is required for development.
+The embedded H2 database is initialised automatically on first start. No external database is required for development.
 
 ### Test Profile Configuration
 
@@ -197,9 +197,9 @@ quarkus.pkcs11.library=/usr/lib/softhsm/libsofthsm2.so
 quarkus.pkcs11.token-label=dev-hsm
 quarkus.pkcs11.pin=1234
 
-# Derby persistence — dev uses a local file store
-quarkus.datasource.db-kind=derby
-quarkus.datasource.jdbc.url=jdbc:derby:target/dev-db;create=true
+# H2 persistence — dev uses a local file store
+quarkus.datasource.db-kind=h2
+quarkus.datasource.jdbc.url=jdbc:h2:target/dev-db;create=true
 
 # Hawtio — disable authentication in dev
 hawtio.authentication.enabled=false
@@ -275,10 +275,10 @@ The UML diagrams in [specs/001-quarkus-basis-consumer/diagrams/](specs/001-quark
 
 ### Browser Extension Installation
 
-| Browser | Extension | Install |
-|---------|-----------|---------|
+| Browser               | Extension                  | Install                                                                                                        |
+| --------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Chrome / Edge / Brave | PlantUML Viewer for GitHub | [Chrome Web Store](https://chrome.google.com/webstore/detail/plantuml-viewer/legbfeljfbjgfifnkmpoajgpgejojooj) |
-| Firefox | PlantUML Viewer for GitHub | [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/plantuml-viewer/) |
+| Firefox               | PlantUML Viewer for GitHub | [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/plantuml-viewer/)                             |
 
 Alternatively, install the community extension directly from the source repository: [https://github.com/plantuml/plantuml-for-github](https://github.com/plantuml/plantuml-for-github).
 
@@ -286,17 +286,17 @@ After installation, open any `.puml` file on GitHub and the diagram renders auto
 
 ### Available Diagrams
 
-| File | Type | What it shows |
-|------|------|---------------|
-| [`use-case.puml`](specs/001-quarkus-basis-consumer/diagrams/use-case.puml) | Use Case | Actors and system boundaries |
-| [`deployment.puml`](specs/001-quarkus-basis-consumer/diagrams/deployment.puml) | Deployment | K8s namespaces, HSM, SICCT terminals, VZD |
-| [`component.puml`](specs/001-quarkus-basis-consumer/diagrams/component.puml) | Component | Maven module dependencies |
-| [`sequence-ehealth-authenticate.puml`](specs/001-quarkus-basis-consumer/diagrams/sequence-ehealth-authenticate.puml) | Sequence | EHEALTH AUTHENTICATE (pairing, session, maintenance) |
-| [`sequence-signing.puml`](specs/001-quarkus-basis-consumer/diagrams/sequence-signing.puml) | Sequence | SignDocument SOAP → CryptoProvider → SICCT |
-| [`sequence-remote-pin.puml`](specs/001-quarkus-basis-consumer/diagrams/sequence-remote-pin.puml) | Sequence | Remote-PIN via gSMC-KT trusted channel |
-| [`state-sicct-terminal.puml`](specs/001-quarkus-basis-consumer/diagrams/state-sicct-terminal.puml) | State | CT correlation state machine |
-| [`state-crypto-provider.puml`](specs/001-quarkus-basis-consumer/diagrams/state-crypto-provider.puml) | State | CryptoProvider availability states |
-| [`class-domain.puml`](specs/001-quarkus-basis-consumer/diagrams/class-domain.puml) | Class | Domain model and adapter hierarchy |
+| File                                                                                                                 | Type       | What it shows                                        |
+| -------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------- |
+| [`use-case.puml`](specs/001-quarkus-basis-consumer/diagrams/use-case.puml)                                           | Use Case   | Actors and system boundaries                         |
+| [`deployment.puml`](specs/001-quarkus-basis-consumer/diagrams/deployment.puml)                                       | Deployment | K8s namespaces, HSM, SICCT terminals, VZD            |
+| [`component.puml`](specs/001-quarkus-basis-consumer/diagrams/component.puml)                                         | Component  | Maven module dependencies                            |
+| [`sequence-ehealth-authenticate.puml`](specs/001-quarkus-basis-consumer/diagrams/sequence-ehealth-authenticate.puml) | Sequence   | EHEALTH AUTHENTICATE (pairing, session, maintenance) |
+| [`sequence-signing.puml`](specs/001-quarkus-basis-consumer/diagrams/sequence-signing.puml)                           | Sequence   | SignDocument SOAP → CryptoProvider → SICCT           |
+| [`sequence-remote-pin.puml`](specs/001-quarkus-basis-consumer/diagrams/sequence-remote-pin.puml)                     | Sequence   | Remote-PIN via gSMC-KT trusted channel               |
+| [`state-sicct-terminal.puml`](specs/001-quarkus-basis-consumer/diagrams/state-sicct-terminal.puml)                   | State      | CT correlation state machine                         |
+| [`state-crypto-provider.puml`](specs/001-quarkus-basis-consumer/diagrams/state-crypto-provider.puml)                 | State      | CryptoProvider availability states                   |
+| [`class-domain.puml`](specs/001-quarkus-basis-consumer/diagrams/class-domain.puml)                                   | Class      | Domain model and adapter hierarchy                   |
 
 ---
 

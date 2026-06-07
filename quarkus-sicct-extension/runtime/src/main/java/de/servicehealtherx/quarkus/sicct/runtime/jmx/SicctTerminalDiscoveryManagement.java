@@ -2,6 +2,7 @@ package de.servicehealtherx.quarkus.sicct.runtime.jmx;
 
 import de.servicehealtherx.quarkus.sicct.runtime.discovery.CardTerminalDiscovery;
 import de.servicehealtherx.quarkus.sicct.runtime.discovery.CardTerminalDiscovery.DiscoveredTerminal;
+import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -15,11 +16,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 @ApplicationScoped
+@Startup
 public class SicctTerminalDiscoveryManagement implements SicctTerminalDiscoveryManagementMBean {
 
     private static final Logger LOG = Logger.getLogger(SicctTerminalDiscoveryManagement.class);
-    private static final String OBJECT_NAME =
-        "de.servicehealtherx:module=quarkus-sicct-extension,name=SicctTerminalDiscoveryManagement";
+    private static final String OBJECT_NAME = "de.servicehealtherx:module=quarkus-sicct-extension,name=SicctTerminalDiscoveryManagement";
 
     @Inject
     CardTerminalDiscovery cardTerminalDiscovery;
@@ -45,7 +46,8 @@ public class SicctTerminalDiscoveryManagement implements SicctTerminalDiscoveryM
         try {
             MBeanServer server = ManagementFactory.getPlatformMBeanServer();
             ObjectName name = new ObjectName(OBJECT_NAME);
-            if (server.isRegistered(name)) server.unregisterMBean(name);
+            if (server.isRegistered(name))
+                server.unregisterMBean(name);
         } catch (Exception e) {
             LOG.warnf(e, "[JMX] failed to deregister %s", OBJECT_NAME);
         }
@@ -54,7 +56,7 @@ public class SicctTerminalDiscoveryManagement implements SicctTerminalDiscoveryM
     @Override
     public void triggerDiscovery() {
         LOG.infof("[SICCT] JMX triggerDiscovery: sending SICCT Dienstanfrage broadcast on port %d",
-            CardTerminalDiscovery.SICCT_DISCOVERY_PORT);
+                CardTerminalDiscovery.SICCT_DISCOVERY_PORT);
         try {
             List<DiscoveredTerminal> found = cardTerminalDiscovery.discover();
             synchronized (lastDiscovery) {
@@ -75,14 +77,15 @@ public class SicctTerminalDiscoveryManagement implements SicctTerminalDiscoveryM
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < snapshot.size(); i++) {
             DiscoveredTerminal t = snapshot.get(i);
-            if (i > 0) sb.append(",");
+            if (i > 0)
+                sb.append(",");
             sb.append("{\"name\":\"").append(escapeJson(t.name()))
-              .append("\",\"ipAddress\":\"").append(t.ipAddress())
-              .append("\",\"macAddress\":\"").append(t.macAddressHex())
-              .append("\",\"commandPort\":").append(t.commandPort())
-              .append(",\"protocolVersion\":\"")
-              .append(t.protocolVersionMajor()).append('.').append(t.protocolVersionMinor())
-              .append("\"}");
+                    .append("\",\"ipAddress\":\"").append(t.ipAddress())
+                    .append("\",\"macAddress\":\"").append(t.macAddressHex())
+                    .append("\",\"commandPort\":").append(t.commandPort())
+                    .append(",\"protocolVersion\":\"")
+                    .append(t.protocolVersionMajor()).append('.').append(t.protocolVersionMinor())
+                    .append("\"}");
         }
         sb.append("]");
         return sb.toString();

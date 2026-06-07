@@ -20,6 +20,7 @@ import org.jboss.logging.Logger;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
@@ -151,6 +152,13 @@ public class CardTerminalDiscovery {
 
             Channel ch = bootstrap.bind(port).sync().channel();
             try {
+
+                // if broadcast address is 255.255.255.255 try to find the local network's
+                // broadcast address to increase chances of delivery
+                if ("255.255.255.255".equals(targetBroadcast)) {
+                    targetBroadcast = getLocalNetworkBroadcastAddress();
+                }
+
                 InetSocketAddress target = new InetSocketAddress(targetBroadcast, port);
                 ch.writeAndFlush(new DatagramPacket(Unpooled.wrappedBuffer(request), target)).sync();
                 LOG.infof("[SICCT-DISCOVERY] Dienstanfrage broadcast sent to %s:%d", targetBroadcast, port);
@@ -171,6 +179,29 @@ public class CardTerminalDiscovery {
     // Auto-registration
     // -------------------------------------------------------------------------
 
+    private String getLocalNetworkBroadcastAddress() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual())
+                    continue;
+                for (InterfaceAddress ia : ni.getInterfaceAddresses()) {
+                    InetAddress broadcast = ia.getBroadcast();
+                    if (broadcast != null) {
+                        LOG.debugf("[SICCT-DISCOVERY] using local broadcast address %s from interface %s",
+                                broadcast.getHostAddress(), ni.getDisplayName());
+                        return broadcast.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOG.warnf(e,
+                    "[SICCT-DISCOVERY] failed to determine local network broadcast address, falling back to 255.255.255.255");
+        }
+        return "255.255.255.255";
+    }
+
     /**
      * Persists newly discovered terminals and triggers a TCP connection.
      * Terminals already present in the DB (by name/terminalId) are skipped.
@@ -179,21 +210,23 @@ public class CardTerminalDiscovery {
     void registerNewTerminals(List<DiscoveredTerminal> terminals) {
         for (DiscoveredTerminal t : terminals) {
             // Use the terminal's SICCT name as the stable terminalId
-            String terminalId = t.name();
-            if (CardTerminal.findByTerminalId(terminalId) != null) {
-                LOG.debugf("[SICCT-DISCOVERY] terminal '%s' already registered, skipping", terminalId);
+            if (CardTerminal.findByMacAddress(t.macAddressHex()) != null) {
+                LOG.debugf("[SICCT-DISCOVERY] terminal '%s' already registered, skipping", t.name());
                 continue;
             }
             CardTerminal entity = new CardTerminal();
-            entity.terminalId = terminalId;
-            entity.host = t.ipAddress();
-            entity.port = t.commandPort();
-            entity.pairingStatus = "DISCOVERED";
+            entity.name = t.name();
+            entity.physical = true;
+            entity.hostname = t.name();
+            entity.ipAddress = t.ipAddress();
+            entity.tcpPort = t.commandPort();
+            entity.macAddress = t.macAddressHex();
+            entity.correlation = "BEKANNT";
             CardTerminal.persist(entity);
-            LOG.infof("[SICCT-DISCOVERY] new terminal persisted: id='%s' host=%s port=%d mac=%s",
-                    terminalId, t.ipAddress(), t.commandPort(), t.macAddressHex());
+            LOG.infof("[SICCT-DISCOVERY] new terminal persisted: hostname='%s' ipAddress=%s port=%d mac=%s",
+                    t.name(), t.ipAddress(), t.commandPort(), t.macAddressHex());
 
-            manager.connectTerminal(terminalId, t.ipAddress(), t.commandPort());
+            manager.connectTerminal(t.name(), t.ipAddress(), t.commandPort());
         }
     }
 

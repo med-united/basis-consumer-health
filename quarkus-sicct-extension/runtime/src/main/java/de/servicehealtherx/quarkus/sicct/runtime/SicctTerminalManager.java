@@ -1,15 +1,17 @@
 package de.servicehealtherx.quarkus.sicct.runtime;
 
-import de.servicehealtherx.quarkus.sicct.runtime.tls.KonnektorSslHandler;
+import de.servicehealtherx.crypto.GSMCKtTrustManager;
+import de.servicehealtherx.crypto.TrustManagerProducer;
+import de.servicehealtherx.crypto.TslDownloader;
 import de.servicehealtherx.quarkus.sicct.runtime.tls.SICCTKonnektorTLSChannelInitializer;
+import de.servicehealtherx.quarkus.sicct.runtime.tls.SmkCSAKAut;
+import de.servicehealtherx.quarkus.sicct.runtime.tls.SmkCSAKAutProvider;
 import de.servicehealtherx.sicct.EhealthAuthenticator;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
@@ -22,10 +24,13 @@ import org.jboss.logging.Logger;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.TrustManager;
 
 /**
  * Manages SICCT card terminal TCP/TLS connections.
@@ -38,11 +43,23 @@ public class SicctTerminalManager {
 
     private static final Logger LOG = Logger.getLogger(SicctTerminalManager.class);
 
+    private static final long INITIAL_BACKOFF_MS = 1_000;
+    private static final long MAX_BACKOFF_MS = 30_000;
+
     @Inject
     EhealthAuthenticator ehealthAuthenticator;
 
     @Inject
     TpmSealer tpmSealer;
+
+    @Inject
+    SmkCSAKAut smkCSAKAut;
+
+    @Inject
+    @GSMCKtTrustManager
+    TrustManager gSMCKtTrustManager;
+
+    List<CardTerminal> terminals = null;
 
     private EventLoopGroup eventLoopGroup;
     private final Map<String, SicctTerminalConnection> connections = new ConcurrentHashMap<>();
@@ -52,18 +69,27 @@ public class SicctTerminalManager {
     @Transactional
     void initialize() {
         eventLoopGroup = new NioEventLoopGroup(4);
-        tpmSealer.initialize();
 
-        List<CardTerminal> terminals = CardTerminal.listAll();
-        LOG.infof("[SicctTerminalManager] loaded %d terminal(s) from DB", terminals.size());
+        if (tpmSealer != null) {
+            tpmSealer.initialize();
+        } else {
+            LOG.warnf("[SicctTerminalManager] TPM Sealer not available");
+        }
+
+        if (terminals == null) {
+            terminals = CardTerminal.listAll();
+            LOG.infof("[SicctTerminalManager] loaded %d terminal(s) from DB", terminals.size());
+        } else {
+            LOG.infof("[SicctTerminalManager] using pre-loaded terminals: %d terminal(s)", terminals.size());
+        }
 
         for (CardTerminal terminal : terminals) {
             try {
                 connectTerminalAsync(terminal);
             } catch (Exception e) {
                 // One terminal failure MUST NOT prevent others per FR-023
-                LOG.errorf(e, "[SicctTerminalManager] failed to initiate connection for terminalId=%s, continuing",
-                        terminal.terminalId);
+                LOG.errorf(e, "[SicctTerminalManager] failed to initiate connection for hostname=%s, continuing",
+                        terminal.hostname);
             }
         }
     }
@@ -78,57 +104,89 @@ public class SicctTerminalManager {
         LOG.infof("[SicctTerminalManager] shutdown complete");
     }
 
-    public void connectTerminal(String terminalId, String host, int port) {
-        CardTerminal terminal = CardTerminal.findByTerminalId(terminalId);
+    public void connectTerminal(String hostname, String ipAddress, int tcpPort) {
+        CardTerminal terminal = CardTerminal.findByHostname(hostname);
         if (terminal == null) {
-            LOG.warnf("[SicctTerminalManager] connectTerminal: terminalId=%s not found in DB", terminalId);
+            LOG.warnf("[SicctTerminalManager] connectTerminal: hostname=%s not found in DB", hostname);
             return;
         }
         connectTerminalAsync(terminal);
     }
 
     private void connectTerminalAsync(CardTerminal terminal) {
-        SicctTerminalConnection conn = connections.computeIfAbsent(terminal.terminalId,
+        SicctTerminalConnection conn = connections.computeIfAbsent(terminal.hostname,
                 id -> new SicctTerminalConnection(terminal));
 
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(eventLoopGroup)
                 .channel(NioSocketChannel.class)
-                .handler(new LoggingHandler(LogLevel.DEBUG))
                 .handler(new SICCTKonnektorTLSChannelInitializer(this, conn));
 
-        ChannelFuture future = bootstrap.connect(terminal.host, terminal.port);
+        ChannelFuture future = bootstrap.connect(terminal.ipAddress, terminal.tcpPort);
+
         future.addListener(f -> {
             if (f.isSuccess()) {
                 conn.onConnected(future.channel());
-                LOG.infof("[SICCT] connected to terminal=%s at %s:%d", terminal.terminalId, terminal.host,
-                        terminal.port);
+                LOG.infof("[SICCT] connected to terminal=%s at %s:%d", terminal.hostname, terminal.ipAddress,
+                        terminal.tcpPort);
             } else {
-                LOG.warnf("[SICCT] failed to connect to terminal=%s at %s:%d, scheduling reconnect",
-                        terminal.terminalId, terminal.host, terminal.port);
-                scheduleReconnect(terminal, conn, terminal.initialBackoffMs);
+                LOG.warnf(f.cause(), "[SICCT] failed to connect to terminal=%s at %s:%d, scheduling reconnect",
+                        terminal.hostname, terminal.ipAddress, terminal.tcpPort);
+                scheduleReconnect(terminal, conn, INITIAL_BACKOFF_MS);
             }
         });
     }
 
     private void scheduleReconnect(CardTerminal terminal, SicctTerminalConnection conn, long delayMs) {
-        long cappedDelay = Math.min(delayMs, terminal.maxBackoffMs);
-        if (cappedDelay >= terminal.maxBackoffMs) {
-            LOG.warnf("[SICCT][ALERT] terminal=%s at maximum reconnect backoff %dms", terminal.terminalId, cappedDelay);
+        long cappedDelay = Math.min(delayMs, MAX_BACKOFF_MS);
+        if (cappedDelay >= MAX_BACKOFF_MS) {
+            LOG.warnf("[SICCT][ALERT] terminal=%s at maximum reconnect backoff %dms", terminal.hostname, cappedDelay);
         }
         reconnectScheduler.schedule(() -> connectTerminalAsync(terminal), cappedDelay, TimeUnit.MILLISECONDS);
     }
 
-    void onTerminalDisconnected(String terminalId) {
-        SicctTerminalConnection conn = connections.get(terminalId);
+    void onTerminalDisconnected(String hostname) {
+        SicctTerminalConnection conn = connections.get(hostname);
         if (conn != null) {
             conn.onDisconnected();
             CardTerminal terminal = conn.getTerminal();
-            scheduleReconnect(terminal, conn, (long) terminal.initialBackoffMs * 2);
+            scheduleReconnect(terminal, conn, INITIAL_BACKOFF_MS * 2);
         }
     }
 
     public Map<String, SicctTerminalConnection> getConnections() {
         return connections;
+    }
+
+    public List<CardTerminal> listAllTerminals() {
+        return CardTerminal.listAll();
+    }
+
+    public SmkCSAKAut getSmkCSAKAut() {
+        return smkCSAKAut;
+    }
+
+    public TrustManager getGSMCKtTrustManager() {
+        return gSMCKtTrustManager;
+    }
+
+    public static void main(String[] args) {
+        // For standalone testing without Quarkus; in production, Quarkus will call
+        // @PostConstruct
+        SicctTerminalManager manager = new SicctTerminalManager();
+        var t = new CardTerminal();
+        t.ctid = UUID.fromString("6f831776-2c0e-41da-a889-7f0827c88a19");
+        t.hostname = "ORGA6100-01410000021FB1";
+        t.ipAddress = "192.168.100.90";
+        t.tcpPort = 4742;
+        manager.terminals = List.of(t);
+        manager.smkCSAKAut = new SmkCSAKAutProvider().createSmkCSAKAut();
+        TrustManagerProducer trustManagerProducer = new TrustManagerProducer();
+        TslDownloader tslDownloader = new TslDownloader();
+        tslDownloader.init(); // Manually initialize TslDownloader to load TSP services before producing the
+                              // TrustManager
+        trustManagerProducer.setTslDownloader(tslDownloader);
+        manager.gSMCKtTrustManager = trustManagerProducer.produceGSMCKtTrustManager();
+        manager.initialize();
     }
 }

@@ -27,8 +27,8 @@
 - [X] T006 [P] Create quarkus-sicct-extension/pom.xml (parent) + quarkus-sicct-extension/deployment/pom.xml + quarkus-sicct-extension/runtime/pom.xml with dependencies: sicct-lib, Quarkus extension BOM, Netty 4.x
 - [X] T007 [P] Create crypto-services-lib/pom.xml with dependency on crypto-lib ONLY (add Maven Enforcer rule confirming NO transitive dependency on sicct-lib per FR-022), JUnit 5, Quarkus CDI
 - [X] T008 [P] Create quarkus-ldap-proxy-server-extension/pom.xml (parent) + deployment/pom.xml + runtime/pom.xml with dependencies: Quarkus extension BOM, Netty 4.x
-- [X] T009 [P] Create consumer-soap-server/pom.xml with dependencies: crypto-services-lib, quarkus-cxf, CXF wsdl2java plugin generating stubs from api-telematik/consumer/ WSDLs, Hawtio, SmallRye Health, configsource-db, JPA + Derby
-- [X] T010 [P] Create konnektor-soap-server/pom.xml with dependencies: crypto-services-lib, quarkus-sicct-extension, quarkus-cxf, CXF wsdl2java plugin generating stubs from api-telematik/conn/ WSDLs, JPA + Derby
+- [X] T009 [P] Create consumer-soap-server/pom.xml with dependencies: crypto-services-lib, quarkus-cxf, CXF wsdl2java plugin generating stubs from api-telematik/consumer/ WSDLs, Hawtio, SmallRye Health, configsource-db, JPA + H2
+- [X] T010 [P] Create konnektor-soap-server/pom.xml with dependencies: crypto-services-lib, quarkus-sicct-extension, quarkus-cxf, CXF wsdl2java plugin generating stubs from api-telematik/conn/ WSDLs, JPA + H2
 - [X] T011 [P] Add Testcontainers (DB integration) and SoftHSM2 Maven CI profile (pkcs11-ci) to crypto-lib/pom.xml; add test dependencies for jnasmartcardio virtual PC/SC reader and Netty EmbeddedChannel across test scopes
 - [X] T012 [P] Create .github/workflows/ci.yml: mvn verify with pkcs11-ci profile on linux runner; SoftHSM2 installed via apt; add .mvn/wrapper/maven-wrapper.properties
 
@@ -44,7 +44,7 @@
 
 - [X] T013 Create AppConfigProperty JPA entity in sicct-lib/src/main/java/de/servicehealtherx/sicct/jpa/AppConfigProperty.java (PROPNAME PK, PROPVALUE NOT NULL per FR-028); configure configsource-db MicroProfile ConfigSource dependency in consumer-soap-server/pom.xml
 - [X] T014 Create CardTerminal JPA entity in sicct-lib/src/main/java/de/servicehealtherx/sicct/jpa/CardTerminal.java with all fields from data-model.md (terminalId UNIQUE, host, port, pairingStatus, sealedSharedSecret, backupEncryptedSharedSecret, connectTimeoutMs, apduTimeoutMs, maxRetries, initialBackoffMs, maxBackoffMs per FR-096)
-- [X] T015 [P] Configure Jakarta Persistence: create META-INF/persistence.xml in sicct-lib/src/main/resources/ for Apache Derby; set Quarkus datasource properties in consumer-soap-server/src/main/resources/application.properties
+- [X] T015 [P] Configure Jakarta Persistence: create META-INF/persistence.xml in sicct-lib/src/main/resources/ for Apache H2; set Quarkus datasource properties in consumer-soap-server/src/main/resources/application.properties
 - [X] T016 Create CryptoProvider CDI interface in crypto-lib/src/main/java/de/servicehealtherx/crypto/CryptoProvider.java declaring sign(alias, params, data), verify(alias, params, data, signature), encrypt(alias, params, plaintext), decrypt(alias, params, ciphertext), listKeyStores(), getAvailability(alias), getAvailabilities() per FR-010
 - [X] T017 [P] Create KeyAlias value type in crypto-lib/src/main/java/de/servicehealtherx/crypto/KeyAlias.java (pattern `^(p12|pkcs11|pcsc|sicct)/[a-z0-9\-_]+$`; max 128 chars; uniqueness contract per FR-013)
 - [X] T018 [P] Create SourceType enum (P12, PKCS11, PCSC, SICCT) in crypto-lib/src/main/java/de/servicehealtherx/crypto/SourceType.java; create KeyStoreAvailability enum (AVAILABLE, UNAVAILABLE, ERROR) in crypto-lib/src/main/java/de/servicehealtherx/crypto/KeyStoreAvailability.java
@@ -345,20 +345,20 @@
 
 ### User Story Dependencies
 
-| Story | Priority | Depends On | Can Parallelize With |
-|-------|----------|-----------|---------------------|
-| US2   | P1       | Foundational | — |
-| US3   | P1       | US2 | US4, US10 |
-| US4   | P1       | US2 | US3, US10 |
-| US5   | P2       | US2 | US6, US7, US10 |
-| US6   | P2       | Foundational | US2, US3, US4, US10 |
-| US7   | P2       | Foundational | Most others |
-| US10  | P2       | Foundational | US3, US4, US5, US6 |
-| US11  | P2       | US10 | US3, US4, US5, US6, US7 |
-| US12  | P3       | US10 | US11 |
-| US8   | P2       | US11, US12, US2 | US5, US6, US7 |
-| US13  | P2       | US2, US5, US8 | US9 |
-| US9   | P3       | US2, US3, US4, US5, US8 | US13 |
+| Story | Priority | Depends On              | Can Parallelize With    |
+| ----- | -------- | ----------------------- | ----------------------- |
+| US2   | P1       | Foundational            | —                       |
+| US3   | P1       | US2                     | US4, US10               |
+| US4   | P1       | US2                     | US3, US10               |
+| US5   | P2       | US2                     | US6, US7, US10          |
+| US6   | P2       | Foundational            | US2, US3, US4, US10     |
+| US7   | P2       | Foundational            | Most others             |
+| US10  | P2       | Foundational            | US3, US4, US5, US6      |
+| US11  | P2       | US10                    | US3, US4, US5, US6, US7 |
+| US12  | P3       | US10                    | US11                    |
+| US8   | P2       | US11, US12, US2         | US5, US6, US7           |
+| US13  | P2       | US2, US5, US8           | US9                     |
+| US9   | P3       | US2, US3, US4, US5, US8 | US13                    |
 
 ### Within Each Phase
 

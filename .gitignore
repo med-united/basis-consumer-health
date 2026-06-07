@@ -33,7 +33,3 @@ logs/
 *.key
 *.jks
 *.pfx
-
-# Derby embedded databases
-*-db/
-*.lck

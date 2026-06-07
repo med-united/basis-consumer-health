@@ -31,15 +31,15 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Framework versions -->
-        <quarkus.platform.version>3.12.0</quarkus.platform.version>
+        <quarkus.platform.version>3.36.1</quarkus.platform.version>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
 
         <!-- Library versions -->
         <gemLibPki.version>4.0.2</gemLibPki.version>
-        <bouncy-castle.version>1.77</bouncy-castle.version>
-        <bc-fips.version>1.0.2.5</bc-fips.version>
+        <bouncy-castle.version>1.84</bouncy-castle.version>
+        <bc-fips.version>2.1.2</bc-fips.version>
         <jasn1.version>1.13.0</jasn1.version>
-        <quarkus-cxf.version>3.12.0</quarkus-cxf.version>
+        <quarkus-cxf.version>3.36.0</quarkus-cxf.version>
         <configsource-db.version>2.0.0</configsource-db.version>
         <tss-java.version>0.3.0</tss-java.version>
 
@@ -152,6 +152,7 @@
                     <groupId>io.quarkus</groupId>
                     <artifactId>quarkus-maven-plugin</artifactId>
                     <version>${quarkus.platform.version}</version>
+                    <extensions>true</extensions>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

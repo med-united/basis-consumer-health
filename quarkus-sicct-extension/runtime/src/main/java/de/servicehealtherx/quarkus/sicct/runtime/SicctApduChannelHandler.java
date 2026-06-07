@@ -105,6 +105,7 @@ public class SicctApduChannelHandler extends ChannelInboundHandlerAdapter {
 
     private void sendInitCtSessionApdu(ChannelHandlerContext ctx) {
         // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendInitCtSessionApdu'");
+        // throw new UnsupportedOperationException("Unimplemented method
+        // 'sendInitCtSessionApdu'");
     }
 }

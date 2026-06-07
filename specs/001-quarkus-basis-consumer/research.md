@@ -296,7 +296,7 @@ public class ConnectorSdsResource {
 
 **Quarkus Panache in library**: Quarkus discovers `@Entity` classes from all modules on the classpath during the deployment phase via byte-buddy instrumentation. Placing entities in a `sicct-lib` jar is standard practice for Quarkus multi-module projects. The `persistence.xml` or `quarkus.datasource` configuration remains in the application module (or both SOAP servers if both need DB access).
 
-**Constraint**: `sicct-lib/pom.xml` declares `quarkus-hibernate-orm-panache` as a `provided` scope dependency (or `import` via BOM) to avoid pulling the full Quarkus stack into `sicct-lib` for unit tests. Unit tests of `sicct-lib` that test JPA behavior use `@QuarkusTest` with an embedded Derby via Testcontainers.
+**Constraint**: `sicct-lib/pom.xml` declares `quarkus-hibernate-orm-panache` as a `provided` scope dependency (or `import` via BOM) to avoid pulling the full Quarkus stack into `sicct-lib` for unit tests. Unit tests of `sicct-lib` that test JPA behavior use `@QuarkusTest` with an embedded H2 via Testcontainers.
 
 ---
 

@@ -38,12 +38,9 @@ public class SicctTerminalConnection {
     }
 
     private final CardTerminal terminal;
-    private final AtomicReference<ConnectionState> connectionState =
-        new AtomicReference<>(ConnectionState.CONNECTING);
-    private final AtomicReference<TlsState> tlsState =
-        new AtomicReference<>(TlsState.NO_SICCT_TLS);
-    private final AtomicReference<CorrelationState> correlationState =
-        new AtomicReference<>(CorrelationState.BEKANNT);
+    private final AtomicReference<ConnectionState> connectionState = new AtomicReference<>(ConnectionState.CONNECTING);
+    private final AtomicReference<TlsState> tlsState = new AtomicReference<>(TlsState.NO_SICCT_TLS);
+    private final AtomicReference<CorrelationState> correlationState = new AtomicReference<>(CorrelationState.BEKANNT);
 
     private volatile Channel channel;
     private volatile byte[] sessionKey;
@@ -53,7 +50,7 @@ public class SicctTerminalConnection {
     }
 
     public String getTerminalId() {
-        return terminal.terminalId;
+        return terminal.hostname;
     }
 
     public ConnectionState getConnectionState() {
@@ -75,7 +72,7 @@ public class SicctTerminalConnection {
     public void onConnected(Channel ch) {
         this.channel = ch;
         connectionState.set(ConnectionState.CONNECTED);
-        LOG.infof("[SICCT] terminal=%s CONNECTED", terminal.terminalId);
+        LOG.infof("[SICCT] terminal=%s CONNECTED", terminal.hostname);
     }
 
     public void onDisconnected() {
@@ -88,12 +85,12 @@ public class SicctTerminalConnection {
         if (connectionState.get() != ConnectionState.FAILED) {
             connectionState.set(ConnectionState.RECONNECTING);
         }
-        LOG.infof("[SICCT] terminal=%s DISCONNECTED, session keys cleared", terminal.terminalId);
+        LOG.infof("[SICCT] terminal=%s DISCONNECTED, session keys cleared", terminal.hostname);
     }
 
     public void onFailed(String reason) {
         connectionState.set(ConnectionState.FAILED);
-        LOG.errorf("[SICCT] terminal=%s FAILED: %s", terminal.terminalId, reason);
+        LOG.errorf("[SICCT] terminal=%s FAILED: %s", terminal.hostname, reason);
     }
 
     public void onTlsEstablished(boolean hasPairing) {
@@ -111,7 +108,7 @@ public class SicctTerminalConnection {
 
     public void onAktiv() {
         correlationState.set(CorrelationState.AKTIV);
-        LOG.infof("[SICCT] terminal=%s AKTIV — ready for card operations", terminal.terminalId);
+        LOG.infof("[SICCT] terminal=%s AKTIV — ready for card operations", terminal.hostname);
     }
 
     public void setSessionKey(byte[] key) {
@@ -127,6 +124,6 @@ public class SicctTerminalConnection {
     }
 
     public int getApduTimeoutMs() {
-        return terminal.apduTimeoutMs;
+        return 30_000;
     }
 }

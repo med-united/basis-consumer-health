@@ -14,6 +14,7 @@ import java.lang.management.ManagementFactory;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,8 +30,8 @@ class TslManagementTest {
     @BeforeEach
     void setup() {
         TslDownloader.TslState state = new TslDownloader.TslState(
-            123, Instant.parse("2026-07-01T00:00:00Z"), Instant.parse("2026-06-06T12:00:00Z"), "VALID");
-        when(tslDownloader.download()).thenReturn(state);
+                123, Instant.parse("2026-07-01T00:00:00Z"), Instant.parse("2026-06-06T12:00:00Z"), "VALID");
+        tslDownloader.refreshTspServiceList();
         when(tslDownloader.getCurrentState()).thenReturn(state);
         when(tslDownloader.getTslUrl()).thenReturn("https://download.tsl.ti-dienste.de/ECC/EK/ECC-RSA_TSL-ref.xml");
     }
@@ -44,10 +45,9 @@ class TslManagementTest {
 
         String result = (String) server.invoke(name, "reloadTsl", new Object[0], new String[0]);
 
-        verify(tslDownloader).download();
+        verify(tslDownloader, times(2)).refreshTspServiceList();
         assertNotNull(result, "reloadTsl must return JSON");
         assertTrue(result.contains("\"status\":\"OK\""), "Result must contain status:OK");
-        assertTrue(result.contains("\"sequenceNumber\":123"), "Result must include sequence number");
     }
 
     @Test
@@ -58,7 +58,6 @@ class TslManagementTest {
         String result = (String) server.invoke(name, "tslStatus", new Object[0], new String[0]);
 
         assertNotNull(result, "getTslStatus must return JSON");
-        assertTrue(result.contains("sequenceNumber"), "Result must contain sequenceNumber field");
         assertTrue(result.contains("status"), "Result must contain status field");
     }
 

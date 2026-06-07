@@ -38,7 +38,7 @@ import org.junit.jupiter.api.Timeout;
 @TestProfile(SicctTerminalManagerIT.ItProfile.class)
 class SicctTerminalManagerIT {
 
-    static final String TERMINAL_ID = "it-kt-001";
+    static final String HOSTNAME = "it-kt-001";
     static final String HOST =
             System.getProperty("sicct.it.host", "192.168.100.90");
     static final int PORT =
@@ -59,15 +59,11 @@ class SicctTerminalManagerIT {
     void insertTerminal() throws Exception {
         utx.begin();
         CardTerminal terminal = new CardTerminal();
-        terminal.terminalId  = TERMINAL_ID;
-        terminal.host        = HOST;
-        terminal.port        = PORT;
-        terminal.pairingStatus = "UNKNOWN";
-        terminal.connectTimeoutMs  = 5_000;
-        terminal.apduTimeoutMs     = 30_000;
-        terminal.maxRetries        = 3;
-        terminal.initialBackoffMs  = 1_000;
-        terminal.maxBackoffMs      = 30_000;
+        terminal.hostname  = HOSTNAME;
+        terminal.ipAddress = HOST;
+        terminal.tcpPort   = PORT;
+        terminal.macAddress = "00:11:22:33:44:55";
+        terminal.correlation = "BEKANNT";
         CardTerminal.persist(terminal);
         utx.commit();
     }
@@ -75,7 +71,7 @@ class SicctTerminalManagerIT {
     @AfterEach
     void cleanup() throws Exception {
         // Stop the connection from being re-used by subsequent tests
-        manager.getConnections().remove(TERMINAL_ID);
+        manager.getConnections().remove(HOSTNAME);
         utx.begin();
         CardTerminal.deleteAll();
         utx.commit();
@@ -88,17 +84,17 @@ class SicctTerminalManagerIT {
     @Test
     @Timeout(15)
     void connectTerminal_appearsInConnectionsMap() {
-        manager.connectTerminal(TERMINAL_ID, HOST, PORT);
+        manager.connectTerminal(HOSTNAME, HOST, PORT);
 
         // computeIfAbsent runs synchronously — the entry must be present immediately
-        assertNotNull(manager.getConnections().get(TERMINAL_ID),
+        assertNotNull(manager.getConnections().get(HOSTNAME),
                 "Connection entry must be registered in the manager's map after connectTerminal()");
     }
 
     @Test
     @Timeout(15)
     void connectTerminal_reachesTcpConnectedState() {
-        manager.connectTerminal(TERMINAL_ID, HOST, PORT);
+        manager.connectTerminal(HOSTNAME, HOST, PORT);
 
         // CONNECTED = TCP handshake done (ChannelFuture success).
         // RECONNECTING = was CONNECTED then TLS closed the channel (still proves TCP reachability).
@@ -107,7 +103,7 @@ class SicctTerminalManagerIT {
             .pollInterval(50, MILLISECONDS)
             .alias("terminal " + HOST + ":" + PORT + " must accept TCP connections")
             .untilAsserted(() -> {
-                SicctTerminalConnection conn = manager.getConnections().get(TERMINAL_ID);
+                SicctTerminalConnection conn = manager.getConnections().get(HOSTNAME);
                 assertNotNull(conn, "Connection must appear in manager's map");
                 SicctTerminalConnection.ConnectionState state = conn.getConnectionState();
                 assertTrue(
@@ -120,13 +116,13 @@ class SicctTerminalManagerIT {
     @Test
     @Timeout(15)
     void connectTerminal_channelIsNonNullAfterConnect() {
-        manager.connectTerminal(TERMINAL_ID, HOST, PORT);
+        manager.connectTerminal(HOSTNAME, HOST, PORT);
 
         await()
             .atMost(CONNECT_TIMEOUT)
             .pollInterval(50, MILLISECONDS)
             .untilAsserted(() -> {
-                SicctTerminalConnection conn = manager.getConnections().get(TERMINAL_ID);
+                SicctTerminalConnection conn = manager.getConnections().get(HOSTNAME);
                 assertNotNull(conn);
                 // Channel is set on TCP connect; may be nulled again if TLS fails
                 assertFalse(
@@ -139,36 +135,36 @@ class SicctTerminalManagerIT {
     @Test
     @Timeout(15)
     void connectTerminal_terminalIdIsCorrectlyKeyed() {
-        manager.connectTerminal(TERMINAL_ID, HOST, PORT);
+        manager.connectTerminal(HOSTNAME, HOST, PORT);
 
         await()
             .atMost(CONNECT_TIMEOUT)
             .pollInterval(50, MILLISECONDS)
             .untilAsserted(() -> {
-                SicctTerminalConnection conn = manager.getConnections().get(TERMINAL_ID);
+                SicctTerminalConnection conn = manager.getConnections().get(HOSTNAME);
                 assertNotNull(conn);
-                assertEquals(TERMINAL_ID, conn.getTerminalId());
+                assertEquals(HOSTNAME, conn.getTerminalId());
             });
     }
 
     @Test
     @Timeout(15)
     void onTerminalDisconnected_afterConnect_schedulesReconnect() throws Exception {
-        manager.connectTerminal(TERMINAL_ID, HOST, PORT);
+        manager.connectTerminal(HOSTNAME, HOST, PORT);
 
         // Wait until the connection is past CONNECTING before triggering a disconnect
         await()
             .atMost(CONNECT_TIMEOUT)
             .pollInterval(50, MILLISECONDS)
             .until(() -> {
-                SicctTerminalConnection conn = manager.getConnections().get(TERMINAL_ID);
+                SicctTerminalConnection conn = manager.getConnections().get(HOSTNAME);
                 return conn != null &&
                        conn.getConnectionState() != SicctTerminalConnection.ConnectionState.CONNECTING;
             });
 
         // Triggering onTerminalDisconnected must not throw and must leave the entry in the map
-        assertDoesNotThrow(() -> manager.onTerminalDisconnected(TERMINAL_ID));
-        assertNotNull(manager.getConnections().get(TERMINAL_ID),
+        assertDoesNotThrow(() -> manager.onTerminalDisconnected(HOSTNAME));
+        assertNotNull(manager.getConnections().get(HOSTNAME),
                 "Connection entry must remain in the map after disconnect (for reconnect)");
     }
 

@@ -48,7 +48,8 @@ public class BackupRestoreManagement implements BackupRestoreManagementMBean {
         try {
             MBeanServer server = ManagementFactory.getPlatformMBeanServer();
             ObjectName name = new ObjectName(OBJECT_NAME);
-            if (server.isRegistered(name)) server.unregisterMBean(name);
+            if (server.isRegistered(name))
+                server.unregisterMBean(name);
         } catch (Exception e) {
             LOG.warnf(e, "[JMX] failed to deregister %s", OBJECT_NAME);
         }
@@ -65,12 +66,13 @@ public class BackupRestoreManagement implements BackupRestoreManagementMBean {
 
             List<CardTerminal> terminals = CardTerminal.listAll();
             for (CardTerminal terminal : terminals) {
-                if (terminal.sealedSharedSecret == null) continue;
+                if (terminal.sealedSharedSecret == null)
+                    continue;
                 byte[] encrypted = encryptWithPassword(terminal.sealedSharedSecret,
-                    backupPassword, terminal.terminalId);
+                        backupPassword, terminal.hostname);
                 terminal.backupEncryptedSharedSecret = encrypted;
                 terminal.persist();
-                LOG.infof("[BACKUP] exported backup for terminalId=%s", terminal.terminalId);
+                LOG.infof("[BACKUP] exported backup for terminalId=%s", terminal.hostname);
             }
 
             // Password returned exactly once — MUST NOT be stored by the system
@@ -89,26 +91,27 @@ public class BackupRestoreManagement implements BackupRestoreManagementMBean {
             StringBuilder sb = new StringBuilder("[");
             boolean first = true;
             for (CardTerminal terminal : terminals) {
-                if (!first) sb.append(",");
+                if (!first)
+                    sb.append(",");
                 first = false;
                 try {
                     if (terminal.backupEncryptedSharedSecret == null) {
-                        sb.append("{\"terminalId\":\"").append(terminal.terminalId)
-                          .append("\",\"result\":\"failed: no backup\"}");
+                        sb.append("{\"terminalId\":\"").append(terminal.hostname)
+                                .append("\",\"result\":\"failed: no backup\"}");
                         continue;
                     }
                     byte[] restored = decryptWithPassword(terminal.backupEncryptedSharedSecret,
-                        backupPassword, terminal.terminalId);
+                            backupPassword, terminal.hostname);
                     terminal.sealedSharedSecret = restored;
                     terminal.backupEncryptedSharedSecret = null;
                     terminal.persist();
                     // CRITICAL audit entry per terminal per FR-233
                     CRITICAL_AUDIT.infof("[CRITICAL][BACKUP_RESTORE] terminalId=%s restoredAt=%s",
-                        terminal.terminalId, Instant.now());
-                    sb.append("{\"terminalId\":\"").append(terminal.terminalId).append("\",\"result\":\"restored\"}");
+                            terminal.hostname, Instant.now());
+                    sb.append("{\"terminalId\":\"").append(terminal.hostname).append("\",\"result\":\"restored\"}");
                 } catch (Exception e) {
-                    sb.append("{\"terminalId\":\"").append(terminal.terminalId)
-                      .append("\",\"result\":\"failed: ").append(e.getMessage().replace("\"", "'")).append("\"}");
+                    sb.append("{\"terminalId\":\"").append(terminal.hostname)
+                            .append("\",\"result\":\"failed: ").append(e.getMessage().replace("\"", "'")).append("\"}");
                 }
             }
             sb.append("]");
@@ -126,8 +129,8 @@ public class BackupRestoreManagement implements BackupRestoreManagementMBean {
         long paired = terminals.stream().filter(t -> t.sealedSharedSecret != null).count();
         long withBackup = terminals.stream().filter(t -> t.backupEncryptedSharedSecret != null).count();
         return "{\"pairedTerminals\":" + paired +
-            ",\"terminalsWithBackup\":" + withBackup +
-            ",\"retentionWindowExpiry\":null}";
+                ",\"terminalsWithBackup\":" + withBackup +
+                ",\"retentionWindowExpiry\":null}";
     }
 
     private byte[] encryptWithPassword(byte[] data, String password, String salt) throws Exception {

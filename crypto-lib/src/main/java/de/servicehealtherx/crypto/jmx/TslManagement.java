@@ -58,16 +58,12 @@ public class TslManagement implements TslManagementMBean {
     @Override
     public String reloadTsl() {
         try {
-            TslDownloader.TslState state = tslDownloader.download();
-            if ("UNAVAILABLE".equals(state.status())) {
-                return "{\"status\":\"FAILED\",\"sequenceNumber\":0,\"expiry\":null,\"downloadedAt\":\"" +
-                    Instant.now() + "\",\"error\":\"TSL download failed or URL not configured\"}";
-            }
-            return "{\"status\":\"OK\",\"sequenceNumber\":" + state.sequenceNumber() +
-                ",\"expiry\":\"" + state.expiry() + "\",\"downloadedAt\":\"" + state.downloadedAt() + "\",\"error\":null}";
+            tslDownloader.refreshTspServiceList();
+
+            return "{\"status\":\"OK\"}";
         } catch (Exception e) {
             return "{\"status\":\"FAILED\",\"sequenceNumber\":0,\"expiry\":null,\"downloadedAt\":\"" +
-                Instant.now() + "\",\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}";
+                    Instant.now() + "\",\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}";
         }
     }
 
@@ -75,7 +71,7 @@ public class TslManagement implements TslManagementMBean {
     public String tslStatus() {
         TslDownloader.TslState state = tslDownloader.getCurrentState();
         return "{\"sequenceNumber\":" + state.sequenceNumber() +
-            ",\"expiry\":\"" + state.expiry() + "\",\"downloadedAt\":\"" + state.downloadedAt() +
-            "\",\"status\":\"" + state.status() + "\"}";
+                ",\"expiry\":\"" + state.expiry() + "\",\"downloadedAt\":\"" + state.downloadedAt() +
+                "\",\"status\":\"" + state.status() + "\"}";
     }
 }

@@ -1,6 +1,8 @@
 package de.servicehealtherx.konnektor.soap;
 
+import de.gematik.ws._int.version.productinformation.v1.ProductInformation;
 import de.gematik.ws.conn.cardservice.v8.Cards;
+import de.gematik.ws.conn.cardterminalinfo.v8.CardTerminalInfoType;
 import de.gematik.ws.conn.eventservice.v7.GetCards;
 
 import de.gematik.ws.conn.eventservice.v7.GetCardsResponse;
@@ -29,12 +31,7 @@ import java.util.UUID;
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
 @ApplicationScoped
-@WebService(
-    portName = "EventServicePort",
-    serviceName = "EventService",
-    targetNamespace = "http://ws.gematik.de/conn/EventService/WSDL/v7.2",
-    endpointInterface = "de.gematik.ws.conn.eventservice.wsdl.v7_2.EventServicePortType"
-)
+@WebService(portName = "EventServicePort", serviceName = "EventService", targetNamespace = "http://ws.gematik.de/conn/EventService/WSDL/v7.2", endpointInterface = "de.gematik.ws.conn.eventservice.wsdl.v7_2.EventServicePortType")
 @SOAPBinding(parameterStyle = SOAPBinding.ParameterStyle.BARE)
 public class KonnektorEventService implements EventServicePortType {
 
@@ -92,6 +89,16 @@ public class KonnektorEventService implements EventServicePortType {
     public GetCardTerminalsResponse getCardTerminals(GetCardTerminals parameter) throws FaultMessage {
         try {
             GetCardTerminalsResponse response = new GetCardTerminalsResponse();
+
+            sicctTerminalManager.listAllTerminals().stream().map(t -> {
+                CardTerminalInfoType ct = new CardTerminalInfoType();
+                // TODO: Map other fields as needed
+                ct.setProductInformation(new ProductInformation());
+                ct.setCtId(t.ctid.toString());
+                ct.setName(t.name);
+                return ct;
+            }).forEach(ct -> response.getCardTerminals().getCardTerminal().add(ct));
+
             response.setStatus(okStatus());
             return response;
         } catch (Exception e) {
