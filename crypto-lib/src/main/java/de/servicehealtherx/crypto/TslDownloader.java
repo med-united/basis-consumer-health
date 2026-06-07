@@ -40,7 +40,7 @@ public class TslDownloader {
     private List<TspService> tspServiceList;
 
     @Inject
-    @ConfigProperty(name = "tsl.downloader.production", defaultValue = "true")
+    @ConfigProperty(name = "tsl.downloader.production", defaultValue = "false")
     boolean pu;
 
     String tslUrl;

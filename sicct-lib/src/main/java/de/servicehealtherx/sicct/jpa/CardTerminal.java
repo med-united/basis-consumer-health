@@ -123,4 +123,17 @@ public class CardTerminal extends PanacheEntityBase {
                 ", activeRole='" + activeRole + '\'' +
                 '}';
     }
+
+    public boolean equals(Object o) {
+        if (this == o)
+            return true;
+        if (!(o instanceof CardTerminal))
+            return false;
+        CardTerminal that = (CardTerminal) o;
+        return this.macAddress.equals(that.macAddress);
+    }
+
+    public int hashCode() {
+        return macAddress.hashCode();
+    }
 }

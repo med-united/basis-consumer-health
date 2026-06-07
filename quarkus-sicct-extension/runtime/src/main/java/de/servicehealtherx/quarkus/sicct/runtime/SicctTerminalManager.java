@@ -15,8 +15,10 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -38,6 +40,9 @@ import javax.net.ssl.TrustManager;
  * NioEventLoopGroup.
  * One terminal failure MUST NOT prevent others per FR-023, FR-097.
  */
+@Startup
+@Priority(10) // Ensure this starts before CardTerminalDiscovery which depends on it, first
+              // load from the database then do discovery
 @ApplicationScoped
 public class SicctTerminalManager {
 
@@ -104,16 +109,7 @@ public class SicctTerminalManager {
         LOG.infof("[SicctTerminalManager] shutdown complete");
     }
 
-    public void connectTerminal(String hostname, String ipAddress, int tcpPort) {
-        CardTerminal terminal = CardTerminal.findByHostname(hostname);
-        if (terminal == null) {
-            LOG.warnf("[SicctTerminalManager] connectTerminal: hostname=%s not found in DB", hostname);
-            return;
-        }
-        connectTerminalAsync(terminal);
-    }
-
-    private void connectTerminalAsync(CardTerminal terminal) {
+    public void connectTerminalAsync(CardTerminal terminal) {
         SicctTerminalConnection conn = connections.computeIfAbsent(terminal.hostname,
                 id -> new SicctTerminalConnection(terminal));
 

@@ -12,6 +12,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.quarkus.scheduler.Scheduled;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -51,6 +52,8 @@ import java.util.concurrent.TimeUnit;
  * </pre>
  */
 @ApplicationScoped
+@Priority(20) // Ensure this starts after SicctTerminalManager, first
+              // load from the database then do discovery
 public class CardTerminalDiscovery {
 
     private static final Logger LOG = Logger.getLogger(CardTerminalDiscovery.class);
@@ -211,8 +214,11 @@ public class CardTerminalDiscovery {
         for (DiscoveredTerminal t : terminals) {
             // Use the terminal's SICCT name as the stable terminalId
             if (CardTerminal.findByMacAddress(t.macAddressHex()) != null) {
-                LOG.debugf("[SICCT-DISCOVERY] terminal '%s' already registered, skipping", t.name());
+                LOG.infof("[SICCT-DISCOVERY] terminal '%s' already registered, skipping", t.name());
                 continue;
+            } else {
+                LOG.infof("[SICCT-DISCOVERY] registering new terminal: name='%s' ip=%s mac=%s port=%d",
+                        t.name(), t.ipAddress(), t.macAddressHex(), t.commandPort());
             }
             CardTerminal entity = new CardTerminal();
             entity.name = t.name();
@@ -226,7 +232,7 @@ public class CardTerminalDiscovery {
             LOG.infof("[SICCT-DISCOVERY] new terminal persisted: hostname='%s' ipAddress=%s port=%d mac=%s",
                     t.name(), t.ipAddress(), t.commandPort(), t.macAddressHex());
 
-            manager.connectTerminal(t.name(), t.ipAddress(), t.commandPort());
+            manager.connectTerminalAsync(entity);
         }
     }
 
@@ -376,7 +382,13 @@ public class CardTerminalDiscovery {
             if (t != null) {
                 LOG.infof("[SICCT-DISCOVERY] Dienstbeschreibungspaket from %s: name='%s' ip=%s mac=%s port=%d",
                         sender, t.name(), t.ipAddress(), t.macAddressHex(), t.commandPort());
-                results.add(t);
+                // Avoid duplicates in case multiple responses are received from the same
+                // terminal
+                if (!results.contains(t)) {
+                    results.add(t);
+                } else {
+                    LOG.debugf("[SICCT-DISCOVERY] duplicate response from %s (name='%s'), ignoring", sender, t.name());
+                }
             } else {
                 LOG.debugf("[SICCT-DISCOVERY] ignored non-SICCT UDP packet from %s (%d bytes)", sender, bytes.length);
             }
@@ -474,6 +486,18 @@ public class CardTerminalDiscovery {
 
         public int protocolVersionMinor() {
             return protocolVersion & 0xFF;
+        }
+
+        public boolean equals(Object o) {
+            if (this == o)
+                return true;
+            if (!(o instanceof DiscoveredTerminal that))
+                return false;
+            return this.macAddressHex().equals(that.macAddressHex());
+        }
+
+        public int hashCode() {
+            return macAddressHex().hashCode();
         }
     }
 

@@ -5,6 +5,7 @@ import de.servicehealtherx.quarkus.sicct.runtime.discovery.CardTerminalDiscovery
 import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -17,6 +18,8 @@ import java.util.List;
 
 @ApplicationScoped
 @Startup
+@Priority(20) // Ensure this starts after SicctTerminalManager, first load from the database
+              // then do discovery
 public class SicctTerminalDiscoveryManagement implements SicctTerminalDiscoveryManagementMBean {
 
     private static final Logger LOG = Logger.getLogger(SicctTerminalDiscoveryManagement.class);
