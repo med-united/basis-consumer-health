@@ -23,7 +23,7 @@ ks.load(null, pin.toCharArray());
 
 **Alternatives considered**:
 - IAIK PKCS#11 wrapper (third-party): More features but additional dependency weight and license cost; rejected in favour of the JDK built-in.
-- Bouncy Castle PKCS11 bridge: BC FIPS does not replace SunPKCS11 for HSM token operations; BC is used only for P12 parsing and JCA operations.
+- Bouncy Castle PKCS11 bridge: BC does not replace SunPKCS11 for HSM token operations; BC is used only for P12 parsing and JCA operations.
 
 **Constraint**: Each PKCS#11 library name attribute must be globally unique per JVM instance. The `Pkcs11CryptoProvider` must enforce this at startup and fail with a descriptive error on collision.
 
@@ -335,33 +335,33 @@ udpBootstrap.bind(SICCT_DISCOVERY_PORT).sync();
 
 **AlgorithmType enum** — complete set required by TI:
 
-| Value | TI Requirement | Source |
-|-------|---------------|--------|
-| `ECDSA` | Document/hash signatures; SICCT pairing ShS.AUT.KT signature; preferred algorithm until 2029+ | Tab_KRYPT_009, Tab_KRYPT_020, GS-A_5207-01 |
-| `RSA_PSS` | RSASSA-PSS with SHA-256; compatible with existing cards; valid until end 2025 | GS-A_4371-02, Tab_KRYPT_009 |
-| `RSA_PKCS1` | RSASSA-PKCS1-v1_5; legacy compatibility | GS-A_5071-01 |
-| `RSAES_OAEP` | RSA key transport for XML hybrid encryption | GS-A_4376-02 |
-| `AES_128_GCM` | AES-128/GCM; ePA-VAU ECIES content encryption (HKDF-derived 128-bit CEK) | §3.19 (A_27275), §4.7 (A_27275 step 4) |
-| `AES_256_GCM` | AES-256/GCM; mandatory for XML encryption, binary ECIES content key, VSDM backup, JavaDB backup | GS-A_4373, A_17220, FR-180 |
-| `AES_128_CBC` | AES-128/CBC; Card-to-Server authentication only | Tab_KRYPT_012 |
-| `ECIES` | TI-ECIES per [SEC1-2009]: ephemeral ECDH + HKDF-SHA-256 + AES-GCM; used in KOM-LE, VSDM, ePA-VAU | A_17220, A_17221-01, A_27275 |
+| Value         | TI Requirement                                                                                   | Source                                     |
+| ------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `ECDSA`       | Document/hash signatures; SICCT pairing ShS.AUT.KT signature; preferred algorithm until 2029+    | Tab_KRYPT_009, Tab_KRYPT_020, GS-A_5207-01 |
+| `RSA_PSS`     | RSASSA-PSS with SHA-256; compatible with existing cards; valid until end 2025                    | GS-A_4371-02, Tab_KRYPT_009                |
+| `RSA_PKCS1`   | RSASSA-PKCS1-v1_5; legacy compatibility                                                          | GS-A_5071-01                               |
+| `RSAES_OAEP`  | RSA key transport for XML hybrid encryption                                                      | GS-A_4376-02                               |
+| `AES_128_GCM` | AES-128/GCM; ePA-VAU ECIES content encryption (HKDF-derived 128-bit CEK)                         | §3.19 (A_27275), §4.7 (A_27275 step 4)     |
+| `AES_256_GCM` | AES-256/GCM; mandatory for XML encryption, binary ECIES content key, VSDM backup, JavaDB backup  | GS-A_4373, A_17220, FR-180                 |
+| `AES_128_CBC` | AES-128/CBC; Card-to-Server authentication only                                                  | Tab_KRYPT_012                              |
+| `ECIES`       | TI-ECIES per [SEC1-2009]: ephemeral ECDH + HKDF-SHA-256 + AES-GCM; used in KOM-LE, VSDM, ePA-VAU | A_17220, A_17221-01, A_27275               |
 
 **EccCurve enum** — curves required by TI:
 
-| Value | Usage | Source |
-|-------|-------|--------|
-| `NIST_P256` | ePA-VAU ECIES (P-256 ENC certificate), ECDSA verification | §3.19 (A_27275 step 1), A_17094-02 |
-| `NIST_P384` | TLS ECDHE (mandatory), future card generations | A_17089-03, A_17094-02 |
+| Value             | Usage                                                                    | Source                                  |
+| ----------------- | ------------------------------------------------------------------------ | --------------------------------------- |
+| `NIST_P256`       | ePA-VAU ECIES (P-256 ENC certificate), ECDSA verification                | §3.19 (A_27275 step 1), A_17094-02      |
+| `NIST_P384`       | TLS ECDHE (mandatory), future card generations                           | A_17089-03, A_17094-02                  |
 | `BRAINPOOLP256R1` | Primary TI ECC curve; SICCT pairing ECDSA, KOM-LE ECIES, SMC-B G2+ cards | GS-A_5207-01, A_17090-01, Tab_KRYPT_009 |
-| `BRAINPOOLP384R1` | TLS ECDHE (SHOULD support) | A_17089-03, A_17094-02 |
+| `BRAINPOOLP384R1` | TLS ECDHE (SHOULD support)                                               | A_17089-03, A_17094-02                  |
 
 **HashAlgorithm enum**:
 
-| Value | Usage | Source |
-|-------|-------|--------|
+| Value    | Usage                                                              | Source                                |
+| -------- | ------------------------------------------------------------------ | ------------------------------------- |
 | `SHA256` | Mandatory for all TI signatures, HKDF, VALIDATE challenge-response | GS-A_4371-02, GS-A_4372-02, GS-A_5091 |
-| `SHA384` | BNetzA-VL signature verification; optional TLS | A_27608 |
-| `SHA512` | BNetzA-VL signature verification | A_27608 |
+| `SHA384` | BNetzA-VL signature verification; optional TLS                     | A_27608                               |
+| `SHA512` | BNetzA-VL signature verification                                   | A_27608                               |
 
 **Key CryptoParameters field semantics** (normative):
 

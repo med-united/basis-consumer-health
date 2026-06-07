@@ -40,11 +40,7 @@
             <artifactId>gemLibPki</artifactId>
         </dependency>
 
-        <!-- Bouncy Castle BC-FIPS for P12 ops in production -->
-        <dependency>
-            <groupId>org.bouncycastle</groupId>
-            <artifactId>bc-fips</artifactId>
-        </dependency>
+        <!-- Bouncy Castle -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcpkix-jdk18on</artifactId>

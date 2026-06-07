@@ -22,6 +22,16 @@
             <artifactId>sicct-lib</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bctls-jdk18on</artifactId>
+        </dependency>
+
         <!-- Quarkus extension runtime support -->
         <dependency>
             <groupId>io.quarkus</groupId>

@@ -199,9 +199,15 @@ public class SicctTerminalManager {
         SicctTerminalManager manager = new SicctTerminalManager();
         var t = new CardTerminal();
         t.ctid = UUID.fromString("6f831776-2c0e-41da-a889-7f0827c88a19");
-        t.hostname = "ORGA6100-01410000021FB1";
-        t.ipAddress = "";
-        t.macAddress = "00:0D:F8:05:D3:0E";
+
+        // t.hostname = "ORGA6100-01410000021FB1";
+        // t.ipAddress = "192.168.100.90";
+        // t.macAddress = "00:0D:F8:05:D3:0E";
+
+        t.hostname = "192-168-100-1";
+        t.ipAddress = "192.168.100.1";
+        t.macAddress = "00:E0:4C:68:01:D2";
+
         t.tcpPort = 4742;
         manager.terminals = List.of(t);
         manager.smkCSAKAut = new SmkCSAKAutProvider().createSmkCSAKAut();

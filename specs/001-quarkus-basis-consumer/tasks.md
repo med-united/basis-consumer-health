@@ -22,7 +22,7 @@
 - [X] T001 Create parent pom.xml at repo root declaring all 9 modules (api-telematik, openkim-server, crypto-lib, sicct-lib, quarkus-sicct-extension, crypto-services-lib, quarkus-ldap-proxy-server-extension, consumer-soap-server, konnektor-soap-server) with Java 21 and Quarkus 3.x BOM in pom.xml
 - [X] T002 Initialize api-telematik git submodule from med-united/api-telematik@ebk_6.0.3 in api-telematik/
 - [X] T003 [P] Initialize openkim-server git submodule from sberg-net/openkim in openkim-server/
-- [X] T004 [P] Create crypto-lib/pom.xml with dependencies: de.gematik.pki:gemLibPki:4.0.2, Bouncy Castle (BC FIPS variant), JUnit 5, Quarkus CDI, SmallRye Health
+- [X] T004 [P] Create crypto-lib/pom.xml with dependencies: de.gematik.pki:gemLibPki:4.0.2, Bouncy Castle , JUnit 5, Quarkus CDI, SmallRye Health
 - [X] T005 [P] Create sicct-lib/pom.xml with dependencies: crypto-lib, beanit jASN1 (compile + maven-plugin), Jakarta Persistence, JUnit 5
 - [X] T006 [P] Create quarkus-sicct-extension/pom.xml (parent) + quarkus-sicct-extension/deployment/pom.xml + quarkus-sicct-extension/runtime/pom.xml with dependencies: sicct-lib, Quarkus extension BOM, Netty 4.x
 - [X] T007 [P] Create crypto-services-lib/pom.xml with dependency on crypto-lib ONLY (add Maven Enforcer rule confirming NO transitive dependency on sicct-lib per FR-022), JUnit 5, Quarkus CDI

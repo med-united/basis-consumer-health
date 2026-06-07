@@ -2,6 +2,8 @@ package de.servicehealtherx.quarkus.sicct.runtime.tls;
 
 import javax.net.ssl.TrustManager;
 
+import org.bouncycastle.jsse.provider.BouncyCastleJsseProvider;
+
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.handler.ssl.ClientAuth;
 import io.netty.handler.ssl.SslContext;
@@ -18,6 +20,7 @@ public class KonnektorSslHandler extends SslHandler {
         try {
             // Build SslContext for mutual TLS (client authentication)
             return SslContextBuilder.forClient()
+                    .sslContextProvider(new BouncyCastleJsseProvider())
                     .keyManager(smkCSAKAut.getKeyManagerFactory())
                     .clientAuth(ClientAuth.REQUIRE)
                     .trustManager(trustManager)

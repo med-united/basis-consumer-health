@@ -37,7 +37,6 @@
         <!-- Library versions -->
         <gemLibPki.version>4.0.2</gemLibPki.version>
         <bouncy-castle.version>1.84</bouncy-castle.version>
-        <bc-fips.version>2.1.2</bc-fips.version>
         <jasn1.version>1.13.0</jasn1.version>
         <quarkus-cxf.version>3.36.0</quarkus-cxf.version>
         <configsource-db.version>2.0.0</configsource-db.version>
@@ -120,15 +119,20 @@
                 <version>${gemLibPki.version}</version>
             </dependency>
 
-            <!-- Bouncy Castle (BC FIPS for production crypto) -->
-            <dependency>
-                <groupId>org.bouncycastle</groupId>
-                <artifactId>bc-fips</artifactId>
-                <version>${bc-fips.version}</version>
-            </dependency>
+            <!-- Bouncy Castle -->
             <dependency>
                 <groupId>org.bouncycastle</groupId>
                 <artifactId>bcpkix-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncy-castle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bctls-jdk18on</artifactId>
                 <version>${bouncy-castle.version}</version>
             </dependency>
 
