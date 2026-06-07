@@ -29,8 +29,7 @@
 --   constructed). Diese Modulfassung bildet das ueber separate Typen ab.
 -- =====================================================================
 
-SICCT-Protocol-1-3-0 DEFINITIONS IMPLICIT TAGS ::=
-BEGIN
+SICCT-Protocol-1-3-0 DEFINITIONS IMPLICIT TAGS ::= BEGIN
 
 -- =====================================================================
 -- TEIL A:  TRANSPORT-ENVELOPE  (Kap. 6.2.4.2, Tabelle 30)
@@ -290,7 +289,11 @@ SEQNO-DO ::= [APPLICATION 8] IMPLICIT SEQUENCE {
 
 -- ---------- Cardterminal Session DO (Kap. 5.5.10.x) -----------------
 -- Tag '69' = [APPLICATION 9] CONSTRUCTED. Genutzt bei INIT/CLOSE CT SESSION.
-CTSESS-DO ::= [APPLICATION 9] IMPLICIT OCTET STRING
+CTSESS-DO ::= [APPLICATION 9] IMPLICIT SEQUENCE {
+    username    [UNIVERSAL 19] IMPLICIT OCTET STRING,
+    password    [UNIVERSAL 19] IMPLICIT OCTET STRING,
+    session-id  [UNIVERSAL 19] IMPLICIT OCTET STRING
+}
 
 -- ---------- Keypad Capabilities DO (Kap. 5.5.10.x) ------------------
 -- Tag '6A' = [APPLICATION 10] CONSTRUCTED.

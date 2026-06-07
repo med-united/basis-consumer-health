@@ -6,7 +6,6 @@ import de.servicehealtherx.crypto.TslDownloader;
 import de.servicehealtherx.quarkus.sicct.runtime.tls.SICCTKonnektorTLSChannelInitializer;
 import de.servicehealtherx.quarkus.sicct.runtime.tls.SmkCSAKAut;
 import de.servicehealtherx.quarkus.sicct.runtime.tls.SmkCSAKAutProvider;
-import de.servicehealtherx.sicct.EhealthAuthenticator;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelFuture;
@@ -15,6 +14,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.ssl.SslHandler;
 import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -50,9 +50,6 @@ public class SicctTerminalManager {
 
     private static final long INITIAL_BACKOFF_MS = 1_000;
     private static final long MAX_BACKOFF_MS = 30_000;
-
-    @Inject
-    EhealthAuthenticator ehealthAuthenticator;
 
     @Inject
     TpmSealer tpmSealer;
@@ -110,7 +107,7 @@ public class SicctTerminalManager {
     }
 
     public void connectTerminalAsync(CardTerminal terminal) {
-        SicctTerminalConnection conn = connections.computeIfAbsent(terminal.hostname,
+        SicctTerminalConnection conn = connections.computeIfAbsent(terminal.macAddress,
                 id -> new SicctTerminalConnection(terminal));
 
         Bootstrap bootstrap = new Bootstrap();
@@ -141,12 +138,19 @@ public class SicctTerminalManager {
         reconnectScheduler.schedule(() -> connectTerminalAsync(terminal), cappedDelay, TimeUnit.MILLISECONDS);
     }
 
-    void onTerminalDisconnected(String hostname) {
-        SicctTerminalConnection conn = connections.get(hostname);
+    void onTerminalDisconnected(String macAddress) {
+        SicctTerminalConnection conn = connections.get(macAddress);
         if (conn != null) {
             conn.onDisconnected();
             CardTerminal terminal = conn.getTerminal();
             scheduleReconnect(terminal, conn, INITIAL_BACKOFF_MS * 2);
+        }
+    }
+
+    void pairTerminal(String macAddress) {
+        SicctTerminalConnection conn = connections.get(macAddress);
+        if (conn != null) {
+            conn.pairTerminal();
         }
     }
 
@@ -167,14 +171,37 @@ public class SicctTerminalManager {
         return gSMCKtTrustManager;
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
+
+        // 2. Root-Logger mit Handler konfigurieren
+        org.jboss.logmanager.Logger rootLogger = org.jboss.logmanager.Logger.getLogger("");
+        rootLogger.setLevel(java.util.logging.Level.INFO);
+
+        // 3. Console-Handler explizit hinzufügen
+        java.util.logging.ConsoleHandler consoleHandler = new java.util.logging.ConsoleHandler();
+        consoleHandler.setLevel(java.util.logging.Level.FINEST);
+        rootLogger.addHandler(consoleHandler);
+
+        // 4. Spezifischen Logger setzen
+        org.jboss.logmanager.Logger logger = org.jboss.logmanager.Logger.getLogger(SicctDecoder.class.getName());
+        logger.setLevel(java.util.logging.Level.FINEST);
+
+        logger = org.jboss.logmanager.Logger
+                .getLogger(SicctChannelHandler.class.getName());
+        logger.setLevel(java.util.logging.Level.FINEST);
+
+        logger = org.jboss.logmanager.Logger
+                .getLogger(SslHandler.class.getName());
+        logger.setLevel(java.util.logging.Level.FINEST);
+
         // For standalone testing without Quarkus; in production, Quarkus will call
         // @PostConstruct
         SicctTerminalManager manager = new SicctTerminalManager();
         var t = new CardTerminal();
         t.ctid = UUID.fromString("6f831776-2c0e-41da-a889-7f0827c88a19");
         t.hostname = "ORGA6100-01410000021FB1";
-        t.ipAddress = "192.168.100.90";
+        t.ipAddress = "";
+        t.macAddress = "00:0D:F8:05:D3:0E";
         t.tcpPort = 4742;
         manager.terminals = List.of(t);
         manager.smkCSAKAut = new SmkCSAKAutProvider().createSmkCSAKAut();
@@ -185,5 +212,7 @@ public class SicctTerminalManager {
         trustManagerProducer.setTslDownloader(tslDownloader);
         manager.gSMCKtTrustManager = trustManagerProducer.produceGSMCKtTrustManager();
         manager.initialize();
+        Thread.sleep(3_000); // Wait for connection attempt and potential pairing
+        manager.pairTerminal(t.macAddress);
     }
 }

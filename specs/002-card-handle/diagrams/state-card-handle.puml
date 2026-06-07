@@ -1,0 +1,19 @@
+@startuml state-card-handle
+title CardHandle Lifecycle
+
+[*] --> ACTIVE : TUC_KON_001\n(card inserted / startup rebuild)
+ACTIVE --> INVALIDATED : card ejected (CT/SLOT_FREE)\nor terminal disconnect
+INVALIDATED --> [*] : cardHandle added to\n48-hour blacklist
+
+note right of ACTIVE
+  cardHandle registered in
+  CardHandleRegistry.activeHandles
+  CARD/INSERTED event fired
+end note
+
+note right of INVALIDATED
+  handle removed from activeHandles
+  CARD/REMOVED event fired
+  handle blacklisted for 48 h
+end note
+@enduml

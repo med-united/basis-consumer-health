@@ -44,6 +44,7 @@ public class SicctTerminalConnection {
 
     private volatile Channel channel;
     private volatile byte[] sessionKey;
+    private SicctChannelHandler sicctChannelHandler;
 
     public SicctTerminalConnection(CardTerminal terminal) {
         this.terminal = terminal;
@@ -125,5 +126,22 @@ public class SicctTerminalConnection {
 
     public int getApduTimeoutMs() {
         return 30_000;
+    }
+
+    public void pairTerminal() {
+        if (getSicctChannelHandler() == null) {
+            LOG.errorf("[SicctTerminalConnection] Cannot pair terminal=%s because SicctChannelHandler is not set yet",
+                    terminal.hostname);
+            return;
+        }
+        getSicctChannelHandler().ehealthTerminalAuthenticateCreate();
+    }
+
+    public void setSicctChannelHandler(SicctChannelHandler sicctChannelHandler) {
+        this.sicctChannelHandler = sicctChannelHandler;
+    }
+
+    public SicctChannelHandler getSicctChannelHandler() {
+        return sicctChannelHandler;
     }
 }

@@ -1,6 +1,7 @@
 package de.servicehealtherx.quarkus.sicct.runtime.tls;
 
-import de.servicehealtherx.quarkus.sicct.runtime.SicctApduChannelHandler;
+import de.servicehealtherx.quarkus.sicct.runtime.SicctChannelHandler;
+import de.servicehealtherx.quarkus.sicct.runtime.SicctDecoder;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalConnection;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import io.netty.channel.ChannelHandlerContext;
@@ -31,7 +32,8 @@ public class SICCTKonnektorTLSChannelInitializer extends ChannelInitializer<Sock
         // Full TLS mutual auth implementation per FR-133 (ECC/RSA, DES MUST NOT)
         ch.pipeline().addFirst("ssl",
                 new KonnektorSslHandler(manager.getSmkCSAKAut(), manager.getGSMCKtTrustManager(), ch.alloc()));
-        ch.pipeline().addLast(new SicctApduChannelHandler(conn, manager));
+        ch.pipeline().addLast(new SicctDecoder());
+        ch.pipeline().addLast(new SicctChannelHandler(conn, manager));
     }
 
     @Override

@@ -1,0 +1,28 @@
+@startuml sequence-card-inserted
+title Card Insertion Event Flow (TUC_KON_001)
+
+participant "SICCT Terminal" as KT
+participant "SicctChannelHandler" as SCH
+participant "CardHandleFactory" as CHF
+participant "CardHandleRegistry" as REG
+participant "SicctEventPublisher" as PUB
+participant "EventService (GetCards)" as ES
+
+KT -> SCH : SICCT Slot-Ereignis\nKarte eingesteckt (TAG 84)
+SCH -> SCH : fire CDI Event<CT_SLOT_IN_USE>
+SCH -> CHF : createCardHandle(ctId, slotNo)
+CHF -> CHF : read ICCSN, TYPE, CARDVERSION,\nINSERTTIME, CARDHOLDERNAME,\nKVNR, CERTEXPIRATIONDATE via APDU
+CHF -> CHF : generate cardHandle UUID\n(check 48h blacklist)
+CHF --> REG : register(cardHandle)
+REG -> REG : put into activeHandles\nand handlesByCtid index
+REG -> PUB : fire CardInsertedEvent
+PUB -> PUB : log CARD/INSERTED (INFO)\nparams: CardHandle, CardType, ICCSN, …
+note over CHF : async (A_23702):
+CHF -> CHF : TUC_KON_037 OCSP check\n→ update certStatus, certOcspResponse
+CHF -> PUB : fire CertCardStatusEvent (WARNING)\nonly if result not "good"
+
+ES <- [actor] : GetCards(mandantId, ctId)
+ES -> REG : findAll(filter)
+REG --> ES : List<CardHandle>
+ES --> [actor] : GetCardsResponse (Card[])
+@enduml

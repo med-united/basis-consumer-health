@@ -6,8 +6,13 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+
+import de.servicehealtherx.sicct.models.CardHandle;
 
 @Entity
 @Table(name = "CARD_TERMINAL")
@@ -95,6 +100,9 @@ public class CardTerminal extends PanacheEntityBase {
      */
     @Column(name = "BACKUP_ENCRYPTED_SHARED_SECRET", length = 4096)
     public byte[] backupEncryptedSharedSecret;
+
+    @Transient
+    public List<CardHandle> slots = new ArrayList<>();
 
     public static CardTerminal findByMacAddress(String macAddress) {
         return find("macAddress = ?1", macAddress).firstResult();

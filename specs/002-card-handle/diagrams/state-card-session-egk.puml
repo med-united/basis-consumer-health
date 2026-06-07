@@ -1,0 +1,16 @@
+@startuml state-card-session-egk
+title CardSession_eGK Lifecycle
+
+[*] --> OPEN : TUC_KON_026\n(session created, no lock)
+OPEN --> LOCKED : StartCardSession / TUC_KON_223\n(sessionID assigned, timer started, card reset)
+LOCKED --> OPEN : StopCardSession / TUC_KON_224\n(lock released, card reset)
+LOCKED --> OPEN : CARD_SESSION_TIMEOUT\n(auto-stop; CARD/SESSION/TIMEOUT event)
+OPEN --> [*] : card ejected
+LOCKED --> [*] : card ejected\n(lock forcibly released)
+
+note right of LOCKED
+  Only one LOCKED session
+  per eGK at any time (C1)
+  Error 4093 on second attempt
+end note
+@enduml
