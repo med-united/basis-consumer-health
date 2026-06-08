@@ -1,5 +1,8 @@
 package de.servicehealtherx.konnektor.soap;
 
+import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.buildError;
+import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.okStatus;
+
 import de.gematik.ws.conn.cardservice.v8.AuthorizeSmc;
 import de.gematik.ws.conn.cardservice.v8.AuthorizeSmcResponse;
 import de.gematik.ws.conn.cardservice.v8.ChangePin;
@@ -14,12 +17,8 @@ import de.gematik.ws.conn.cardservicecommon.v2.PinResponseType;
 import de.gematik.ws.conn.cardservicecommon.v2.PinResultEnum;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
-import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
-import jakarta.jws.soap.SOAPBinding;
-
-import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
 @CXFEndpoint(value = "/ws/conn/CardService")
 @WebService(portName = "CardServicePort", serviceName = "CardService", targetNamespace = "http://ws.gematik.de/conn/CardService/WSDL/v8.1", endpointInterface = "de.gematik.ws.conn.cardservice.wsdl.v8_1.CardServicePortType")

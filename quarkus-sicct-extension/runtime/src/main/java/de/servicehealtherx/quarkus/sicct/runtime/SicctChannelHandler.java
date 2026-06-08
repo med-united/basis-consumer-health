@@ -1,10 +1,22 @@
 package de.servicehealtherx.quarkus.sicct.runtime;
 
+import java.security.cert.X509Certificate;
+
+import org.jboss.logging.Logger;
+
+import com.beanit.asn1bean.ber.types.BerInteger;
+import com.beanit.asn1bean.ber.types.BerOctetString;
+
+import de.gematik.pki.gemlibpki.commons.utils.CertReader;
+import de.servicehealtherx.sicct.EhealthTerminalAuthenticate;
+import de.servicehealtherx.sicct.ISO7816;
+import de.servicehealtherx.sicct.SICCT;
+import de.servicehealtherx.sicct.codec.SicctCodec;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufOutputStream;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.handler.ssl.SslHandler;
+import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import sicct.protocol._1._3._0.CTSESSDO;
 import sicct.protocol._1._3._0.CommandAPDU;
 import sicct.protocol._1._3._0.CommandAPDU.CommandData;
@@ -15,18 +27,6 @@ import sicct.protocol._1._3._0.SicctEnvelope;
 import sicct.protocol._1._3._0.SicctInstruction;
 import sicct.protocol._1._3._0.SicctPayload;
 import sicct.protocol._1._3._0.SicctSequenceNumber;
-
-import java.io.IOException;
-
-import org.jboss.logging.Logger;
-
-import com.beanit.asn1bean.ber.types.BerInteger;
-import com.beanit.asn1bean.ber.types.BerOctetString;
-
-import de.servicehealtherx.sicct.EhealthTerminalAuthenticate;
-import de.servicehealtherx.sicct.ISO7816;
-import de.servicehealtherx.sicct.SICCT;
-import de.servicehealtherx.sicct.codec.SicctCodec;
 
 /**
  * Netty channel handler for SICCT APDU framing and command dispatch.
@@ -45,14 +45,45 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
 
     public SicctChannelHandler(SicctTerminalConnection connection, SicctTerminalManager manager) {
         this.connection = connection;
-        this.connection.setSicctChannelHandler(this);
         this.manager = manager;
+    }
+
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        super.userEventTriggered(ctx, evt);
+        // when the ssl handshake is successful
+        if (evt == SslHandshakeCompletionEvent.SUCCESS) {
+            SslHandler sslhandler = (SslHandler) ctx.channel().pipeline().get("ssl");
+            X509Certificate cert = (X509Certificate) sslhandler.engine().getSession().getPeerCertificates()[0];
+            byte[] savedCertBytes = connection.getTerminal().smktAutCertificate;
+
+            if (savedCertBytes == null) {
+                LOG.warnf(
+                        "[SICCT] TLS handshake successful for terminal=%s, but no SMK Aut certificate was previously stored! Saving new certificate: %s",
+                        connection.getTerminalId(),
+                        cert.getSubjectX500Principal().getName());
+                connection.getTerminal().smktAutCertificate = cert.getEncoded();
+                return;
+            }
+            X509Certificate savedCert = CertReader.readX509(savedCertBytes);
+            if (!cert.equals(savedCert)) {
+                LOG.warnf(
+                        "[SICCT] TLS handshake successful for terminal=%s, but SMK Aut certificate has changed! Previous: %s, New: %s",
+                        connection.getTerminalId(),
+                        savedCert.getSubjectX500Principal().getName(), cert.getSubjectX500Principal().getName());
+            } else {
+                LOG.debugf(
+                        "[SICCT] TLS handshake successful for terminal=%s, SMK Aut certificate matches previously stored certificate: %s",
+                        connection.getTerminalId(),
+                        cert.getSubjectX500Principal().getName());
+            }
+        }
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
         this.ctx = ctx;
-        connection.onConnected(ctx.channel());
+        connection.onConnected(this, ctx.channel());
         LOG.infof("[SICCT] channel active for terminal=%s", connection.getTerminalId());
         // Send INIT CT SESSION to begin correlation per FR-092
         initCtSession();
@@ -72,7 +103,7 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         int p1 = SICCT.P1_CARD_TERMINAL;
         // ICC Status Data Object (all ICC Interfaces)
         int p2 = SICCT.P2_GET_STATUS_ALL_ICC;
-        assembleAndSendEnvelop(sicctEnvelop, ins, null, p1, p2);
+        assembleAndSendEnvelop(ins, p1, p2, sicctEnvelop, null);
     }
 
     private void getStatusCardTerminalManufacturer() {
@@ -81,22 +112,19 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         int p1 = SICCT.P1_CARD_TERMINAL;
         // ICC Status Data Object (all ICC Interfaces)
         int p2 = 0x46;
-        assembleAndSendEnvelop(sicctEnvelop, ins, null, p1, p2);
+        assembleAndSendEnvelop(ins, p1, p2, sicctEnvelop, null);
     }
 
     void ehealthTerminalAuthenticateCreate() {
         SicctEnvelope sicctEnvelop = createSicctEnvelop();
-        byte cla = EhealthTerminalAuthenticate.CLA;
-        byte ins = EhealthTerminalAuthenticate.INS;
-        int p1 = EhealthTerminalAuthenticate.P1_DIRECT;
-        // ICC Status Data Object (all ICC Interfaces)
-        int p2 = EhealthTerminalAuthenticate.P2_CREATE;
 
         byte[] sharedSecret = EhealthTerminalAuthenticate.generateSharedSecret();
         connection.getTerminal().sealedSharedSecret = sharedSecret;
         byte[] createApdu = EhealthTerminalAuthenticate.buildCreate(sharedSecret, "Mit Basis Consumer Health pairen?");
+        sicctEnvelop.setDwLength(new BerInteger(createApdu.length));
+        sicctEnvelop.setAbCmd(new SicctPayload(createApdu));
+        sendSicctEnvelope(sicctEnvelop);
 
-        assembleAndSendEnvelop(cla, sicctEnvelop, ins, createApdu, p1, p2);
     }
 
     @Override
@@ -209,19 +237,19 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         int p1 = SICCT.P1_CARD_TERMINAL;
         int p2 = 0x00;
 
-        assembleAndSendEnvelop(sicctEnvelop, ins, ctSessDO, p1, p2);
+        assembleAndSendEnvelop(ins, p1, p2, sicctEnvelop, ctSessDO);
 
     }
 
-    public void assembleAndSendEnvelop(SicctEnvelope sicctEnvelop, byte ins,
-            Object dataObject, int p1,
-            int p2) {
-        assembleAndSendEnvelop(ISO7816.CLA_PROPRIETARY, sicctEnvelop, ins, dataObject, p1, p2);
+    public void assembleAndSendEnvelop(byte ins, int p1,
+            int p2, SicctEnvelope sicctEnvelop,
+            Object dataObject) {
+        assembleAndSendEnvelop(ISO7816.CLA_PROPRIETARY, ins, p1, p2, sicctEnvelop, dataObject);
     }
 
-    private void assembleAndSendEnvelop(int cla, SicctEnvelope sicctEnvelop, byte ins,
-            Object dataObject, int p1,
-            int p2) {
+    private void assembleAndSendEnvelop(int cla, byte ins, int p1,
+            int p2, SicctEnvelope sicctEnvelop,
+            Object dataObject) {
 
         CommandHeader commandHeader = new CommandHeader();
         // 0x80

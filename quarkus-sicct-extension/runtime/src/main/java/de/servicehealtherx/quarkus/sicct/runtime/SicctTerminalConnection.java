@@ -70,7 +70,8 @@ public class SicctTerminalConnection {
         return correlationState.get() == CorrelationState.AKTIV;
     }
 
-    public void onConnected(Channel ch) {
+    public void onConnected(SicctChannelHandler sicctChannelHandler2, Channel ch) {
+        setSicctChannelHandler(sicctChannelHandler2);
         this.channel = ch;
         connectionState.set(ConnectionState.CONNECTED);
         LOG.infof("[SICCT] terminal=%s CONNECTED", terminal.hostname);

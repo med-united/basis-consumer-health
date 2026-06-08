@@ -119,7 +119,6 @@ public class SicctTerminalManager {
 
         future.addListener(f -> {
             if (f.isSuccess()) {
-                conn.onConnected(future.channel());
                 LOG.infof("[SICCT] connected to terminal=%s at %s:%d", terminal.hostname, terminal.ipAddress,
                         terminal.tcpPort);
             } else {

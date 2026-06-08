@@ -1,24 +1,19 @@
 package de.servicehealtherx.crypto;
 
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Produces;
-import jakarta.inject.Inject;
-import org.jboss.logging.Logger;
-
-import de.gematik.pki.gemlibpki.commons.certificate.CertificateProfile;
-import de.gematik.pki.gemlibpki.commons.certificate.CertificateType;
-import de.gematik.pki.gemlibpki.commons.certificate.TucPki018Verifier;
-import de.gematik.pki.gemlibpki.commons.tsl.TspInformationProvider;
-import de.gematik.pki.gemlibpki.commons.tsl.TspService;
-import de.gematik.pki.gemlibpki.commons.tsl.TspServiceSubset;
-import de.gematik.pki.gemlibpki.commons.utils.CertReader;
-import eu.europa.esig.trustedlist.jaxb.tsl.DigitalIdentityType;
-
 import java.security.cert.X509Certificate;
 import java.util.List;
 
 import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
+
+import org.jboss.logging.Logger;
+
+import de.gematik.pki.gemlibpki.commons.certificate.CertificateProfile;
+import de.gematik.pki.gemlibpki.commons.certificate.TucPki018Verifier;
+import de.gematik.pki.gemlibpki.commons.tsl.TspService;
+import de.gematik.pki.gemlibpki.commons.utils.CertReader;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Produces;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class TrustManagerProducer {

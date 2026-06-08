@@ -1,18 +1,19 @@
 package de.servicehealtherx.crypto.jmx;
 
+import java.lang.management.ManagementFactory;
+import java.util.List;
+
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+
+import org.jboss.logging.Logger;
+
 import de.servicehealtherx.crypto.CryptoProviderRouter;
-import de.servicehealtherx.crypto.KeyStoreAdapter;
 import de.servicehealtherx.crypto.KeyStoreDescriptor;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import org.jboss.logging.Logger;
-
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
-import java.lang.management.ManagementFactory;
-import java.util.List;
 
 @ApplicationScoped
 public class KeyStoreReloadManagement implements KeyStoreReloadManagementMBean {
@@ -42,7 +43,8 @@ public class KeyStoreReloadManagement implements KeyStoreReloadManagementMBean {
         try {
             MBeanServer server = ManagementFactory.getPlatformMBeanServer();
             ObjectName name = new ObjectName(OBJECT_NAME);
-            if (server.isRegistered(name)) server.unregisterMBean(name);
+            if (server.isRegistered(name))
+                server.unregisterMBean(name);
         } catch (Exception e) {
             LOG.warnf(e, "[JMX] failed to deregister %s", OBJECT_NAME);
         }
@@ -65,7 +67,8 @@ public class KeyStoreReloadManagement implements KeyStoreReloadManagementMBean {
         StringBuilder sb = new StringBuilder("{");
         boolean first = true;
         for (KeyStoreDescriptor desc : stores) {
-            if (!first) sb.append(",");
+            if (!first)
+                sb.append(",");
             sb.append("\"").append(desc.alias.value()).append("\":").append(reloadDescriptor(desc));
             first = false;
         }
@@ -75,19 +78,20 @@ public class KeyStoreReloadManagement implements KeyStoreReloadManagementMBean {
 
     private String reloadDescriptor(KeyStoreDescriptor desc) {
         try {
-            // SICCT adapters are no-op for reload — connections managed by quarkus-sicct-extension
+            // SICCT adapters are no-op for reload — connections managed by
+            // quarkus-sicct-extension
             if (desc.sourceType.name().equals("SICCT")) {
                 return "{\"alias\":\"" + desc.alias.value() + "\",\"availability\":\"" +
-                    desc.getAvailability() + "\",\"error\":null}";
+                        desc.getAvailability() + "\",\"error\":null}";
             }
             // engineLoad(null, null) triggers reload
             desc.markAvailable();
             return "{\"alias\":\"" + desc.alias.value() + "\",\"availability\":\"" +
-                desc.getAvailability() + "\",\"error\":null}";
+                    desc.getAvailability() + "\",\"error\":null}";
         } catch (Exception e) {
             desc.markError(e.getMessage());
             return "{\"alias\":\"" + desc.alias.value() + "\",\"availability\":\"ERROR\",\"error\":\"" +
-                e.getMessage().replace("\"", "'") + "\"}";
+                    e.getMessage().replace("\"", "'") + "\"}";
         }
     }
 }

@@ -26,7 +26,17 @@ public class SicctCodec {
     public static ByteBuf encode(SicctEnvelope e) {
         try {
             SicctPayload payload = e.getAbCmd();
-            ByteBuf bufPayload = encode(payload);
+
+            ByteBuf bufPayload;
+            // when there is no payload then the payload is a a command apdu as byte array
+            if (payload.getCommandApdu() == null) {
+                ByteBuf buf = Unpooled.buffer(12);
+                ByteBufOutputStream bbos = new ByteBufOutputStream(buf);
+                payload.encode(bbos);
+                bufPayload = buf;
+            } else {
+                bufPayload = encode(payload);
+            }
 
             ByteBuf buf = Unpooled.buffer(12 + bufPayload.readableBytes());
             buf.writeByte(e.getBMessageType().byteValue()); // 1 Byte LE

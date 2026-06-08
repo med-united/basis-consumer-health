@@ -100,12 +100,6 @@ public final class EhealthTerminalAuthenticate {
      */
     private static final byte TAG_MSG_DISPLAY = (byte) 0x62;
 
-    /** TAG Character Set DO – 0x87 (SICCT 5.5.10.20, ISO 8859-1 = 0x03) */
-    private static final byte TAG_CHARSET = (byte) 0x87;
-
-    /** Wert für Character-Set DO: ISO 8859-1 */
-    private static final byte CHARSET_ISO8859_1 = (byte) 0x03;
-
     // -------------------------------------------------------------------------
     // Konstanten – Le-Werte
     // -------------------------------------------------------------------------
@@ -206,16 +200,14 @@ public final class EhealthTerminalAuthenticate {
     // -------------------------------------------------------------------------
 
     /**
-     * Erzeugt das SICCT Message To Be Displayed DO (TAG 0x62) gemäß SICCT
+     * Erzeugt das SICCT Message To Be Displayed DO (TAG 0x50) gemäß SICCT
      * 5.5.10.21.
      *
      * <p>
      * Struktur:
      * 
      * <pre>
-     *   62 [LEN]
-     *     87 01 [charset]       ← Character Set DO (ISO 8859-1 = 0x03)
-     *     50 [LEN] [text bytes] ← Application Label DO
+     *   50 [LEN] [text bytes] ← Application Label DO
      * </pre>
      *
      * @param displayText Anzeigetext (ISO 8859-1 empfohlen, max 127 Byte nach
@@ -223,11 +215,8 @@ public final class EhealthTerminalAuthenticate {
      * @return TLV-kodiertes Display-DO
      */
     private static byte[] buildDisplayDo(String displayText) {
-        byte[] textBytes = displayText.getBytes(StandardCharsets.ISO_8859_1);
-        byte[] charsetDo = tlv(TAG_CHARSET, new byte[] { CHARSET_ISO8859_1 });
-        byte[] labelDo = tlv(TAG_APP_LABEL, textBytes);
-        byte[] inner = concat(charsetDo, labelDo);
-        return tlv(TAG_MSG_DISPLAY, inner);
+        byte[] textBytes = displayText.getBytes(StandardCharsets.US_ASCII);
+        return tlv(TAG_APP_LABEL, textBytes);
     }
 
     // -------------------------------------------------------------------------
