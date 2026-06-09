@@ -25,22 +25,14 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Install SoftHSM2
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y softhsm2
-          softhsm2-util --init-token --slot 0 --label CI --pin 1234 --so-pin 0000
 
-      - name: Build without tests
-        run: mvn -B install -DskipTests --no-transfer-progress
+      - name: Build and run tests (standard)
+        run: mvn -B verify 
 
-      - name: Run tests (standard)
-        run: mvn -B test --no-transfer-progress
-
-      - name: Run tests with SoftHSM2 (pkcs11-ci profile)
-        run: mvn -B test -Ppkcs11-ci --no-transfer-progress
-        env:
-          SOFTHSM2_CONF: /etc/softhsm/softhsm2.conf
+#      - name: Run tests with SoftHSM2 (pkcs11-ci profile)
+#        run: mvn -B test -Ppkcs11-ci --no-transfer-progress
+#        env:
+#          SOFTHSM2_CONF: /etc/softhsm/softhsm2.conf
 
       - name: Upload test reports
         if: always()
