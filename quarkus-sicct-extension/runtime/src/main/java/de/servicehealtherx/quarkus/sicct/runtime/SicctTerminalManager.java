@@ -24,6 +24,7 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
+import java.net.InetAddress;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -219,5 +220,19 @@ public class SicctTerminalManager {
         manager.initialize();
         Thread.sleep(3_000); // Wait for connection attempt and potential pairing
         manager.pairTerminal(t.macAddress);
+    }
+
+    public String getHostname() {
+        // Search for a non-null hostname in the network interfaces of the machine
+        try {
+            InetAddress localHost = InetAddress.getLocalHost();
+            String hostname = localHost.getHostName();
+            if (hostname != null && !hostname.isEmpty()) {
+                return hostname;
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to get local hostname, falling back to IP address", e);
+        }
+        return "unknown";
     }
 }

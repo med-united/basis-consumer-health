@@ -21,64 +21,19 @@ public class SicctDecoderHandlerTest {
         ByteBuf buf = Unpooled.wrappedBuffer(bytes);
         return buf;
     }
-/*
+
     @Test
-    public void test_decode() throws Exception {
-
+    public void test_decode_init_ct_session() throws Exception {
         SicctDecoder decoder = new SicctDecoder();
-        // This message should be send but not received
-        // SICCT INIT CT SESSION
         List<Object> out = new ArrayList<>();
-        int i = 1;
         decoder.decode(null, toByteBuf("83000000010000000016691213001300130C3030303030303030303033319000"), out);
-        assertEquals(out.size(), i + 1);
-        assertTrue(out.get(i) instanceof SicctEnvelope);
-
-        // SICCT REQUEST ICC
-
-        decoder.decode(null, toByteBuf("830000000200000000088004030303039000"), out);
-        assertEquals(out.size(), i + 1);
-        assertTrue(out.get(i) instanceof SicctEnvelope);
-
-        // SICCT EJECT ICC
-
-        // SICCT GET STATUS CARD TERMINAL
-
-        // SICCT GET STATUS ALL ICC
-
-        // SICCT GET STATUS CARD TERMINAL MANUFACTURER
-
-        decoder.decode(null, toByteBuf(
-                "83000000030000000081467D494E47484330313230203033303932D76C2020312020302020304B542020312020382020304F52474136313030202033202039202032202031202032202030303030323732342E30372E323032352D202020202020202020202020202020202020202020202020202020202020203031343130303030303231464231209000"),
-                out);
-        assertEquals(out.size(), i + 1);
-        assertTrue(out.get(i) instanceof SicctEnvelope);
-
-        // SICCT Interface Capabilities Data Object For Display
-
-        // SICCT Interface Capabilities Data Object For Slot
-
-        // SICCT ICC STATUS
-
-        // SICCT Interface Capabilities Functional Unit Data Object
-
-        // SICCT CLOSE CT SESSION
-
-        // EHEALTH TERMINAL AUTHENTICATE CREATE
-
-        // EHEALTH TERMINAL AUTHENTICATE VALIDATE
-
-        // EHEALTH TERMINAL AUTHENTICATE ADD NOT EXPECTING
-
-        // EHEALTH TERMINAL AUTHENTICATE ADD EXPECTING
-
-        // SICCT RESET CT
-
-        // SICCT OUTPUT
-
-        // SICCT PERFORM VERIFICATION
-
-        // SICCT APDU Response
+        assertEquals(1, out.size());
+        assertTrue(out.get(0) instanceof SicctEnvelope);
+        SicctEnvelope envelope = (SicctEnvelope) out.get(0);
+        assertEquals(0x83L, envelope.getBMessageType().longValue());
+        assertEquals(0x0000L, envelope.getWSrcOrDesAddr().longValue());
+        assertEquals(0x0001L, envelope.getWSeq().longValue());
+        assertEquals(0x16L, envelope.getDwLength().longValue());
     }
- */
+
 }

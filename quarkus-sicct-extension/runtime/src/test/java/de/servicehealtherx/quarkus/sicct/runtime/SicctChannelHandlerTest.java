@@ -60,6 +60,12 @@ public class SicctChannelHandlerTest {
         assertEquals(expected, sentHex);
     }
 
+    @Test
+    public void test_format_mac_address_for_display() {
+        String formatted = SicctChannelHandler.formatMacAddressForDisplay("aa:bb:cc:dd:ee:ff");
+        assertEquals("AABBCC:DDEEFF", formatted);
+    }
+
     private String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) {

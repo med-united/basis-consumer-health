@@ -1,6 +1,17 @@
 package de.servicehealtherx.quarkus.sicct.runtime;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.PublicKey;
+import java.security.Signature;
 import java.security.cert.X509Certificate;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import org.jboss.logging.Logger;
 
@@ -43,6 +54,10 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
 
     private int sequenceNumber = 1; // For correlating requests/responses per FR-023, FR-092
 
+    public Map<Integer, Consumer<SicctEnvelope>> pendingOperations = new ConcurrentHashMap<>();
+
+    private X509Certificate terminalTLSCertificate;
+
     public SicctChannelHandler(SicctTerminalConnection connection, SicctTerminalManager manager) {
         this.connection = connection;
         this.manager = manager;
@@ -54,28 +69,29 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         // when the ssl handshake is successful
         if (evt == SslHandshakeCompletionEvent.SUCCESS) {
             SslHandler sslhandler = (SslHandler) ctx.channel().pipeline().get("ssl");
-            X509Certificate cert = (X509Certificate) sslhandler.engine().getSession().getPeerCertificates()[0];
+            terminalTLSCertificate = (X509Certificate) sslhandler.engine().getSession().getPeerCertificates()[0];
             byte[] savedCertBytes = connection.getTerminal().smktAutCertificate;
 
             if (savedCertBytes == null) {
                 LOG.warnf(
                         "[SICCT] TLS handshake successful for terminal=%s, but no SMK Aut certificate was previously stored! Saving new certificate: %s",
                         connection.getTerminalId(),
-                        cert.getSubjectX500Principal().getName());
-                connection.getTerminal().smktAutCertificate = cert.getEncoded();
+                        terminalTLSCertificate.getSubjectX500Principal().getName());
+                connection.getTerminal().smktAutCertificate = terminalTLSCertificate.getEncoded();
                 return;
             }
             X509Certificate savedCert = CertReader.readX509(savedCertBytes);
-            if (!cert.equals(savedCert)) {
+            if (!terminalTLSCertificate.equals(savedCert)) {
                 LOG.warnf(
                         "[SICCT] TLS handshake successful for terminal=%s, but SMK Aut certificate has changed! Previous: %s, New: %s",
                         connection.getTerminalId(),
-                        savedCert.getSubjectX500Principal().getName(), cert.getSubjectX500Principal().getName());
+                        savedCert.getSubjectX500Principal().getName(),
+                        terminalTLSCertificate.getSubjectX500Principal().getName());
             } else {
                 LOG.debugf(
                         "[SICCT] TLS handshake successful for terminal=%s, SMK Aut certificate matches previously stored certificate: %s",
                         connection.getTerminalId(),
-                        cert.getSubjectX500Principal().getName());
+                        terminalTLSCertificate.getSubjectX500Principal().getName());
             }
         }
     }
@@ -116,15 +132,67 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
     }
 
     void ehealthTerminalAuthenticateCreate() {
-        SicctEnvelope sicctEnvelop = createSicctEnvelop();
 
         byte[] sharedSecret = EhealthTerminalAuthenticate.generateSharedSecret();
+        SicctEnvelope sicctEnvelop = createSicctEnvelop((sicctEnvelope) -> {
+            ByteArrayOutputStream signedData = new ByteArrayOutputStream();
+            try {
+                sicctEnvelope.getAbCmd().getResponseApdu().getResponseData().encode(signedData, false);
+                byte[] signatureBytes = signedData.toByteArray();
+                LOG.debugf("Shared secret: %s Signature: %s", HexFormat.of().formatHex(sharedSecret),
+                        HexFormat.of().formatHex(signatureBytes));
+                validateSignature(sharedSecret,
+                        signatureBytes, terminalTLSCertificate);
+            } catch (IOException | GeneralSecurityException e) {
+                LOG.errorf(e, "Error validating signature with sharedSecret");
+
+            }
+        });
         connection.getTerminal().sealedSharedSecret = sharedSecret;
-        byte[] createApdu = EhealthTerminalAuthenticate.buildCreate(sharedSecret, "Mit Basis Consumer Health pairen?");
+        // Display Message „KT:$CT.MAC_ADRESS MIT KON:$MGM_KONN_HOSTNAME PAIREN OK?“,
+        // wobei die MAC-Adresse mit Trenner im folgenden Format dargestellt werden
+        // MUSS: „AABBCC:DDEEFF“
+        byte[] createApdu = EhealthTerminalAuthenticate.buildCreate(sharedSecret,
+                "KT:" + formatMacAddressForDisplay(connection.getTerminal().macAddress) + " MIT\n" + //
+                        "      KON:" + manager.getHostname() + " PAIREN OK?");
         sicctEnvelop.setDwLength(new BerInteger(createApdu.length));
         sicctEnvelop.setAbCmd(new SicctPayload(createApdu));
         sendSicctEnvelope(sicctEnvelop);
 
+    }
+
+    private void validateSignature(byte[] sharedSecret, byte[] signatureBytes,
+            X509Certificate terminalTLSCertificate) throws GeneralSecurityException {
+
+        // 1. SHA-256 über sharedSecret bilden
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] sharedSecretHash = digest.digest(sharedSecret);
+
+        // 4. Algorithmus je nach Zertifikatstyp bestimmen
+        PublicKey publicKey = terminalTLSCertificate.getPublicKey();
+        String algorithm = switch (publicKey.getAlgorithm()) {
+            case "RSA" -> "SHA256withRSA";
+            case "EC" -> "SHA256withECDSA";
+            default -> throw new GeneralSecurityException(
+                    "Unsupported key algorithm: " + publicKey.getAlgorithm());
+        };
+
+        // 5. Signature-Objekt initialisieren
+        Signature signature = Signature.getInstance(algorithm, "BC");
+        signature.initVerify(publicKey);
+
+        // 6. sharedSecretHash + Nutzdaten einspeisen
+        signature.update(sharedSecretHash);
+
+        // 7. Validieren
+        boolean valid = signature.verify(signatureBytes);
+        if (!valid) {
+            throw new GeneralSecurityException("Signature validation failed");
+        }
+    }
+
+    static String formatMacAddressForDisplay(String macAddress) {
+        return macAddress.toUpperCase().replaceAll("(.{2}):(.{2}):(.{2}):(.{2}):(.{2}):(.{2})", "$1$2$3:$4$5$6");
     }
 
     @Override
@@ -141,6 +209,16 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
 
         // Handle APDU response, update correlation state, trigger pending operations as
         // needed
+
+        if (msg instanceof SicctEnvelope) {
+            SicctEnvelope sicctEnvelope = (SicctEnvelope) msg;
+            Consumer<SicctEnvelope> operation = pendingOperations.remove(sicctEnvelope.getWSeq().intValue());
+            if (operation != null) {
+                LOG.debugf("[SICCT] dispatching response for sequence number %d to pending operation for terminal=%s",
+                        sicctEnvelope.getWSeq().intValue(), connection.getTerminalId());
+                operation.accept(sicctEnvelope);
+            }
+        }
 
         // Events
 
@@ -309,11 +387,20 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
     }
 
     private SicctEnvelope createSicctEnvelop() {
+        return createSicctEnvelop(null);
+    }
+
+    private SicctEnvelope createSicctEnvelop(Consumer<SicctEnvelope> responseHandler) {
         SicctEnvelope sicctEnvelop = new SicctEnvelope();
 
         sicctEnvelop.setBMessageType(SICCT.C_COMMAND);
         sicctEnvelop.setWSrcOrDesAddr(SICCT.TERMINAL_ADDRESS); // Arbitrary message ID for INIT CT SESSION
         sicctEnvelop.setWSeq(new SicctSequenceNumber(sequenceNumber));
+
+        if (responseHandler != null) {
+            pendingOperations.put(sequenceNumber, responseHandler);
+        }
+
         sequenceNumber++; // Increment for next message
         sicctEnvelop.setAbRFU(new BerOctetString(new byte[] {}));
         return sicctEnvelop;

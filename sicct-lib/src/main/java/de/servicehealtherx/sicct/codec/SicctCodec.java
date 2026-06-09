@@ -1,23 +1,33 @@
 package de.servicehealtherx.sicct.codec;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.List;
+
+import javax.smartcardio.ResponseAPDU;
 
 import org.jboss.logging.Logger;
 
 import com.beanit.asn1bean.ber.ReverseByteArrayOutputStream;
 
+import com.beanit.asn1bean.ber.types.BerInteger;
+
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufOutputStream;
 import io.netty.buffer.Unpooled;
+
 import sicct.protocol._1._3._0.CTSESSDO;
 import sicct.protocol._1._3._0.CommandAPDU;
 import sicct.protocol._1._3._0.CommandAPDU.CommandData;
 import sicct.protocol._1._3._0.CommandHeader;
+import sicct.protocol._1._3._0.ResponseAPDU.ResponseData;
 import sicct.protocol._1._3._0.SicctDataObject;
 import sicct.protocol._1._3._0.SicctEnvelope;
+import sicct.protocol._1._3._0.SicctFuAddress;
+import sicct.protocol._1._3._0.SicctMessageType;
 import sicct.protocol._1._3._0.SicctPayload;
+import sicct.protocol._1._3._0.SicctSequenceNumber;
+import sicct.protocol._1._3._0.StatusWord;
 
 public class SicctCodec {
 
@@ -97,12 +107,65 @@ public class SicctCodec {
     }
 
     public static SicctEnvelope decode(ByteBuf in) throws IOException {
-        // Implement decoding logic to read from ByteBuf and construct a SicctEnvelope
-        // This will involve reading the header fields and then the payload based on the
-        // length
-        try (ByteBufInputStream bais = new ByteBufInputStream(in)) {
-            bais.readAllBytes();
+        if (in.readableBytes() < 10) {
+            return null;
         }
-        return null; // Placeholder for actual implementation
+
+        int messageType = in.readUnsignedByte();
+        int srcOrDesAddr = in.readUnsignedShort();
+        int seq = in.readUnsignedShort();
+        in.readByte(); // RFU
+        long dwLength = in.readUnsignedInt();
+
+        if (in.readableBytes() < dwLength) {
+            return null;
+        }
+
+        byte[] payloadBytes = new byte[(int) dwLength];
+        in.readBytes(payloadBytes);
+
+        SicctEnvelope envelope = new SicctEnvelope();
+        envelope.setBMessageType(new SicctMessageType(messageType));
+        envelope.setWSrcOrDesAddr(new SicctFuAddress(srcOrDesAddr));
+        envelope.setWSeq(new SicctSequenceNumber(seq));
+        envelope.setDwLength(new BerInteger(dwLength));
+        envelope.setAbCmd(decodeSicctPayload(payloadBytes));
+
+        return envelope;
+    }
+
+    public static SicctPayload decodeSicctPayload(byte[] payload) {
+
+        ResponseAPDU responseApduJava = new ResponseAPDU(payload);
+
+        SicctPayload sicctPayload = new SicctPayload();
+        // fill payload with response apdu data for further processing in the channel
+        // handler
+        sicct.protocol._1._3._0.ResponseAPDU responseApduSicct = new sicct.protocol._1._3._0.ResponseAPDU();
+
+        StatusWord statusWord = new StatusWord();
+        statusWord.setSw1(new BerInteger(responseApduJava.getSW1()));
+        statusWord.setSw2(new BerInteger(responseApduJava.getSW2()));
+
+        responseApduSicct.setTrailer(statusWord);
+
+        sicctPayload.setResponseApdu(responseApduSicct);
+
+        byte[] data = responseApduJava.getData();
+        ResponseData responseData = new sicct.protocol._1._3._0.ResponseAPDU.ResponseData(data);
+        responseApduSicct.setResponseData(responseData);
+
+        SicctDataObject dataObject = new SicctDataObject();
+        try (ByteArrayInputStream in = new ByteArrayInputStream(data)) {
+            if (data != null && data.length > 0) {
+                dataObject.decode(in);
+                responseData.getSicctDataObject().add(dataObject);
+            }
+        } catch (IOException e) {
+            LOG.warnf(e,
+                    "Failed to decode data object from response APDU. This is normal and happens when no data was supplied");
+        }
+
+        return sicctPayload;
     }
 }
