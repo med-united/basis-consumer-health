@@ -1,0 +1,34 @@
+@startuml component
+skinparam componentStyle rectangle
+skinparam defaultFontName Helvetica
+
+package "crypto-p12-lib" {
+  [P12CryptoProvider] as provider
+}
+
+package "crypto-lib" {
+  [P12KeyStoreAdapter] as adapter
+  [P12KeyStoreConfig] as config
+  [KeyStoreDescriptor] as descriptor
+  interface "CryptoProvider" as iface
+}
+
+provider -up-|> iface : implements
+provider --> adapter : owns 0..*
+provider ..> config : @Inject (startup)
+adapter --> descriptor : owns 1
+adapter --> "KeyStore\n(PKCS12)" : loads
+
+note right of config
+  quarkus.crypto.p12[*]
+  .alias / .path /
+  .keystorePassword
+end note
+
+note bottom of provider
+  @ApplicationScoped
+  @PostConstruct loads all
+  adapters from config
+end note
+
+@enduml

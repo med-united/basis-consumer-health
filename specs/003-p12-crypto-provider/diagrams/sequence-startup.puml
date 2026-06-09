@@ -1,0 +1,48 @@
+@startuml sequence-startup
+skinparam defaultFontName Helvetica
+
+actor "Quarkus CDI\nContainer" as CDI
+participant "P12CryptoProvider" as provider
+participant "P12KeyStoreConfig" as config
+participant "P12KeyStoreAdapter" as adapter
+participant "KeyStoreDescriptor" as desc
+participant "PKCS12 File\n(disk)" as file
+
+CDI -> provider : @PostConstruct init()
+activate provider
+
+provider -> config : keystores()
+activate config
+config --> provider : List<P12Entry> [aut, enc, osig]
+deactivate config
+
+loop for each P12Entry e
+  provider -> adapter : new P12KeyStoreAdapter(\n  e.alias(), e.path(),\n  e.keystorePassword(),\n  e.entryPasswordOrKeystore())
+  activate adapter
+  adapter -> desc : new KeyStoreDescriptor(alias, P12)\n→ UNAVAILABLE
+  adapter --> provider : adapter
+  deactivate adapter
+
+  provider -> adapter : engineLoad(null, null)
+  activate adapter
+  alt file exists & password correct
+    adapter -> file : FileInputStream(p12Path)
+    file --> adapter : bytes
+    adapter -> adapter : KeyStore.getInstance("PKCS12")\n.load(stream, keystorePassword)
+    adapter -> desc : markAvailable()
+    adapter --> provider : (success)
+  else file missing or bad password
+    adapter -> desc : markError(e.getMessage())
+    adapter --> provider : throws IOException
+    provider -> provider : log.warn("[P12] failed to load alias=...")
+    note right: password NOT in log
+  end
+  deactivate adapter
+
+  provider -> provider : adapters.put(e.alias(), adapter)
+end
+
+CDI <-- provider : (bean ready)
+deactivate provider
+
+@enduml
