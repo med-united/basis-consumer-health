@@ -2,15 +2,28 @@
 title Basis Consumer — Domain Class Diagram (Key Entities)
 skinparam classAttributeIconSize 0
 
-interface CryptoProvider <<CDI @ApplicationScoped>> {
-  + sign(alias: String, params: CryptoParameters, data: byte[]): byte[]
-  + verify(alias: String, params: CryptoParameters, data: byte[], signature: byte[]): boolean
-  + decrypt(alias: String, params: CryptoParameters, ciphertext: byte[]): byte[]
-  + encrypt(alias: String, params: CryptoParameters, plaintext: byte[]): byte[]
-  + listKeyStores(): List<KeyStoreAdapter>
-  + getAvailability(alias: String): AvailabilityStatus
-  + getAvailabilities(): Map<String, AvailabilityStatus>
+interface CryptoProvider <<CDI interface>> {
+  + sign(request: CryptoOperationRequest): CryptoOperationResult
+  + verify(request: CryptoOperationRequest, signature: byte[]): boolean
+  + decrypt(request: CryptoOperationRequest): CryptoOperationResult
+  + encrypt(request: CryptoOperationRequest): CryptoOperationResult
+  + listKeyStores(): List<KeyStoreDescriptor>
+  + getAvailability(alias: KeyAlias): KeyStoreAvailability
+  + getAvailabilities(): Map<String, KeyStoreAvailability>
 }
+
+class P12CryptoProvider <<crypto-p12-lib\n@ApplicationScoped>> {
+}
+
+class PcscCryptoProvider <<crypto-pcsc-lib\n@ApplicationScoped>> {
+}
+
+class SicctCryptoProvider <<crypto-sicct-lib\n@ApplicationScoped>> {
+}
+
+P12CryptoProvider ..|> CryptoProvider
+PcscCryptoProvider ..|> CryptoProvider
+SicctCryptoProvider ..|> CryptoProvider
 
 ' ── JDK standard interfaces ──────────────────────────────────────────────────
 abstract class "java.security.KeyStoreSpi" <<JDK>> {
@@ -231,7 +244,9 @@ class AuditLogEntry <<JPA entity>> {
 }
 
 ' ── Relationships ─────────────────────────────────────────────────────────────
-CryptoProvider o-- "1..*" KeyStoreAdapter : routes by alias prefix / listKeyStores
+P12CryptoProvider o-- "0..*" KeyStoreAdapter : manages P12 adapters
+PcscCryptoProvider o-- "0..*" KeyStoreAdapter : manages PC/SC adapters
+SicctCryptoProvider o-- "0..*" KeyStoreAdapter : manages SICCT adapters
 CryptoProvider ..> CryptoParameters : <<uses>>
 KeyStoreAdapter ..> CryptoParameters  : <<uses>>
 KeyStoreAdapter ..> PrivateKeyReference : sign / decrypt (via engineGetKey)

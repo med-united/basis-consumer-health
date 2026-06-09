@@ -19,6 +19,22 @@ package "crypto-lib\n(gemLibPki@4.0.2 · incl. Bouncy Castle)" {
   [TslDownloader\n(auto-update trust list)] as TSL
   [CertificateParser\n(RegNr · SMC-B · eHBA attributes)] as CPARS
   [TrustService\n(CDI @ApplicationScoped)] as TSVC
+  interface "CryptoProvider\n(CDI interface)" as CPROV_IFACE
+}
+
+' ── crypto-p12-lib ─────────────────────────────────────────────────
+package "crypto-p12-lib\n(crypto-lib)" {
+  [P12CryptoProvider\n(@ApplicationScoped)] as P12PROV
+}
+
+' ── crypto-pcsc-lib ────────────────────────────────────────────────
+package "crypto-pcsc-lib\n(crypto-lib)" {
+  [PcscCryptoProvider\n(@ApplicationScoped)] as PCSCPROV
+}
+
+' ── crypto-sicct-lib ───────────────────────────────────────────────
+package "crypto-sicct-lib\n(crypto-lib · sicct-lib)" {
+  [SicctCryptoProvider\n(@ApplicationScoped)] as SICCTPROV
 }
 
 ' ── sicct-lib ──────────────────────────────────────────────────────
@@ -38,8 +54,8 @@ package "quarkus-sicct-extension\n(sicct-lib · Quarkus · Netty)" {
 
 ' ── crypto-services-lib ────────────────────────────────────────────
 package "crypto-services-lib\n(crypto-lib · NO sicct-lib dependency)" {
-  [SignatureService\n(sign · ExternalAuthenticate)] as SIGI
-  [EncryptionService\n(encrypt · decrypt)] as ENCI
+  [SignatureService\n(sign · ExternalAuthenticate\nInstance<CryptoProvider>)] as SIGI
+  [EncryptionService\n(encrypt · decrypt\nInstance<CryptoProvider>)] as ENCI
   [CertificateService\n(read · verify)] as CERTI
 }
 
@@ -96,6 +112,11 @@ KS_AKI --> KS_SIG
 SMTP --> KIM_MSG
 POP3 --> KIM_MSG
 
+' ── Provider implementations → CryptoProvider interface ───────────
+P12PROV ..|> CPROV_IFACE
+PCSCPROV ..|> CPROV_IFACE
+SICCTPROV ..|> CPROV_IFACE
+
 ' ── Cross-module dependencies ─────────────────────────────────────
 ' sicct-lib → crypto-lib
 EAUTH ..> TSVC : cert validation
@@ -105,9 +126,12 @@ KSSPI ..> CPARS : SAK.AUT cert parsing
 STM ..> EAUTH : EHEALTH AUTHENTICATE
 STM ..> KSSPI : card slot access
 
-' crypto-services-lib → crypto-lib
-SIGI ..> TSVC
-ENCI ..> TSVC
+' crypto-sicct-lib → sicct-lib
+SICCTPROV ..> STM : terminal access
+
+' crypto-services-lib → crypto-lib (via Instance<CryptoProvider>)
+SIGI ..> CPROV_IFACE : Instance<CryptoProvider>
+ENCI ..> CPROV_IFACE : Instance<CryptoProvider>
 CERTI ..> CPARS
 
 ' api-telematik WSDLs → SOAP servers (CXF wsdl2java)

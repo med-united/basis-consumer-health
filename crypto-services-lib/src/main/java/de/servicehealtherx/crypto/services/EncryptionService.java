@@ -3,9 +3,11 @@ package de.servicehealtherx.crypto.services;
 import de.servicehealtherx.crypto.CryptoProvider;
 import de.servicehealtherx.crypto.TrustService;
 import de.servicehealtherx.crypto.KeyAlias;
+import de.servicehealtherx.crypto.KeyStoreAvailability;
 import de.servicehealtherx.crypto.model.CryptoOperationRequest;
 import de.servicehealtherx.crypto.model.CryptoOperationResult;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
@@ -18,7 +20,7 @@ public class EncryptionService {
     private static final Logger LOG = Logger.getLogger(EncryptionService.class);
 
     @Inject
-    CryptoProvider cryptoProvider;
+    Instance<CryptoProvider> cryptoProviders;
 
     @Inject
     TrustService trustService;
@@ -134,6 +136,15 @@ public class EncryptionService {
         return result;
     }
 
+    private CryptoProvider getCryptoProviderForAlias(KeyAlias alias) {
+        for (CryptoProvider provider : cryptoProviders) {
+            if (provider.getAvailability(alias) == KeyStoreAvailability.AVAILABLE) {
+                return provider;
+            }
+        }
+        throw new RuntimeException("No CryptoProvider found for alias: " + alias);
+    }
+
     private byte[] unwrapKeyViaProvider(byte[] ciphertext, KeyAlias alias, String callerIdentity) {
         int keyLen = ((ciphertext[0] & 0xFF) << 8) | (ciphertext[1] & 0xFF);
         byte[] wrappedKey = new byte[keyLen];
@@ -141,7 +152,7 @@ public class EncryptionService {
 
         CryptoOperationRequest req = new CryptoOperationRequest(alias, "RSA/ECB/OAEPWithSHA-256AndMGF1Padding",
             wrappedKey, callerIdentity);
-        CryptoOperationResult result = cryptoProvider.decrypt(req);
+        CryptoOperationResult result = getCryptoProviderForAlias(alias).decrypt(req);
         return result.result;
     }
 

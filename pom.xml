@@ -15,6 +15,9 @@
     <modules>
         <module>api-telematik</module>
         <module>crypto-lib</module>
+        <module>crypto-p12-lib</module>
+        <module>crypto-pcsc-lib</module>
+        <module>crypto-sicct-lib</module>
         <module>sicct-lib</module>
         <module>quarkus-sicct-extension</module>
         <module>crypto-services-lib</module>
@@ -74,6 +77,21 @@
             <dependency>
                 <groupId>de.servicehealtherx</groupId>
                 <artifactId>crypto-lib</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>crypto-p12-lib</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>crypto-pcsc-lib</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>crypto-sicct-lib</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

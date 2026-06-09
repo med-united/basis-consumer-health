@@ -28,6 +28,18 @@
 
         <dependency>
             <groupId>de.servicehealtherx</groupId>
+            <artifactId>crypto-p12-lib</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>crypto-pcsc-lib</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>crypto-sicct-lib</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
             <artifactId>quarkus-sicct-extension</artifactId>
         </dependency>
         <dependency>

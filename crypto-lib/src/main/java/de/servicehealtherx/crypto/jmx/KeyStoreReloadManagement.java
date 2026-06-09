@@ -1,6 +1,7 @@
 package de.servicehealtherx.crypto.jmx;
 
 import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.management.MBeanServer;
@@ -8,11 +9,12 @@ import javax.management.ObjectName;
 
 import org.jboss.logging.Logger;
 
-import de.servicehealtherx.crypto.CryptoProviderRouter;
+import de.servicehealtherx.crypto.CryptoProvider;
 import de.servicehealtherx.crypto.KeyStoreDescriptor;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 
 @ApplicationScoped
@@ -22,7 +24,7 @@ public class KeyStoreReloadManagement implements KeyStoreReloadManagementMBean {
     private static final String OBJECT_NAME = "de.servicehealtherx:module=crypto-lib,name=KeyStoreReloadManagement";
 
     @Inject
-    CryptoProviderRouter cryptoProviderRouter;
+    Instance<CryptoProvider> cryptoProviders;
 
     @PostConstruct
     void registerMBean() {
@@ -52,10 +54,11 @@ public class KeyStoreReloadManagement implements KeyStoreReloadManagementMBean {
 
     @Override
     public String reloadKeyStore(String storeType, String alias) {
-        List<KeyStoreDescriptor> stores = cryptoProviderRouter.listKeyStores();
-        for (KeyStoreDescriptor desc : stores) {
-            if (desc.alias.value().equals(alias)) {
-                return reloadDescriptor(desc);
+        for (CryptoProvider provider : cryptoProviders) {
+            for (KeyStoreDescriptor desc : provider.listKeyStores()) {
+                if (desc.alias.value().equals(alias)) {
+                    return reloadDescriptor(desc);
+                }
             }
         }
         return "{\"alias\":\"" + alias + "\",\"availability\":\"KEY_NOT_FOUND\",\"error\":\"alias not registered\"}";
@@ -63,7 +66,11 @@ public class KeyStoreReloadManagement implements KeyStoreReloadManagementMBean {
 
     @Override
     public String reloadAllKeyStores() {
-        List<KeyStoreDescriptor> stores = cryptoProviderRouter.listKeyStores();
+        List<KeyStoreDescriptor> stores = new ArrayList<>();
+        for (CryptoProvider provider : cryptoProviders) {
+            stores.addAll(provider.listKeyStores());
+        }
+
         StringBuilder sb = new StringBuilder("{");
         boolean first = true;
         for (KeyStoreDescriptor desc : stores) {
@@ -78,13 +85,10 @@ public class KeyStoreReloadManagement implements KeyStoreReloadManagementMBean {
 
     private String reloadDescriptor(KeyStoreDescriptor desc) {
         try {
-            // SICCT adapters are no-op for reload — connections managed by
-            // quarkus-sicct-extension
             if (desc.sourceType.name().equals("SICCT")) {
                 return "{\"alias\":\"" + desc.alias.value() + "\",\"availability\":\"" +
                         desc.getAvailability() + "\",\"error\":null}";
             }
-            // engineLoad(null, null) triggers reload
             desc.markAvailable();
             return "{\"alias\":\"" + desc.alias.value() + "\",\"availability\":\"" +
                     desc.getAvailability() + "\",\"error\":null}";

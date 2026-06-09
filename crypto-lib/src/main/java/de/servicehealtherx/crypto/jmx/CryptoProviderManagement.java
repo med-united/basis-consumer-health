@@ -7,6 +7,7 @@ import de.servicehealtherx.crypto.KeyStoreDescriptor;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
@@ -24,7 +25,7 @@ public class CryptoProviderManagement implements CryptoProviderManagementMBean {
     private static final String OBJECT_NAME = "de.servicehealtherx:module=crypto-lib,name=CryptoProviderManagement";
 
     @Inject
-    CryptoProvider cryptoProvider;
+    Instance<CryptoProvider> cryptoProviders;
 
     @PostConstruct
     void registerMBean() {
@@ -55,14 +56,17 @@ public class CryptoProviderManagement implements CryptoProviderManagementMBean {
 
     @Override
     public String listKeyStores() {
-        List<KeyStoreDescriptor> stores = cryptoProvider.listKeyStores();
+        List<KeyStoreDescriptor> stores = cryptoProviders.stream()
+                .flatMap(p -> p.listKeyStores().stream())
+                .collect(Collectors.toList());
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < stores.size(); i++) {
             KeyStoreDescriptor d = stores.get(i);
-            if (i > 0) sb.append(",");
+            if (i > 0)
+                sb.append(",");
             sb.append("{\"storeType\":\"").append(d.sourceType).append("\"")
-              .append(",\"alias\":\"").append(d.alias.value()).append("\"")
-              .append(",\"availability\":\"").append(d.getAvailability()).append("\"}");
+                    .append(",\"alias\":\"").append(d.alias.value()).append("\"")
+                    .append(",\"availability\":\"").append(d.getAvailability()).append("\"}");
         }
         sb.append("]");
         return sb.toString();
@@ -76,8 +80,13 @@ public class CryptoProviderManagement implements CryptoProviderManagementMBean {
     @Override
     public String getAvailability(String alias) {
         try {
-            KeyStoreAvailability avail = cryptoProvider.getAvailability(new KeyAlias(alias));
-            return avail.name();
+            for (CryptoProvider provider : cryptoProviders) {
+                KeyStoreAvailability avail = provider.getAvailability(new KeyAlias(alias));
+                if (avail != KeyStoreAvailability.UNAVAILABLE) {
+                    return avail.name();
+                }
+            }
+            return KeyStoreAvailability.UNAVAILABLE.name();
         } catch (IllegalArgumentException e) {
             return "KEY_NOT_FOUND";
         }
@@ -85,11 +94,14 @@ public class CryptoProviderManagement implements CryptoProviderManagementMBean {
 
     @Override
     public String getAvailabilities() {
-        Map<String, KeyStoreAvailability> map = cryptoProvider.getAvailabilities();
+        Map<String, KeyStoreAvailability> map = cryptoProviders.stream()
+                .flatMap(p -> p.getAvailabilities().entrySet().stream())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         StringBuilder sb = new StringBuilder("{");
         boolean first = true;
         for (Map.Entry<String, KeyStoreAvailability> entry : map.entrySet()) {
-            if (!first) sb.append(",");
+            if (!first)
+                sb.append(",");
             sb.append("\"").append(entry.getKey()).append("\":\"").append(entry.getValue()).append("\"");
             first = false;
         }
