@@ -44,6 +44,7 @@
         <quarkus-cxf.version>3.36.0</quarkus-cxf.version>
         <configsource-db.version>2.0.0</configsource-db.version>
         <tss-java.version>0.3.0</tss-java.version>
+        <pdfbox.version>3.0.5</pdfbox.version>
 
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -67,6 +68,11 @@
                 <version>${quarkus-cxf.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>pdfbox</artifactId>
+                <version>${pdfbox.version}</version>
             </dependency>
             <!-- Internal modules -->
             <dependency>

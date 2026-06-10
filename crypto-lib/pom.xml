@@ -34,6 +34,13 @@
             <artifactId>quarkus-scheduler</artifactId>
         </dependency>
 
+        <!-- PAdES: PDFBox embeds the CMS SignedData inside the PDF /Contents
+             dictionary via incremental update. Used by PadesSignature.java. -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+        </dependency>
+
         <!-- TI PKI: TSL download, cert validation, OCSP -->
         <dependency>
             <groupId>de.gematik.pki</groupId>
