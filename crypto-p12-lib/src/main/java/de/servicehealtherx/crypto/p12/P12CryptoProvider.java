@@ -66,20 +66,20 @@ public class P12CryptoProvider implements CryptoProvider {
     @Override
     public CryptoOperationResult encrypt(CryptoOperationRequest request) {
         throw new UnsupportedOperationException(
-            "P12CryptoProvider does not support encrypt — ECIES hybrid encryption is tracked in a dedicated feature");
+                "P12CryptoProvider does not support encrypt — ECIES hybrid encryption is tracked in a dedicated feature");
     }
 
     @Override
     public CryptoOperationResult decrypt(CryptoOperationRequest request) {
         throw new UnsupportedOperationException(
-            "P12CryptoProvider does not support decrypt — ECIES hybrid decryption is tracked in a dedicated feature");
+                "P12CryptoProvider does not support decrypt — ECIES hybrid decryption is tracked in a dedicated feature");
     }
 
     @Override
     public List<KeyStoreDescriptor> listKeyStores() {
         return adapters.stream()
-            .map(P12KeyStoreAdapter::descriptor)
-            .collect(Collectors.toList());
+                .map(P12KeyStoreAdapter::descriptor)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -94,9 +94,8 @@ public class P12CryptoProvider implements CryptoProvider {
     @Override
     public Map<String, KeyStoreAvailability> getAvailabilities() {
         return adapters.stream().collect(Collectors.toMap(
-            a -> a.descriptor().alias.value(),
-            a -> a.descriptor().getAvailability()
-        ));
+                a -> a.descriptor().alias.value(),
+                a -> a.descriptor().getAvailability()));
     }
 
     void registerAdapter(P12KeyStoreAdapter adapter) {
@@ -109,7 +108,7 @@ public class P12CryptoProvider implements CryptoProvider {
             }
             adapters.add(adapter);
             LOG.infof("[P12Provider] registered adapter alias=%s availability=%s",
-                aliasValue, adapter.descriptor().getAvailability());
+                    aliasValue, adapter.descriptor().getAvailability());
         } finally {
             writeLock.unlock();
         }
@@ -118,7 +117,8 @@ public class P12CryptoProvider implements CryptoProvider {
     private P12KeyStoreAdapter resolve(KeyAlias alias) {
         if (alias.sourceType() != SourceType.P12) {
             throw new IllegalArgumentException(
-                "P12CryptoProvider cannot handle alias with source type " + alias.sourceType() + ": " + alias.value());
+                    "P12CryptoProvider cannot handle alias with source type " + alias.sourceType() + ": "
+                            + alias.value());
         }
         P12KeyStoreAdapter adapter = byAlias.get(alias.value());
         if (adapter == null) {
@@ -126,9 +126,9 @@ public class P12CryptoProvider implements CryptoProvider {
         }
         if (adapter.descriptor().getAvailability() != KeyStoreAvailability.AVAILABLE) {
             throw new IllegalStateException(
-                "P12 keystore for alias " + alias.value() + " is not available: "
-                    + adapter.descriptor().getAvailability()
-                    + " — " + adapter.descriptor().getErrorMessage());
+                    "P12 keystore for alias " + alias.value() + " is not available: "
+                            + adapter.descriptor().getAvailability()
+                            + " — " + adapter.descriptor().getErrorMessage());
         }
         return adapter;
     }
