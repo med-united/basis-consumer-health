@@ -1,0 +1,47 @@
+@startuml component
+skinparam componentStyle rectangle
+skinparam defaultFontName Helvetica
+
+package "crypto-p12-lib" {
+  [P12CryptoProvider] as provider
+  [P12CertScanner] as scanner
+  [P12CryptoConfig] as config
+  [P12CertManagement\n<<MBean>>] as mbean
+}
+
+package "crypto-lib" {
+  [P12KeyStoreAdapter] as adapter
+  [KeyStoreDescriptor] as descriptor
+  interface "CryptoProvider" as iface
+}
+
+provider -up-|> iface : implements
+provider --> adapter : owns 0..*
+provider ..> config : @Inject
+provider ..> scanner : @Inject (startup)
+adapter --> descriptor : owns 1
+adapter --> "KeyStore\n(PKCS12)" : loads
+
+mbean --> provider : registers adapters (upload)
+mbean ..> provider : delegates listCertificates
+
+note right of config
+  quarkus.crypto.p12.certs-dir
+  (filesystem path, no per-cert entries)
+end note
+
+note bottom of scanner
+  1. bootstrap copy: classpath → certs-dir
+  2. Files.walk → read password.txt sibling
+  3. derive alias, construct + load adapters
+end note
+
+note bottom of mbean
+  JMX: de.servicehealtherx:
+  module=crypto-p12-lib,
+  name=P12CertManagement
+  ops: uploadCertificate,
+       listCertificates
+end note
+
+@enduml

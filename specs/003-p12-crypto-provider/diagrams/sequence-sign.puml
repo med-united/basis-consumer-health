@@ -1,0 +1,30 @@
+@startuml sequence-sign
+skinparam defaultFontName Helvetica
+
+participant "Caller" as caller
+participant "P12CryptoProvider" as provider
+participant "P12KeyStoreAdapter" as adapter
+
+caller -> provider : sign(request)
+activate provider
+
+provider -> provider : validate SourceType == P12
+note right: throws IllegalArgumentException\nif alias is pcsc/, pkcs11/, or sicct/
+
+provider -> provider : adapters.get(request.alias.value())
+note right: throws IllegalArgumentException\nif alias not registered
+
+provider -> adapter : sign(request)
+activate adapter
+adapter -> adapter : ensureLoaded()\n→ check keyStore != null && AVAILABLE
+adapter -> adapter : extractEntryAlias()
+adapter -> adapter : keyStore.getKey(entryAlias, entryPassword)
+adapter -> adapter : keyStore.getCertificate(entryAlias)
+adapter -> adapter : Signature.getInstance(request.algorithm)\n.initSign(privateKey)\n.update(request.data)\n.sign()
+adapter --> provider : CryptoOperationResult(\n  alias, signatureBytes, cert, algorithm)
+deactivate adapter
+
+provider --> caller : CryptoOperationResult
+deactivate provider
+
+@enduml

@@ -4,7 +4,7 @@ import java.util.regex.Pattern;
 
 public record KeyAlias(String value) {
 
-    private static final Pattern PATTERN = Pattern.compile("^(p12|pkcs11|pcsc|sicct)/[a-z0-9\\-_]+$");
+    private static final Pattern PATTERN = Pattern.compile("^(p12|pkcs11|pcsc|sicct)(/[a-z0-9][a-z0-9\\-_.]*)+$");
     private static final int MAX_LENGTH = 128;
 
     public KeyAlias {

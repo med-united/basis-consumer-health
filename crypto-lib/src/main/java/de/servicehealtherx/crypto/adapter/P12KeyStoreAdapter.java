@@ -16,6 +16,8 @@ import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Signature;
 import java.security.cert.X509Certificate;
+import java.security.spec.MGF1ParameterSpec;
+import java.security.spec.PSSParameterSpec;
 
 public class P12KeyStoreAdapter extends KeyStoreAdapter {
 
@@ -72,12 +74,16 @@ public class P12KeyStoreAdapter extends KeyStoreAdapter {
             PrivateKey privateKey = (PrivateKey) keyStore.getKey(entryAlias, entryPassword);
             X509Certificate cert = (X509Certificate) keyStore.getCertificate(entryAlias);
 
-            Signature sig = Signature.getInstance(request.algorithm);
+            String algorithm = resolveAlgorithm(privateKey, request.algorithm);
+            Signature sig = Signature.getInstance(algorithm);
+            applyAlgorithmParams(sig, algorithm);
             sig.initSign(privateKey);
             sig.update(request.data);
             byte[] signature = sig.sign();
 
-            return new CryptoOperationResult(request.alias, signature, cert, request.algorithm);
+            return new CryptoOperationResult(request.alias, signature, cert, algorithm);
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Sign operation failed for alias " + alias, e);
         }
@@ -88,14 +94,37 @@ public class P12KeyStoreAdapter extends KeyStoreAdapter {
         ensureLoaded();
         try {
             String entryAlias = extractEntryAlias();
+            PrivateKey privateKey = (PrivateKey) keyStore.getKey(entryAlias, entryPassword);
             X509Certificate cert = (X509Certificate) keyStore.getCertificate(entryAlias);
 
-            Signature sig = Signature.getInstance(request.algorithm);
+            String algorithm = resolveAlgorithm(privateKey, request.algorithm);
+            Signature sig = Signature.getInstance(algorithm);
+            applyAlgorithmParams(sig, algorithm);
             sig.initVerify(cert.getPublicKey());
             sig.update(request.data);
             return sig.verify(signatureBytes);
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Verify operation failed for alias " + alias, e);
+        }
+    }
+
+    private String resolveAlgorithm(PrivateKey key, String requested) {
+        if (requested != null && !requested.isBlank()) {
+            return requested;
+        }
+        return switch (key.getAlgorithm()) {
+            case "EC" -> "SHA256withECDSA";
+            case "RSA" -> "SHA256withRSA/PSS";
+            default -> throw new IllegalStateException(
+                "No default signature algorithm for key type '" + key.getAlgorithm() + "' on alias " + alias);
+        };
+    }
+
+    private void applyAlgorithmParams(Signature sig, String algorithm) throws Exception {
+        if ("SHA256withRSA/PSS".equals(algorithm)) {
+            sig.setParameter(new PSSParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, 32, 1));
         }
     }
 
