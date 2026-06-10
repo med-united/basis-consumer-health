@@ -1,6 +1,6 @@
 # Contract: P12CryptoProvider implements CryptoProvider
 
-**Feature**: `003-p12-crypto-provider` | **Date**: 2026-06-09
+**Feature**: `003-p12-crypto-provider` | **Date**: 2026-06-10 (updated)
 
 This document specifies the precise behavioural contract of each `CryptoProvider` method as implemented by `P12CryptoProvider`. It is the authoritative reference for test authors and callers of this provider.
 
@@ -22,10 +22,12 @@ This document specifies the precise behavioural contract of each `CryptoProvider
 | **Alias constraint** | `request.alias.sourceType()` MUST be `SourceType.P12` |
 | **Alias routing** | Adapter with key `request.alias.value()` MUST exist in `adapters` |
 | **Availability** | Adapter MUST be in `AVAILABLE` state (`keyStore != null`) |
-| **Returns** | `CryptoOperationResult` with: `alias = request.alias`, `result = signature bytes`, `certificate = leaf X509Certificate from keystore`, `algorithm = request.algorithm` |
+| **Algorithm** | If `request.algorithm` is null or blank: EC key → `SHA256withECDSA`; RSA key → `SHA256withRSA/PSS` (PSS salt=32). Explicit `request.algorithm` overrides auto-detection. |
+| **Returns** | `CryptoOperationResult` with: `alias = request.alias`, `result = signature bytes`, `certificate = leaf X509Certificate from keystore`, `algorithm = resolved algorithm (never null)` |
 | **Throws** | `IllegalArgumentException` if alias SourceType is not P12 |
 | **Throws** | `IllegalArgumentException` if no adapter registered for alias |
 | **Throws** | `IllegalStateException` if adapter is not in AVAILABLE state |
+| **Throws** | `IllegalStateException` if no default algorithm exists for the key type and `request.algorithm` is null |
 | **Throws** | `RuntimeException` wrapping the cause on JCA errors |
 
 ---
@@ -38,6 +40,7 @@ This document specifies the precise behavioural contract of each `CryptoProvider
 | **Alias constraint** | `request.alias.sourceType()` MUST be `SourceType.P12` |
 | **Alias routing** | Adapter with key `request.alias.value()` MUST exist in `adapters` |
 | **Availability** | Adapter MUST be in `AVAILABLE` state |
+| **Algorithm** | Same auto-detect logic as `sign`; `request.algorithm` and the key type must match the algorithm used to produce the signature |
 | **Returns** | `true` if the signature is cryptographically valid; `false` otherwise |
 | **Throws** | Same as `sign` |
 
@@ -48,8 +51,8 @@ This document specifies the precise behavioural contract of each `CryptoProvider
 | Aspect | Specification |
 |--------|---------------|
 | **Purpose** | NOT SUPPORTED by this provider |
-| **Always throws** | `UnsupportedOperationException` with message: `"P12CryptoProvider does not support encrypt — use the certificate's public key directly for asymmetric encryption"` |
-| **Rationale** | Asymmetric encryption in TI workflows is performed by the caller using the peer certificate's public key; the private key is never used for encryption |
+| **Always throws** | `UnsupportedOperationException` referencing the future ECIES feature |
+| **Rationale** | TI uses ECIES (ECDH + HKDF/SHA-256/X9.63 + AES-256-CBC + CMAC per gemSpec_Krypt §4.7) — a multi-step hybrid protocol that will be implemented in a dedicated ECIES feature |
 
 ---
 
@@ -57,12 +60,9 @@ This document specifies the precise behavioural contract of each `CryptoProvider
 
 | Aspect | Specification |
 |--------|---------------|
-| **Purpose** | Decrypt `request.data` with the private key from the identified P12 keystore entry |
-| **Alias constraint** | `request.alias.sourceType()` MUST be `SourceType.P12` |
-| **Alias routing** | Adapter with key `request.alias.value()` MUST exist in `adapters` |
-| **Availability** | Adapter MUST be in `AVAILABLE` state |
-| **Returns** | `CryptoOperationResult` with: `alias = request.alias`, `result = plaintext bytes`, `certificate = null`, `algorithm = request.algorithm` |
-| **Throws** | Same as `sign`; additionally `RuntimeException` on JCA decryption failure (wrong key, wrong algorithm, corrupted ciphertext) |
+| **Purpose** | NOT SUPPORTED by this provider |
+| **Always throws** | `UnsupportedOperationException` referencing the future ECIES feature |
+| **Rationale** | Same as `encrypt` — ECIES decryption (gemSpec_COS §6.8.2.3) is deferred to its own feature |
 
 ---
 
@@ -71,8 +71,8 @@ This document specifies the precise behavioural contract of each `CryptoProvider
 | Aspect | Specification |
 |--------|---------------|
 | **Purpose** | Return metadata for all P12 keystores managed by this provider |
-| **Returns** | Unmodifiable `List<KeyStoreDescriptor>` in configuration order (order adapters were defined in `quarkus.crypto.p12[*]`) |
-| **Size** | Equals the number of configured `quarkus.crypto.p12` entries |
+| **Returns** | Unmodifiable `List<KeyStoreDescriptor>` in filesystem discovery order (order `.p12` files were found during startup scan) |
+| **Size** | Equals the number of `.p12`/`.pfx` files discovered in the certs directory at startup, plus any subsequently uploaded via MBean |
 | **Availability states** | Each descriptor reflects the current availability; may be `AVAILABLE`, `UNAVAILABLE` (initial before load), or `ERROR` (load failed) |
 | **Thread safety** | Safe to call concurrently; list and descriptor references are stable |
 
@@ -94,7 +94,7 @@ This document specifies the precise behavioural contract of each `CryptoProvider
 |--------|---------------|
 | **Purpose** | Return a snapshot of all alias → availability mappings for this provider |
 | **Returns** | `Map<String, KeyStoreAvailability>` keyed by alias string, containing all `p12/...` aliases managed by this provider |
-| **Size** | Equals the number of configured `quarkus.crypto.p12` entries |
+| **Size** | Equals the number of `p12/...` aliases managed by this provider |
 | **Thread safety** | Safe to call concurrently |
 
 ---

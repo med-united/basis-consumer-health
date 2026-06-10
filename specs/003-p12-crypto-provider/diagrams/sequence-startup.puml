@@ -3,44 +3,67 @@ skinparam defaultFontName Helvetica
 
 actor "Quarkus CDI\nContainer" as CDI
 participant "P12CryptoProvider" as provider
-participant "P12KeyStoreConfig" as config
+participant "P12CertScanner" as scanner
+participant "Classpath" as cp
+participant "Filesystem\ncerts-dir" as fs
 participant "P12KeyStoreAdapter" as adapter
 participant "KeyStoreDescriptor" as desc
-participant "PKCS12 File\n(disk)" as file
 
 CDI -> provider : @PostConstruct init()
 activate provider
 
-provider -> config : keystores()
-activate config
-config --> provider : List<P12Entry> [aut, enc, osig]
-deactivate config
+provider -> scanner : scan(certsDir)
+activate scanner
 
-loop for each P12Entry e
-  provider -> adapter : new P12KeyStoreAdapter(\n  e.alias(), e.path(),\n  e.keystorePassword(),\n  e.entryPasswordOrKeystore())
-  activate adapter
-  adapter -> desc : new KeyStoreDescriptor(alias, P12)\n→ UNAVAILABLE
-  adapter --> provider : adapter
-  deactivate adapter
+scanner -> cp : getResources(certsDir)
+activate cp
+cp --> scanner : classpath .p12 entries
+deactivate cp
 
-  provider -> adapter : engineLoad(null, null)
-  activate adapter
-  alt file exists & password correct
-    adapter -> file : FileInputStream(p12Path)
-    file --> adapter : bytes
-    adapter -> adapter : KeyStore.getInstance("PKCS12")\n.load(stream, keystorePassword)
-    adapter -> desc : markAvailable()
-    adapter --> provider : (success)
-  else file missing or bad password
-    adapter -> desc : markError(e.getMessage())
-    adapter --> provider : throws IOException
-    provider -> provider : log.warn("[P12] failed to load alias=...")
-    note right: password NOT in log
-  end
-  deactivate adapter
-
-  provider -> provider : adapters.put(e.alias(), adapter)
+loop for each classpath .p12 not already on disk
+  scanner -> fs : copy .p12 + password.txt (skip-if-present)
 end
+
+scanner -> fs : Files.walk(certsDir, "*.p12","*.pfx")
+activate fs
+fs --> scanner : List<Path>
+deactivate fs
+
+loop for each discovered .p12 / .pfx
+  scanner -> fs : read sibling password.txt
+  alt password.txt missing
+    scanner -> adapter : new P12KeyStoreAdapter(derivedAlias, path, "", "")
+    activate adapter
+    adapter -> desc : markError("missing password.txt")
+    adapter --> scanner : (error adapter)
+    deactivate adapter
+  else password.txt present
+    scanner -> scanner : deriveAlias(relativePath)
+    scanner -> adapter : new P12KeyStoreAdapter(alias, path, password, password)
+    activate adapter
+    adapter -> desc : new KeyStoreDescriptor → UNAVAILABLE
+    adapter --> scanner : adapter
+    deactivate adapter
+
+    scanner -> adapter : engineLoad(null, null)
+    activate adapter
+    alt load succeeds
+      adapter -> fs : FileInputStream(p12Path) → KeyStore.load(...)
+      adapter -> desc : markAvailable()
+      adapter --> scanner : (success)
+    else load fails
+      adapter -> desc : markError(e.getMessage())
+      adapter --> scanner : (error recorded)
+      note right: password NOT in log
+    end
+    deactivate adapter
+  end
+end
+
+scanner --> provider : List<P12KeyStoreAdapter>
+deactivate scanner
+
+provider -> provider : populate CopyOnWriteArrayList\n+ ConcurrentHashMap
 
 CDI <-- provider : (bean ready)
 deactivate provider

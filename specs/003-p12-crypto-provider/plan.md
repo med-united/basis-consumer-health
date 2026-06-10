@@ -1,121 +1,143 @@
-# Implementation Plan: [FEATURE]
+# Implementation Plan: P12 CryptoProvider
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
-
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
-
-**Note**: This template is filled in by the `/speckit-plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
+**Branch**: `007-p12-crypto-provider` | **Date**: 2026-06-10 | **Spec**: [spec.md](spec.md)
 
 ## Summary
 
-[Extract from feature spec: primary requirement + technical approach from research]
+Implement `P12CryptoProvider`, a fully functional `@ApplicationScoped` CDI bean that:
+1. Discovers PKCS#12 files by recursively scanning a configurable filesystem directory (with a classpath-to-filesystem bootstrap copy on startup)
+2. Reads each cert's password from a sibling `password.txt` file
+3. Routes `sign` and `verify` to the correct `P12KeyStoreAdapter`, auto-selecting `SHA256withECDSA` (EC keys) or `SHA256withRSA/PSS` (RSA keys) when the caller does not specify an algorithm; `encrypt` and `decrypt` throw `UnsupportedOperationException` (ECIES is a deferred feature)
+4. Exposes a JMX MBean (`P12CertManagement`) for runtime certificate upload without restart
 
 ## Technical Context
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
+**Language/Version**: Java 21 LTS
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
+**Primary Dependencies**:
 
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
+| Dependency | Purpose |
+|---|---|
+| Quarkus 3.x + quarkus-arc | CDI lifecycle (`@ApplicationScoped`, `@PostConstruct`) |
+| SmallRye Config | `@ConfigMapping` for `P12CryptoConfig` (transitive via quarkus-arc) |
+| JDK `KeyStore` (PKCS12) | PKCS#12 file loading — already used by `P12KeyStoreAdapter` |
+| JDK NIO2 `Files.walk` | Recursive certs directory scan |
+| `ClassLoader.getResources` | Classpath bootstrap copy |
+| Bouncy Castle (`bcpkix-jdk18on`) | RSASSA-PSS JCA provider (already in `crypto-lib`) |
+| `javax.management` (JDK) | JMX MBean registration — same pattern as existing `CryptoProviderManagement` |
+| JUnit 5 + Quarkus Test | Unit tests for routing logic; `@QuarkusTest` for CDI integration tests |
 
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
+**Storage**: Runtime in-memory only — `CopyOnWriteArrayList` + `ConcurrentHashMap` in `P12CryptoProvider`. P12 files and `password.txt` persisted to filesystem by MBean upload.
 
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
+**Testing**:
+- Unit tests: direct construction of `P12CertScanner` and `P12CryptoProvider` with a temp certs directory
+- Integration tests: `@QuarkusTest` with `quarkus.crypto.p12.certs-dir` pointing to `src/test/resources/certs`
+- Test keystores: three Zeta SMC-B keystores already committed at `crypto-p12-lib/src/test/resources/certs/`
 
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**Target Platform**: Linux server, JVM mode, Kubernetes pod
 
-**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]
+**Project Type**: Extension to existing multi-module Maven project (`crypto-p12-lib` module)
 
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
+**Performance Goals**:
+- Startup scan (≤ 100 P12 files): ≤ 5 s (bounded by filesystem I/O)
+- `sign` / `verify` latency: ≤ 50 ms p95 (JCA software crypto, no HSM)
+- MBean `uploadCertificate`: ≤ 2 s (disk write + load)
 
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
-
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+**Constraints**:
+- Passwords MUST NOT appear in any log output at any level
+- Classpath bootstrap copy is JVM-mode only (native image limitation)
+- `KeyAlias` pattern must be extended to support multi-segment paths
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
-
-[Gates determined based on constitution file]
+| Gate | Status | Notes |
+|---|---|---|
+| Principle I — No single-implementation interfaces | ✅ PASS | `P12CertManagementMBean` is the JMX standard naming convention (externally mandated), not a speculative abstraction. `P12CertScanner` is a concrete class with no interface. |
+| Principle I — No `Impl` suffix | ✅ PASS | `P12CertManagement`, `P12CertScanner`, `P12CryptoProvider` — all named by role/technology |
+| Principle II — Test-first | ✅ PASS | Test scenarios defined in quickstart.md before implementation |
+| Principle III — UX (N/A) | ✅ N/A | No UI surface |
+| Principle IV — Memory ceiling (150 MB) | ✅ PASS | Per-adapter memory ≈ loaded PKCS12 key material; 100 certs × ~4 KB ≈ 400 KB — negligible |
+| Principle V — Security (gematik TI) | ✅ PASS | Passwords zeroed in `char[]`, never logged; RSASSA-PSS with SHA-256 meets gematik algorithm requirements |
+| Principle VI — UML diagrams | ✅ PASS | Component and sequence diagrams to be updated in `diagrams/` |
+| Principle VII — External library evaluation | ✅ PASS | No new libraries. JDK PKCS12 + Bouncy Castle (already present) are sufficient. See research.md D-010. |
+| Principle VIII — Standard Interface Adoption | ✅ PASS | `P12CertManagementMBean` follows JMX MBean naming convention; `P12KeyStoreAdapter` extends `KeyStoreSpi`; JCA `Signature` API used for sign/verify |
 
 ## Project Structure
 
 ### Documentation (this feature)
 
 ```text
-specs/[###-feature]/
-├── plan.md              # This file (/speckit-plan command output)
-├── research.md          # Phase 0 output (/speckit-plan command)
-├── data-model.md        # Phase 1 output (/speckit-plan command)
-├── quickstart.md        # Phase 1 output (/speckit-plan command)
-├── contracts/           # Phase 1 output (/speckit-plan command)
-├── diagrams/            # Phase 1 output (/speckit-plan command) — PlantUML diagrams
-│   ├── README.md        # Diagram index with GitHub proxy image links
-│   ├── use-case.puml
-│   ├── deployment.puml
-│   ├── component.puml
-│   ├── sequence-*.puml
-│   ├── state-*.puml
-│   └── class-*.puml
-└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
+specs/003-p12-crypto-provider/
+├── plan.md              ← this file
+├── spec.md              ← feature specification
+├── research.md          ← Phase 0 decisions (D-001 to D-010)
+├── data-model.md        ← entity definitions
+├── quickstart.md        ← validation guide
+├── contracts/
+│   ├── CryptoProvider-P12.md     ← CryptoProvider method contracts
+│   └── P12CertManagement-MBean.md ← JMX MBean operation contracts
+├── diagrams/
+│   ├── component.puml   ← component relationships (update)
+│   ├── sequence-sign.puml ← sign operation flow (update)
+│   └── sequence-startup.puml ← startup scan flow (update)
+└── tasks.md             ← generated by /speckit-tasks
 ```
 
-### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
+### Source Code
 
 ```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+crypto-lib/src/main/java/de/servicehealtherx/crypto/
+├── KeyAlias.java                        ← MODIFY: extend pattern for multi-segment paths
+└── adapter/
+    └── P12KeyStoreAdapter.java          ← MODIFY: add resolveAlgorithm() for null-algorithm fallback
 
-tests/
-├── contract/
-├── integration/
-└── unit/
+crypto-p12-lib/src/main/java/de/servicehealtherx/crypto/p12/
+├── P12CryptoProvider.java               ← IMPLEMENT: replace stub body
+├── P12CryptoConfig.java                 ← NEW: @ConfigMapping with certsDir()
+├── P12CertScanner.java                  ← NEW: classpath copy + filesystem scan
+├── P12CertManagement.java               ← NEW: @ApplicationScoped JMX MBean impl
+└── P12CertManagementMBean.java          ← NEW: JMX MBean interface
 
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
+crypto-p12-lib/src/test/java/de/servicehealtherx/crypto/p12/
+├── P12CryptoProviderTest.java           ← NEW: @QuarkusTest for all sign/verify/decrypt/availability
+├── P12CertScannerTest.java              ← NEW: unit test for alias derivation + scan
+└── P12CertManagementTest.java           ← NEW: @QuarkusTest for MBean upload
 
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+crypto-p12-lib/src/test/resources/
+├── application.properties               ← NEW: quarkus.crypto.p12.certs-dir = src/test/resources/certs
+└── certs/                               ← EXISTING: Zeta SMC-B test keystores with password.txt
 ```
 
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+### Key Implementation Notes
+
+**`KeyAlias` pattern extension** (`crypto-lib`):
+```
+old: ^(p12|pkcs11|pcsc|sicct)/[a-z0-9\-_]+$
+new: ^(p12|pkcs11|pcsc|sicct)(/[a-z0-9][a-z0-9\-_.]*)+$
+```
+
+**Algorithm auto-detection** (`P12KeyStoreAdapter`):
+```java
+private String resolveAlgorithm(PrivateKey key, String requested) {
+    if (requested != null && !requested.isBlank()) return requested;
+    return switch (key.getAlgorithm()) {
+        case "EC"  -> "SHA256withECDSA";
+        case "RSA" -> {
+            // configured at Signature level via PSSParameterSpec
+            yield "SHA256withRSA/PSS";
+        }
+        default -> throw new IllegalStateException(
+            "No default algorithm for key type: " + key.getAlgorithm());
+    };
+}
+```
+For RSA/PSS, apply `sig.setParameter(new PSSParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, 32, 1))` immediately after `Signature.getInstance(...)`.
+
+**MBean upload atomicity** (see [MBean contract](contracts/P12CertManagement-MBean.md)):
+- Write P12 via temp-file + `Files.move(ATOMIC_MOVE)`
+- Validate P12 bytes **before** any disk write
+- Acquire write lock before mutating `P12CryptoProvider`'s adapter structures
 
 ## Complexity Tracking
 
-> **Fill ONLY if Constitution Check has violations that must be justified**
-
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
-| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+> No constitution violations requiring justification.

@@ -32,3 +32,5 @@
 ## Notes
 
 All checklist items pass. The specification is ready for `/speckit-plan`.
+
+**2026-06-10 updates**: Added FR-015 (ECDSA with SHA-256 / RSASSA-PSS with SHA-256, algorithm selected by key type), updated User Story 1 acceptance scenarios to cover both algorithm paths, updated SC-001 to require explicit algorithm verification in tests. Certs folder model clarified to filesystem path with classpath bootstrap copy on startup.
