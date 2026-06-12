@@ -18,13 +18,12 @@
     <dependencies>
 
 
-        <!-- Hawtio for JMX management UI causes: 
+	<!-- Hawtio for JMX management UI causes: --> 
         <dependency>
             <groupId>io.hawt</groupId>
             <artifactId>hawtio-quarkus</artifactId>
             <version>5.2.0</version>
         </dependency>
-        -->
 
         <dependency>
             <groupId>de.servicehealtherx</groupId>

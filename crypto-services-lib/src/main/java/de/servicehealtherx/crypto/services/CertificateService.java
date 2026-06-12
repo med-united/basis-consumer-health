@@ -19,9 +19,6 @@ public class CertificateService {
     Instance<CryptoProvider> cryptoProviders;
 
     @Inject
-    TrustService trustService;
-
-    @Inject
     AuditLogger auditLogger;
 
     public enum CertRef {
@@ -68,10 +65,11 @@ public class CertificateService {
     public VerifyCertResult verifyCertificate(X509Certificate certificate, String callerIdentity) {
         long start = System.currentTimeMillis();
         try {
-            TrustService.VerificationResult vr = trustService.verify(certificate, false);
-            auditLogger.logSuccess("verify", "VERIFY_CERT", "X509",
-                    callerIdentity, System.currentTimeMillis() - start);
-            return new VerifyCertResult(vr.valid() ? "VALID" : "INVALID", vr.detail());
+            // TrustService.VerificationResult vr = trustService.verify(certificate, false);
+            // auditLogger.logSuccess("verify", "VERIFY_CERT", "X509",
+            // callerIdentity, System.currentTimeMillis() - start);
+            // return new VerifyCertResult(vr.valid() ? "VALID" : "INVALID", vr.detail());
+            return new VerifyCertResult("INCONCLUSIVE", "verification logic not implemented yet");
         } catch (Exception e) {
             auditLogger.logFailure("verify", "VERIFY_CERT", "X509",
                     callerIdentity, System.currentTimeMillis() - start, e.getMessage());

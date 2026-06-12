@@ -20,9 +20,6 @@ public class SignatureService {
     Instance<CryptoProvider> cryptoProviders;
 
     @Inject
-    TrustService trustService;
-
-    @Inject
     AuditLogger auditLogger;
 
     public enum SignatureFormat {

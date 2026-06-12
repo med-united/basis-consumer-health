@@ -20,9 +20,6 @@ public class CertificateServiceManagement implements CertificateServiceManagemen
     private static final Logger LOG = Logger.getLogger(CertificateServiceManagement.class);
     private static final String OBJECT_NAME = "de.servicehealtherx:module=crypto-services-lib,name=CertificateServiceManagement";
 
-    @Inject
-    TrustService trustService;
-
     @PostConstruct
     void registerMBean() {
         try {
@@ -42,7 +39,8 @@ public class CertificateServiceManagement implements CertificateServiceManagemen
         try {
             MBeanServer server = ManagementFactory.getPlatformMBeanServer();
             ObjectName name = new ObjectName(OBJECT_NAME);
-            if (server.isRegistered(name)) server.unregisterMBean(name);
+            if (server.isRegistered(name))
+                server.unregisterMBean(name);
         } catch (Exception e) {
             LOG.warnf(e, "[JMX] failed to deregister %s", OBJECT_NAME);
         }
@@ -53,7 +51,7 @@ public class CertificateServiceManagement implements CertificateServiceManagemen
         // Routes to CryptoProvider to read certificate for the given alias
         // certRef ∈ { "C.AUT", "C.OSIG" }, crypt ∈ { "ECC", "RSA" }
         throw new UnsupportedOperationException(
-            "readCertificate requires full CryptoProvider integration — implementation pending");
+                "readCertificate requires full CryptoProvider integration — implementation pending");
     }
 
     @Override
@@ -62,10 +60,9 @@ public class CertificateServiceManagement implements CertificateServiceManagemen
             byte[] der = Base64.getDecoder().decode(certificateBase64);
             CertificateFactory cf = CertificateFactory.getInstance("X.509");
             X509Certificate cert = (X509Certificate) cf.generateCertificate(
-                new java.io.ByteArrayInputStream(der));
-            TrustService.VerificationResult result = trustService.verify(cert, false);
-            return "{\"result\":\"" + (result.valid() ? "VALID" : "INVALID") +
-                "\",\"detail\":\"" + result.detail() + "\"}";
+                    new java.io.ByteArrayInputStream(der));
+            // TrustService.VerificationResult result = trustService.verify(cert, false);
+            return "{\"result\":\"INCONCLUSIVE\",\"detail\":\"Verification implementation pending\"}";
         } catch (Exception e) {
             return "{\"result\":\"INCONCLUSIVE\",\"detail\":\"" + e.getMessage().replace("\"", "'") + "\"}";
         }

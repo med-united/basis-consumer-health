@@ -34,7 +34,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Framework versions -->
-        <quarkus.platform.version>3.36.1</quarkus.platform.version>
+        <quarkus.platform.version>3.34.7</quarkus.platform.version>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
 
         <!-- Library versions -->
