@@ -128,13 +128,7 @@ public class SignatureService {
     }
 
     private String resolveAlgorithm(SignRequest request) {
-        if (request.eccPreferred()) {
-            return switch (request.format()) {
-                case CADES, XADES -> "SHA256withECDSA";
-                case PADES -> "SHA256withECDSA";
-            };
-        }
-        return "SHA256withRSA";
+        return request.algorithm();
     }
 
     private String resolveHashAlgorithm(int hashLength) {

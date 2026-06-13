@@ -116,21 +116,22 @@ public class P12KeyStoreAdapter extends KeyStoreAdapter {
         }
         return switch (key.getAlgorithm()) {
             case "EC" -> "SHA256withECDSA";
-            case "RSA" -> "SHA256withRSA/PSS";
+            case "RSA" -> "SHA256withRSA";
             default -> throw new IllegalStateException(
-                "No default signature algorithm for key type '" + key.getAlgorithm() + "' on alias " + alias);
+                    "No default signature algorithm for key type '" + key.getAlgorithm() + "' on alias " + alias);
         };
     }
 
     private void applyAlgorithmParams(Signature sig, String algorithm) throws Exception {
-        if ("SHA256withRSA/PSS".equals(algorithm)) {
+        if ("SHA256withRSA".equals(algorithm)) {
             sig.setParameter(new PSSParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, 32, 1));
         }
     }
 
     @Override
     public CryptoOperationResult encrypt(CryptoOperationRequest request) {
-        throw new UnsupportedOperationException("P12KeyStoreAdapter does not support asymmetric encryption directly — use EncryptionService");
+        throw new UnsupportedOperationException(
+                "P12KeyStoreAdapter does not support asymmetric encryption directly — use EncryptionService");
     }
 
     @Override
