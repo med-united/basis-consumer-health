@@ -1,8 +1,14 @@
 package de.servicehealtherx.konnektor.soap;
 
+import de.gematik.ws.conn.signatureservice.v7.ActivateComfortSignature;
+import de.gematik.ws.conn.signatureservice.v7.ActivateComfortSignatureResponse;
+import de.gematik.ws.conn.signatureservice.v7.DeactivateComfortSignature;
+import de.gematik.ws.conn.signatureservice.v7.DeactivateComfortSignatureResponse;
 import de.gematik.ws.conn.signatureservice.v7.DocumentType;
 import de.gematik.ws.conn.signatureservice.v7.GetJobNumber;
 import de.gematik.ws.conn.signatureservice.v7.GetJobNumberResponse;
+import de.gematik.ws.conn.signatureservice.v7.GetSignatureMode;
+import de.gematik.ws.conn.signatureservice.v7.GetSignatureModeResponse;
 import de.gematik.ws.conn.signatureservice.v7.SignDocument;
 import de.gematik.ws.conn.signatureservice.v7.SignDocumentResponse;
 import de.gematik.ws.conn.signatureservice.v7.SignRequest;
@@ -12,8 +18,8 @@ import de.gematik.ws.conn.signatureservice.v7.StopSignatureResponse;
 import de.gematik.ws.conn.signatureservice.v7.VerificationResultType;
 import de.gematik.ws.conn.signatureservice.v7.VerifyDocument;
 import de.gematik.ws.conn.signatureservice.v7.VerifyDocumentResponse;
-import de.gematik.ws.conn.signatureservice.wsdl.v7_4.FaultMessage;
-import de.gematik.ws.conn.signatureservice.wsdl.v7_4.SignatureServicePortType;
+import de.gematik.ws.conn.signatureservice.wsdl.v7_5.FaultMessage;
+import de.gematik.ws.conn.signatureservice.wsdl.v7_5.SignatureServicePortType;
 import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.services.SignatureService;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
@@ -26,8 +32,8 @@ import java.util.GregorianCalendar;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
-@CXFEndpoint(value = "/ws/conn/SignatureService")
-@WebService(portName = "SignatureServicePort", serviceName = "SignatureService", targetNamespace = "http://ws.gematik.de/conn/SignatureService/WSDL/v7.4", endpointInterface = "de.gematik.ws.conn.signatureservice.wsdl.v7_4.SignatureServicePortType")
+@CXFEndpoint(value = "/conn/SignatureService")
+@WebService(portName = "SignatureServicePort", serviceName = "SignatureService", targetNamespace = "http://ws.gematik.de/conn/SignatureService/WSDL/v7.5", endpointInterface = "de.gematik.ws.conn.signatureservice.wsdl.v7_5.SignatureServicePortType")
 public class KonnektorSignatureService implements SignatureServicePortType {
 
     @Inject
@@ -127,5 +133,25 @@ public class KonnektorSignatureService implements SignatureServicePortType {
         } catch (Exception ignored) {
         }
         return vr;
+    }
+
+    @Override
+    public GetSignatureModeResponse getSignatureMode(GetSignatureMode parameter) throws FaultMessage {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getSignatureMode'");
+    }
+
+    @Override
+    public ActivateComfortSignatureResponse activateComfortSignature(ActivateComfortSignature parameter)
+            throws FaultMessage {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'activateComfortSignature'");
+    }
+
+    @Override
+    public DeactivateComfortSignatureResponse deactivateComfortSignature(DeactivateComfortSignature parameter)
+            throws FaultMessage {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'deactivateComfortSignature'");
     }
 }

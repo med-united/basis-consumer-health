@@ -23,7 +23,7 @@ import java.security.cert.X509Certificate;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
-@CXFEndpoint(value = "/ws/conn/CertificateService")
+@CXFEndpoint(value = "/conn/CertificateService")
 @WebService(portName = "CertificateServicePort", serviceName = "CertificateService", targetNamespace = "http://ws.gematik.de/conn/CertificateService/WSDL/v6.0", endpointInterface = "de.gematik.ws.conn.certificateservice.wsdl.v6_0.CertificateServicePortType")
 public class KonnektorCertificateService implements CertificateServicePortType {
 

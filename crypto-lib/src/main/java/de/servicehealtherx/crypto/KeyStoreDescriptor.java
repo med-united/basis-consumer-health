@@ -17,6 +17,14 @@ public class KeyStoreDescriptor {
         this.lastUpdated = Instant.now();
     }
 
+    public KeyAlias getAlias() {
+        return alias;
+    }
+
+    public SourceType getSourceType() {
+        return sourceType;
+    }
+
     public KeyStoreAvailability getAvailability() {
         return availability;
     }

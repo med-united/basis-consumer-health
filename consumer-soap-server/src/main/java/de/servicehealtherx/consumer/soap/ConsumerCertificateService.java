@@ -22,7 +22,7 @@ import java.security.cert.X509Certificate;
 
 import static de.servicehealtherx.consumer.soap.ConsumerServiceHelper.*;
 
-@CXFEndpoint(value = "/ws/consumer/CertificateService")
+@CXFEndpoint(value = "/consumer/CertificateService")
 @WebService(portName = "CertificateServicePort", serviceName = "CertificateService", targetNamespace = "http://ws.gematik.de/consumer/CertificateService/WSDL/v3.0", wsdlLocation = "classpath:/consumer/CertificateService.wsdl", endpointInterface = "de.gematik.ws.consumer.certificateservice.wsdl.v3_0.CertificateServicePortType")
 public class ConsumerCertificateService implements CertificateServicePortType {
 

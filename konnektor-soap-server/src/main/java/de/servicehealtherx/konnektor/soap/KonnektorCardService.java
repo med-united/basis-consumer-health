@@ -20,7 +20,7 @@ import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
 
-@CXFEndpoint(value = "/ws/conn/CardService")
+@CXFEndpoint(value = "/conn/CardService")
 @WebService(portName = "CardServicePort", serviceName = "CardService", targetNamespace = "http://ws.gematik.de/conn/CardService/WSDL/v8.1", endpointInterface = "de.gematik.ws.conn.cardservice.wsdl.v8_1.CardServicePortType")
 public class KonnektorCardService implements CardServicePortType {
 

@@ -17,7 +17,7 @@ import oasis.names.tc.dss._1_0.core.schema.SignatureObject;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
-@CXFEndpoint(value = "/ws/conn/AuthSignatureService")
+@CXFEndpoint(value = "/conn/AuthSignatureService")
 @WebService(portName = "AuthSignatureServicePort", serviceName = "AuthSignatureService", targetNamespace = "http://ws.gematik.de/conn/AuthSignatureService/WSDL/v7.4", endpointInterface = "de.gematik.ws.conn.authsignatureservice.wsdl.v7_4.AuthSignatureServicePortType")
 public class KonnektorAuthSignatureService implements AuthSignatureServicePortType {
 

@@ -7,6 +7,8 @@ import de.gematik.ws.conn.cardterminalinfo.v8.CardTerminals;
 import de.gematik.ws.conn.eventservice.v7.GetCards;
 
 import de.gematik.ws.conn.eventservice.v7.GetCardsResponse;
+import de.gematik.ws.conn.cardservicecommon.v2.CardTypeType;
+import de.gematik.ws.conn.cardservice.v8.CardInfoType;
 import de.gematik.ws.conn.eventservice.v7.GetCardTerminals;
 import de.gematik.ws.conn.eventservice.v7.GetCardTerminalsResponse;
 import de.gematik.ws.conn.eventservice.v7.GetResourceInformation;
@@ -25,19 +27,27 @@ import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.enterprise.inject.Instance;
 import jakarta.jws.WebService;
 import jakarta.jws.soap.SOAPBinding;
 
+import de.servicehealtherx.crypto.CryptoProvider;
+import de.servicehealtherx.crypto.KeyStoreDescriptor;
+
+import java.util.List;
 import java.util.UUID;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
-@CXFEndpoint(value = "/ws/conn/EventService")
+@CXFEndpoint(value = "/conn/EventService")
 @WebService(portName = "EventServicePort", serviceName = "EventService", targetNamespace = "http://ws.gematik.de/conn/EventService/WSDL/v7.2", endpointInterface = "de.gematik.ws.conn.eventservice.wsdl.v7_2.EventServicePortType")
 public class KonnektorEventService implements EventServicePortType {
 
     @Inject
     SicctTerminalManager sicctTerminalManager;
+
+    @Inject
+    Instance<CryptoProvider> cryptoProviderInstances;
 
     @Override
     public SubscribeResponse subscribe(Subscribe parameter) throws FaultMessage {
@@ -125,11 +135,25 @@ public class KonnektorEventService implements EventServicePortType {
     public GetCardsResponse getCards(GetCards parameter) throws FaultMessage {
         try {
             GetCardsResponse response = new GetCardsResponse();
-            response.setStatus(okStatus());
             response.setCards(new Cards());
+
+            for (CryptoProvider cryptoProvider : cryptoProviderInstances) {
+                List<KeyStoreDescriptor> listKeyStores = cryptoProvider.listKeyStores();
+                listKeyStores.stream()
+                        // .filter(k -> k.getAvailability() == KeyStoreAvailability.AVAILABLE)
+                        .forEach(k -> response.getCards().getCard().add(toCardInfoType(k)));
+            }
+
+            response.setStatus(okStatus());
             return response;
         } catch (Exception e) {
             throw new FaultMessage("GetCards failed: " + e.getMessage(), buildError(e.getMessage()));
         }
+    }
+
+    public CardInfoType toCardInfoType(de.servicehealtherx.crypto.KeyStoreDescriptor k) {
+        CardInfoType card = new CardInfoType();
+        card.setCardHandle(k.getAlias().value());
+        return card;
     }
 }

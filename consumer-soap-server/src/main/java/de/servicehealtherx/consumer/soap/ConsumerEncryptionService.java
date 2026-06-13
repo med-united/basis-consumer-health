@@ -20,7 +20,7 @@ import java.util.List;
 
 import static de.servicehealtherx.consumer.soap.ConsumerServiceHelper.*;
 
-@CXFEndpoint(value = "/ws/consumer/EncryptionService")
+@CXFEndpoint(value = "/consumer/EncryptionService")
 @WebService(portName = "EncryptionServicePort", serviceName = "EncryptionService", targetNamespace = "http://ws.gematik.de/consumer/EncryptionService/WSDL/v3.0", endpointInterface = "de.gematik.ws.consumer.encryptionservice.wsdl.v3_0.EncryptionServicePortType")
 public class ConsumerEncryptionService implements EncryptionServicePortType {
 

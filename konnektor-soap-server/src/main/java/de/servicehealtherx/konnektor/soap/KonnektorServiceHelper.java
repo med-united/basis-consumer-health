@@ -9,7 +9,8 @@ import java.math.BigInteger;
 import java.util.GregorianCalendar;
 
 final class KonnektorServiceHelper {
-    private KonnektorServiceHelper() {}
+    private KonnektorServiceHelper() {
+    }
 
     static Status okStatus() {
         Status s = new Status();
@@ -29,7 +30,8 @@ final class KonnektorServiceHelper {
         error.setMessageID("4001");
         try {
             error.setTimestamp(DatatypeFactory.newInstance().newXMLGregorianCalendar(new GregorianCalendar()));
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         Error.Trace trace = new Error.Trace();
         trace.setEventID("4001");
         trace.setInstance("konnektor-soap-server");
@@ -44,9 +46,8 @@ final class KonnektorServiceHelper {
     }
 
     static KeyAlias toKeyAlias(String cardHandle) {
-        if (cardHandle == null || cardHandle.isBlank()) return new KeyAlias("sicct/default");
         String sanitized = cardHandle.toLowerCase()
-            .replaceAll("[^a-z0-9\\-_]", "-").replaceAll("-{2,}", "-").replaceAll("^-|-$", "");
-        return new KeyAlias("sicct/" + (sanitized.isEmpty() ? "default" : sanitized));
+                .replaceAll("[^a-z0-9\\-_/]", "-").replaceAll("-{2,}", "-").replaceAll("^-|-$", "");
+        return new KeyAlias(sanitized.isEmpty() ? "default" : sanitized);
     }
 }

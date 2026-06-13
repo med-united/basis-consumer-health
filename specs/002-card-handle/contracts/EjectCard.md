@@ -1,7 +1,7 @@
 # Contract: EjectCard
 
 **Service**: CardTerminalService v1.1
-**Endpoint**: `/ws/conn/CardTerminalService`
+**Endpoint**: `/conn/CardTerminalService`
 **WSDL type**: `CardTerminalServicePortType.ejectCard(EjectCard) → EjectCardResponse`
 **Spec refs**: FR-051–FR-056, TUC_KON_057 (TAB_KON_725)
 
@@ -11,36 +11,36 @@ Sends SICCT EJECT ICC with "Delivery: Mechanical Throwout" to physically eject a
 
 ## Request Parameters
 
-| Parameter | Required | Description |
-|---|---|---|
-| `Context.MandantId` | Yes | Access context (passed to TUC_KON_000) |
-| `Context.ClientSystemId` | Yes | |
-| `Context.WorkplaceId` | Yes | |
-| `CardHandle` | One of | Addresses the card by handle; mutually exclusive with `Slot` |
-| `Slot.CtId` + `Slot.SlotId` | One of | Addresses the card by terminal + slot |
-| `DisplayMsg` | No | Message on terminal display; if omitted, default per TIP1-A_5408 used |
-| `TimeOut` | No | Milliseconds to wait for user to remove card after mechanical eject; default **20 000 ms** if omitted |
+| Parameter                   | Required | Description                                                                                           |
+| --------------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `Context.MandantId`         | Yes      | Access context (passed to TUC_KON_000)                                                                |
+| `Context.ClientSystemId`    | Yes      |                                                                                                       |
+| `Context.WorkplaceId`       | Yes      |                                                                                                       |
+| `CardHandle`                | One of   | Addresses the card by handle; mutually exclusive with `Slot`                                          |
+| `Slot.CtId` + `Slot.SlotId` | One of   | Addresses the card by terminal + slot                                                                 |
+| `DisplayMsg`                | No       | Message on terminal display; if omitted, default per TIP1-A_5408 used                                 |
+| `TimeOut`                   | No       | Milliseconds to wait for user to remove card after mechanical eject; default **20 000 ms** if omitted |
 
 ## Response
 
-| Field | Always present | Description |
-|---|---|---|
-| `Status` | Yes | OK or error |
+| Field    | Always present | Description |
+| -------- | -------------- | ----------- |
+| `Status` | Yes            | OK or error |
 
 ## Error Codes
 
-| Code | Condition |
-|---|---|
-| 4000 | Syntax error |
-| 4007 | Invalid terminal ID |
-| 4039 | Terminal display in use |
-| 4044 | Terminal access error |
-| 4093 | Card exclusively reserved by another session (FR-053) |
-| 4097 | Invalid slot ID |
-| 4101 | Supplied `CardHandle` is invalid or already invalidated |
+| Code | Condition                                                             |
+| ---- | --------------------------------------------------------------------- |
+| 4000 | Syntax error                                                          |
+| 4007 | Invalid terminal ID                                                   |
+| 4039 | Terminal display in use                                               |
+| 4044 | Terminal access error                                                 |
+| 4093 | Card exclusively reserved by another session (FR-053)                 |
+| 4097 | Invalid slot ID                                                       |
+| 4101 | Supplied `CardHandle` is invalid or already invalidated               |
 | 4203 | Card mechanically ejected but user did not remove it within `TimeOut` |
-| 4221 | Terminal not active |
-| 4222 | Terminal not connected |
+| 4221 | Terminal not active                                                   |
+| 4222 | Terminal not connected                                                |
 
 ## Implementation Flow
 

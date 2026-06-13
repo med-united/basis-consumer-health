@@ -15,7 +15,7 @@ import jakarta.jws.soap.SOAPBinding;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
-@CXFEndpoint(value = "/ws/conn/CardTerminalService")
+@CXFEndpoint(value = "/conn/CardTerminalService")
 @WebService(portName = "CardTerminalServicePort", serviceName = "CardTerminalService", targetNamespace = "http://ws.gematik.de/conn/CardTerminalService/WSDL/v1.1", endpointInterface = "de.gematik.ws.conn.cardterminalservice.wsdl.v1_1.CardTerminalServicePortType")
 @SOAPBinding(parameterStyle = SOAPBinding.ParameterStyle.BARE)
 public class KonnektorCardTerminalService implements CardTerminalServicePortType {
