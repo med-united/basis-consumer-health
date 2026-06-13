@@ -1,0 +1,99 @@
+@startuml
+title Component Diagram — apdu-lib Module and Dependencies
+
+package "apdu-lib\n(de.servicehealtherx:apdu-lib)" {
+
+    component "de.servicehealtherx.apdu.model" as MODEL {
+        component "CardSession" <<record>>
+        component "CardType" <<enum>>
+        component "CardVersion" <<enum>>
+        component "AuthState" <<class>>
+        component "PinRef" <<enum>>
+        component "PinStatus" <<enum>>
+        component "PinResult" <<enum>>
+        component "PukResult" <<enum>>
+        component "KeyRef" <<enum>>
+        component "CommandApdu" <<record>>
+        component "ResponseApdu" <<record>>
+        component "TucException" <<exception>>
+        component "CardTerminalTransport" <<interface>>
+        component "GematikISO7816" <<constants>>
+    }
+
+    component "de.servicehealtherx.apdu.tuc" as TUC {
+        component "TucKon026ProvideCardSession"
+        component "TucKon012VerifyPin"
+        component "TucKon019ChangePin"
+        component "TucKon021UnblockPin"
+        component "TucKon022ProvidePinStatus"
+        component "TucKon027EnableDisablePin"
+        component "TucKon023ReserveCard"
+        component "TucKon005CardToCardAuth"
+        component "TucKon202ReadFile"
+        component "TucKon203WriteFile"
+        component "TucKon204ClearFile"
+        component "TucKon209ReadRecord"
+        component "TucKon210WriteRecord"
+        component "TucKon211ClearRecord"
+        component "TucKon214AppendRecord"
+        component "TucKon215SearchRecord"
+        component "TucKon018CheckEgkBlocking"
+        component "TucKon006WriteAudit"
+        component "TucKon219Sign"
+        component "TucKon220Decrypt"
+        component "TucKon223StartCardSession"
+        component "TucKon208SendSecuredApdu"
+        component "TucKon224StopCardSession"
+        component "TucKon200SendApdu"
+        component "TucKon024ResetCard"
+        component "TucKon216ReadCertificate"
+        component "TucKon036ProvideProfessionalRole"
+    }
+}
+
+package "sicct-lib\n(de.servicehealtherx:sicct-lib)" as SICCT {
+    component "CardHandle" <<record>>
+    component "ISO7816" <<constants>>
+    component "SICCT" <<interface>>
+    component "SicctCardTerminalTransport" <<impl>>
+}
+
+package "crypto-lib\n(de.servicehealtherx:crypto-lib)" as CRYPTO {
+    component "CryptoProvider" <<interface>>
+    component "BouncyCastle" <<integration>>
+    component "GemLibPki" <<integration>>
+}
+
+package "External Libraries" as EXT {
+    component "Bouncy Castle 1.84\n(bcprov-jdk18on)" as BC
+    component "gemLibPki 4.0.2\n(de.gematik.pki)" as GEMPKI
+}
+
+package "Test Infrastructure" as TEST {
+    component "MockCardTerminalTransport" <<test-double>>
+    component "JUnit 5 + Mockito"
+}
+
+' Internal dependencies
+TUC --> MODEL : uses
+MODEL --> SICCT : CardHandle
+
+' Module-level dependencies
+"apdu-lib\n(de.servicehealtherx:apdu-lib)" --> SICCT : depends-on
+"apdu-lib\n(de.servicehealtherx:apdu-lib)" --> CRYPTO : depends-on (ECC/sign via TucKon005/219/220)
+
+' Production implementation
+SicctCardTerminalTransport ..|> "CardTerminalTransport" : implements
+SicctCardTerminalTransport --> SICCT : delegates to
+
+' Crypto integrations
+BouncyCastle --> BC : wraps
+GemLibPki --> GEMPKI : wraps
+
+' Test double
+MockCardTerminalTransport ..|> "CardTerminalTransport" : test-implements
+
+' Functional modules
+[Functional Module\n(Fachmodul)] --> TUC : calls
+[Konnektor Card Service] --> TUC : calls
+@enduml

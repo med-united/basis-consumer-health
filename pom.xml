@@ -19,6 +19,7 @@
         <module>crypto-pcsc-lib</module>
         <module>crypto-sicct-lib</module>
         <module>sicct-lib</module>
+        <module>apdu-lib</module>
         <module>quarkus-sicct-extension</module>
         <module>crypto-services-lib</module>
         <module>quarkus-ldap-proxy-server-extension</module>

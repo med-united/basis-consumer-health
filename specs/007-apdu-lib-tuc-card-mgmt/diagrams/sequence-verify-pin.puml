@@ -1,0 +1,33 @@
+@startuml
+title Sequence Diagram — TUC_KON_012 Verify PIN (TIP1-A_4566)\nHappy path: eGK Generation 2.0, local PIN-Pad
+
+participant "Fachmodul" as FM
+participant "TucKon012VerifyPin" as TUC012
+participant "CardSession /\nAuthState" as SESSION
+participant "CardTerminalTransport" as TRANSPORT
+participant "Card Terminal\n(SICCT)" as CT
+participant "eGK Card" as CARD
+
+FM -> TUC012 : verifyPin(cardSession, workplaceId, PinRef.PIN_CH)
+
+TUC012 -> SESSION : check lockOwner == null\nor lockOwner == caller
+SESSION --> TUC012 : not reserved [OK]
+
+TUC012 -> SESSION : authState.verifiedPins.get(PIN_CH)
+SESSION --> TUC012 : PinStatus.OK (not BLOCKED or TRANSPORT_PIN)
+
+note over TUC012 : cardVersion == GENERATION_2_0\n→ skip TUC_KON_005 (Gen1+ only)
+
+TUC012 -> TRANSPORT : transmit(cardHandle,\n  VERIFY APDU [INS=0x20, P2=0x01])
+TRANSPORT -> CT : SICCT SendAPDU
+CT -> CARD : ISO 7816-4 VERIFY [PIN.CH]
+note over CT,CARD : Card terminal prompts\nfor PIN on PIN-Pad;\nuser enters PIN
+CARD --> CT : SW 0x9000 (PIN correct)
+CT --> TRANSPORT : ResponseApdu(data=[], sw1=0x90, sw2=0x00)
+TRANSPORT --> TUC012 : ResponseApdu
+
+TUC012 -> SESSION : authState.markPinVerified(PinRef.PIN_CH)
+
+TUC012 --> FM : PinResult.OK, leftTries=null
+
+@enduml
