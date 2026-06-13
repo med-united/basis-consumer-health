@@ -3,6 +3,6 @@
 	url = git@github.com:med-united/api-telematik.git
 	branch = ebk_6.0.3
 
-[submodule "openkim-server"]
-	path = openkim-server
-	url = https://github.com/sberg-net/openkim.git
+[submodule "openkim"]
+	path = openkim
+	url = git@github.com:med-united/openkim.git

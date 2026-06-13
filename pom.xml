@@ -25,6 +25,7 @@
         <module>consumer-soap-server</module>
         <module>konnektor-soap-server</module>
         <module>quarkus-server</module>
+        <module>openkim</module>
     </modules>
 
     <properties>
