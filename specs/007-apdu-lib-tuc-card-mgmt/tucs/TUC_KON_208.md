@@ -6,7 +6,7 @@
 
 ## Purpose
 
-Sends a signed APDU scenario to a card session and returns the signed response, validating sequence numbers to prevent replay attacks.
+Validates a signed APDU scenario and generates a secured APDU execution request for downstream transport layers, including sequence-number replay protection.
 
 ## Requirements
 
@@ -27,7 +27,7 @@ Sends a signed APDU scenario to a card session and returns the signed response, 
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| signedScenarioResponse | SignedScenarioResponse | Signed response containing the response APDUs from the card |
+| securedExecutionRequest | SecuredExecutionRequest | Generated secured APDU request payload for downstream execution |
 
 ### Standard Flow
 
@@ -36,8 +36,8 @@ Sends a signed APDU scenario to a card session and returns the signed response, 
 3. Verify CardSession with sclientSessionID exists
 4. Verify lock exists for the caller
 5. Verify sequence number is incremented by exactly 1 from the previous value
-6. For each scenario item: process expected return codes, send command APDU (TUC_KON_200), append response APDU, check status codes
-7. Return signed response
+6. For each scenario item: process expected return codes and generate command APDU execution entries (via TUC_KON_200)
+7. Return secured execution request
 
 ### Error Cases
 
@@ -51,5 +51,5 @@ Sends a signed APDU scenario to a card session and returns the signed response, 
 
 ## Acceptance Criteria
 
-- **AC-001**: Given a valid signed scenario with the correct sequence number, when TUC_KON_208 is called, then response APDUs are returned and the sequence number is incremented.
+- **AC-001**: Given a valid signed scenario with the correct sequence number, when TUC_KON_208 is called, then a secured execution request is returned and the sequence number is incremented.
 - **AC-002**: Given a replayed scenario with an old sequence number, when TUC_KON_208 is called, then an error is returned.

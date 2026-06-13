@@ -6,7 +6,7 @@
 
 ## Purpose
 
-Sends a raw command APDU to a chip card or card terminal and returns the response APDU.
+Builds a raw command APDU request that can be executed by an external transport layer (for example `sicct-lib` or `crypto-pcsc-lib`).
 
 ## Requirements
 
@@ -22,25 +22,25 @@ Sends a raw command APDU to a chip card or card terminal and returns the respons
 |-----------|------|----------|-------------|
 | cardSession | CardSession | No | Active card session identifying the target card (required if ctId not given) |
 | ctId | TerminalId | No | Card terminal identifier (required if cardSession not given) |
-| commandAPDU | byte[] | Yes | Raw command APDU bytes to send |
+| commandAPDU | byte[] | Yes | Raw command APDU bytes to include in the generated execution request |
 
 ### Output Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| responseAPDU | byte[] | Raw response APDU bytes returned by the card or terminal |
+| apduExecutionRequest | ApduExecutionRequest | Generated APDU request payload with expected status handling metadata |
 
 ### Standard Flow
 
 **Path A — via cardSession:**
-1. Determine card and terminal from cardSession
+1. Determine card and terminal context from cardSession
 2. Verify caller holds the lock for the card
-3. Send command APDU via terminal
-4. Return response APDU
+3. Build APDU execution request payload (command APDU + expected status metadata)
+4. Return the generated request payload
 
 **Path B — via ctId:**
-1. Send command APDU directly to the terminal identified by ctId
-2. Return response APDU
+1. Build APDU execution request payload for the terminal identified by ctId
+2. Return the generated request payload
 
 ### Error Cases
 
@@ -49,9 +49,9 @@ Sends a raw command APDU to a chip card or card terminal and returns the respons
 | 4001 | Internal | Fatal | Internal error |
 | 4060 | Resource | Error | Resource busy |
 | 4093 | Access | Error | Card reserved by other session |
-| 4094 | Timeout | Error | Card access timeout |
+| 4094 | Timeout | Error | Card access timeout reported by downstream execution layer |
 
 ## Acceptance Criteria
 
-- **AC-001**: Given a locked card session and a valid command APDU, when TUC_KON_200 is called, then the response APDU from the card is returned.
+- **AC-001**: Given a locked card session and a valid command APDU, when TUC_KON_200 is called, then an APDU execution request payload is generated.
 - **AC-002**: Given a card session without the required lock and a lock-requiring operation, when TUC_KON_200 is called, then error 4093 is returned.

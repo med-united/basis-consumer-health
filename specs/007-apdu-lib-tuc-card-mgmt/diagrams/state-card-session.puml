@@ -1,0 +1,45 @@
+@startuml
+title State Chart — CardSession Lifecycle and Lock States
+
+[*] --> NotEstablished : card inserted / CardHandle assigned
+
+state NotEstablished {
+    note : No sessionId assigned yet\nlockOwner = null\nAuthState empty
+}
+
+NotEstablished --> Established : TUC_KON_026 (Provide Card Session)\n[assigns sessionId]
+
+state Established {
+    state Unlocked {
+        note : lockOwner = null\nAll TUCs accessible
+    }
+
+    state Locked {
+        note : lockOwner = callerIdentity\nOnly lock owner may execute\nexclusive operations
+    }
+
+    Unlocked --> Locked : TUC_KON_023(doLock=true)\n[lockOwner == null]
+    Locked --> Unlocked : TUC_KON_023(doLock=false)\n[caller == lockOwner]
+    Locked --> Unlocked : TUC_KON_024 (Reset Card)\n[caller == lockOwner]\nAuthState.clear()
+
+    state PinVerified <<choice>>
+    Unlocked --> PinVerified : TUC_KON_012 executed
+    PinVerified --> Unlocked : PinResult.OK / VERIFIED\n[authState.markPinVerified(pinRef)]
+    PinVerified --> Unlocked : PinResult.REJECTED\n[leftTries updated; no state change]
+    PinVerified --> [*] : PinResult.BLOCKED\n[TucException(4063)]
+}
+
+Established --> Established : TUC_KON_024 (Reset Card)\n[authState.clear(), card reset]\n[lockOwner = null]
+
+Established --> SecureSessionActive : TUC_KON_223 (Start Card Session)\n[assigns secured session]
+
+state SecureSessionActive {
+    note : Secure APDU session active\nSequence number tracked\nTUC_KON_208 available
+}
+
+SecureSessionActive --> Established : TUC_KON_224 (Stop Card Session)\n[session removed, card reset, lock released]
+
+Established --> [*] : card removed / connection lost
+SecureSessionActive --> [*] : card removed / connection lost
+
+@enduml

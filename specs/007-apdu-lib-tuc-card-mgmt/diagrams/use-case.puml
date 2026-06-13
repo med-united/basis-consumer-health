@@ -1,0 +1,96 @@
+@startuml
+title Use Case Diagram — apdu-lib TUC Card Management
+
+left to right direction
+
+actor "Functional Module\n(Fachmodul)" as FM
+actor "Konnektor\nCard Service" as KCS
+actor "Card Terminal\n(SICCT)" as CT
+actor "eGK / HBA / SMC-B\nCard" as CARD
+
+rectangle "apdu-lib" {
+
+    package "PIN Management" {
+        usecase "TUC_KON_012\nVerify PIN\n(TIP1-A_4566)" as UC012
+        usecase "TUC_KON_019\nChange PIN\n(TIP1-A_4568)" as UC019
+        usecase "TUC_KON_021\nUnblock PIN\n(TIP1-A_4569-02)" as UC021
+        usecase "TUC_KON_022\nProvide PIN Status\n(TIP1-A_4570)" as UC022
+        usecase "TUC_KON_027\nEnable/Disable PIN\n(TIP1-A_5486)" as UC027
+    }
+
+    package "Card Session Lifecycle" {
+        usecase "TUC_KON_026\nProvide Card Session\n(TIP1-A_4567)" as UC026
+        usecase "TUC_KON_023\nReserve Card\n(TIP1-A_4571-03)" as UC023
+        usecase "TUC_KON_024\nReset Card\n(TIP1-A_4584-02)" as UC024
+        usecase "TUC_KON_223\nStart Card Session\n(A_26067)" as UC223
+        usecase "TUC_KON_224\nStop Card Session\n(A_26068)" as UC224
+    }
+
+    package "File & Record I/O" {
+        usecase "TUC_KON_202\nRead File\n(TIP1-A_4573)" as UC202
+        usecase "TUC_KON_203\nWrite File\n(TIP1-A_4574)" as UC203
+        usecase "TUC_KON_204\nClear File\n(TIP1-A_4576-1)" as UC204
+        usecase "TUC_KON_209\nRead Record\n(TIP1-A_4575)" as UC209
+        usecase "TUC_KON_210\nWrite Record\n(TIP1-A_4576-2)" as UC210
+        usecase "TUC_KON_211\nClear Record\n(TIP1-A_4577-1)" as UC211
+        usecase "TUC_KON_214\nAppend Record\n(TIP1-A_4577-2)" as UC214
+        usecase "TUC_KON_215\nSearch Record\n(TIP1-A_4578)" as UC215
+    }
+
+    package "Cryptographic Operations" {
+        usecase "TUC_KON_219\nSign\n(TIP1-A_4581)" as UC219
+        usecase "TUC_KON_220\nDecrypt\n(TIP1-A_4582)" as UC220
+        usecase "TUC_KON_208\nSend Secured APDU\n(A_26069-01)" as UC208
+    }
+
+    package "Authentication & Utility" {
+        usecase "TUC_KON_005\nCard-to-Card Auth\n(TIP1-A_4572)" as UC005
+        usecase "TUC_KON_018\nCheck eGK Blocking\n(TIP1-A_4579-02)" as UC018
+        usecase "TUC_KON_006\nWrite Audit to eGK\n(TIP1-A_4580)" as UC006
+        usecase "TUC_KON_216\nRead Certificate\n(TIP1-A_4585)" as UC216
+        usecase "TUC_KON_036\nProvide Professional Role\n(TIP1-A_5478)" as UC036
+        usecase "TUC_KON_200\nSend APDU\n(TIP1-A_4583-02)" as UC200
+    }
+}
+
+FM --> UC012
+FM --> UC019
+FM --> UC021
+FM --> UC022
+FM --> UC027
+FM --> UC026
+FM --> UC023
+FM --> UC024
+FM --> UC202
+FM --> UC203
+FM --> UC204
+FM --> UC209
+FM --> UC210
+FM --> UC211
+FM --> UC214
+FM --> UC215
+FM --> UC219
+FM --> UC220
+FM --> UC005
+FM --> UC018
+FM --> UC006
+FM --> UC216
+FM --> UC036
+FM --> UC200
+FM --> UC208
+FM --> UC223
+FM --> UC224
+
+KCS --> UC026
+KCS --> UC023
+KCS --> UC024
+KCS --> UC200
+
+UC012 ..> CT : PIN-Pad display
+UC019 ..> CT : PIN-Pad display
+UC021 ..> CT : PIN-Pad display
+UC200 ..> CT : APDU transmit
+UC208 ..> CT : Secured APDU transmit
+
+CT --> CARD : ISO 7816-4 APDU
+@enduml

@@ -1,0 +1,52 @@
+@startuml
+title Deployment Diagram — apdu-lib within Konnektor Runtime
+
+node "Konnektor Host\n(Java 21 / Quarkus 3.36)" as HOST {
+
+    artifact "apdu-lib-x.y.z.jar\n(de.servicehealtherx:apdu-lib)" as APDULIB {
+        component "27 TUC Implementations"
+        component "apdu-lib Model Types"
+    }
+
+    artifact "sicct-lib-x.y.z.jar\n(de.servicehealtherx:sicct-lib)" as SICCTLIB {
+        component "SicctCardTerminalTransport"
+        component "CardHandle"
+        component "ISO7816"
+    }
+
+    artifact "crypto-lib-x.y.z.jar\n(de.servicehealtherx:crypto-lib)" as CRYPTOLIB {
+        component "CryptoProvider\n(Bouncy Castle 1.84)"
+        component "GemLibPki 4.0.2\nTI PKI Validation"
+    }
+
+    artifact "quarkus-server-x.y.z.jar\n(de.servicehealtherx:quarkus-server)" as QUARKUS {
+        component "Konnektor Card Service\n(Fachmodul orchestration)"
+    }
+
+    APDULIB ..> SICCTLIB : <<depends>>
+    APDULIB ..> CRYPTOLIB : <<depends>>
+    QUARKUS ..> APDULIB : <<calls TUCs>>
+}
+
+node "Card Terminal\n(SICCT Hardware)" as CT_HW {
+    component "PIN-Pad"
+    component "Card Reader Slot"
+}
+
+node "Physical Smart Card" as CARD_HW {
+    component "eGK / HBA / SMC-B"
+    component "Card OS (gemSpec_COS)"
+}
+
+node "Test Environment\n(JUnit 5 process)" as TEST {
+    artifact "apdu-lib-x.y.z-tests.jar" as TESTSJAR {
+        component "MockCardTerminalTransport"
+        component "27 TUC Test Classes"
+    }
+    TESTSJAR ..> APDULIB : <<tests>>
+}
+
+SicctCardTerminalTransport --> CT_HW : SICCT protocol\n(USB / RS-232 / IP)
+CT_HW --> CARD_HW : ISO 7816-4\nAPDU exchange
+
+@enduml

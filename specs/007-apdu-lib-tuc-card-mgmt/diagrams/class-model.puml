@@ -1,0 +1,151 @@
+@startuml
+title Class Diagram — apdu-lib Domain Model\n(de.servicehealtherx.apdu.model)
+
+package "de.servicehealtherx.apdu.model" {
+
+    class CardSession <<record>> {
+        + cardHandle : CardHandle
+        + cardType : CardType
+        + cardVersion : CardVersion
+        + authState : AuthState
+        + sessionId : UUID [nullable]
+        + lockOwner : String [nullable]
+    }
+
+    enum CardType {
+        EGK
+        HBA
+        HBAX
+        SMC_B
+        KVK
+        UNKNOWN
+    }
+
+    enum CardVersion {
+        GENERATION_1
+        GENERATION_1_PLUS
+        GENERATION_2_0
+        GENERATION_2_1
+        UNKNOWN
+    }
+
+    class AuthState {
+        - verifiedPins : Map<PinRef, PinStatus>
+        - authedKeys : Set<KeyRef>
+        + isPinVerified(ref : PinRef) : boolean
+        + isKeyAuthenticated(ref : KeyRef) : boolean
+        + markPinVerified(ref : PinRef) : void
+        + markKeyAuthenticated(ref : KeyRef) : void
+        + clear() : void
+    }
+
+    enum PinRef {
+        PIN_CH (cosName="PIN.CH", reference=0x01)
+        PIN_QES (cosName="PIN.QES", reference=0x02)
+        PIN_AMTS_REP (cosName="PIN.AMTS_REP", reference=0x03)
+        MRPIN_AMTS (cosName="MRPIN.AMTS", reference=0x06)
+        PIN_OSD (cosName="PIN.OSD", reference=0x05)
+        - cosName : String
+        - reference : byte
+    }
+
+    enum PinStatus {
+        VERIFIED
+        OK
+        REJECTED
+        BLOCKED
+        TRANSPORT_PIN
+        EMPTY_PIN
+    }
+
+    enum PinResult {
+        OK
+        VERIFIED
+        REJECTED
+        BLOCKED
+        ERROR
+    }
+
+    enum PukResult {
+        OK
+        REJECTED
+        BLOCKED
+        ERROR
+    }
+
+    enum KeyRef {
+        C_AUT (reference=0x04)
+        C_ENC (reference=0x02)
+        C_QES (reference=0x06)
+        - reference : byte
+        - cosName : String
+    }
+
+    class CommandApdu <<record>> {
+        + cla : byte
+        + ins : byte
+        + p1 : byte
+        + p2 : byte
+        + data : byte[] [nullable]
+        + le : Integer [nullable]
+        + {static} case1(cla, ins, p1, p2) : CommandApdu
+        + {static} case2(cla, ins, p1, p2, le) : CommandApdu
+        + {static} case3(cla, ins, p1, p2, data) : CommandApdu
+        + {static} case4(cla, ins, p1, p2, data, le) : CommandApdu
+        + toBytes() : byte[]
+    }
+
+    class ResponseApdu <<record>> {
+        + data : byte[]
+        + sw1 : byte
+        + sw2 : byte
+        + getSw() : short
+        + isSuccess() : boolean
+        + isWarning() : boolean
+        + getLeftTries() : int
+    }
+
+    class TucException <<exception>> {
+        - errorCode : int
+        - tucIdentifier : String
+        + TucException(errorCode, tucIdentifier, message)
+        + getErrorCode() : int
+        + getTucIdentifier() : String
+        + {static} cardReservedByOther(tucId) : TucException
+        + {static} cardAccessTimeout(tucId) : TucException
+        + {static} pinBlocked(tucId) : TucException
+        + {static} invalidPinRef(tucId) : TucException
+        + {static} remoteKtNotConfigured(tucId) : TucException
+    }
+
+    interface CardTerminalTransport <<interface>> {
+        + transmit(cardHandle : CardHandle, command : CommandApdu) : ResponseApdu
+    }
+
+    class GematikISO7816 <<constants>> {
+        + {static} INS_RESET_RETRY_COUNTER : byte
+        + {static} INS_DISABLE_VERIFICATION_REQUIREMENT : byte
+        + {static} INS_ENABLE_VERIFICATION_REQUIREMENT : byte
+        + {static} INS_APPEND_RECORD : byte
+        + {static} INS_SEARCH_RECORD : byte
+        + {static} INS_ERASE_BINARY : byte
+        + {static} INS_ERASE_RECORD : byte
+        + {static} INS_PERFORM_SECURITY_OPERATION : byte
+        + {static} INS_MANAGE_SECURITY_ENV : byte
+        + {static} SW_OBJECT_NOT_FOUND : short
+        + {static} SW_CONDITION_NOT_SATISFIED : short
+        + {static} SW_AUTH_METHOD_BLOCKED : short
+        - GematikISO7816()
+    }
+}
+
+CardSession "1" *-- "1" CardType
+CardSession "1" *-- "1" CardVersion
+CardSession "1" *-- "1" AuthState
+AuthState "1" o-- "*" PinRef : verifiedPins key
+AuthState "1" o-- "*" PinStatus : verifiedPins value
+AuthState "1" o-- "*" KeyRef : authedKeys
+
+TucException --|> RuntimeException
+
+@enduml

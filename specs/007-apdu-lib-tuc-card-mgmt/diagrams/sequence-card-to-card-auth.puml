@@ -1,0 +1,52 @@
+@startuml
+title Sequence Diagram — TUC_KON_005 Card-to-Card Authentication (TIP1-A_4572)\nOne-sided mode: SMC-B authenticates to eGK Generation 1+
+
+participant "Fachmodul" as FM
+participant "TucKon005\nCardToCardAuth" as TUC005
+participant "CardTerminalTransport" as TRANSPORT
+participant "SMC-B Card" as SMCB
+participant "eGK Card\n(Gen 1+)" as EGK
+
+FM -> TUC005 : authenticate(sourceSession=SMC-B,\n  targetSession=eGK, AuthMode.ONE_SIDED)
+
+TUC005 -> TUC005 : check neither card is foreign-locked
+TUC005 -> TUC005 : validate key reference combination\n(TAB_KON_673)
+
+group Select CV Certificates
+    TUC005 -> TRANSPORT : transmit(smcbHandle, SELECT CV cert APDU)
+    TRANSPORT --> TUC005 : ResponseApdu 0x9000
+    TUC005 -> TRANSPORT : transmit(egkHandle, SELECT CV cert APDU)
+    TRANSPORT --> TUC005 : ResponseApdu 0x9000
+end
+
+TUC005 -> TUC005 : check CED (Certificate Effective Date)\nnot expired
+
+group Select Key References
+    TUC005 -> TRANSPORT : transmit(smcbHandle, MSE SET [C.AUT])
+    TRANSPORT --> TUC005 : ResponseApdu 0x9000
+    TUC005 -> TRANSPORT : transmit(egkHandle, MSE SET [C.AUT])
+    TRANSPORT --> TUC005 : ResponseApdu 0x9000
+end
+
+group RSA Authentication Protocol (Gen1+)
+    TUC005 -> TRANSPORT : transmit(egkHandle,\n  GET CHALLENGE [INS=0x84])
+    TRANSPORT -> EGK : GET CHALLENGE
+    EGK --> TRANSPORT : challenge bytes
+    TRANSPORT --> TUC005 : ResponseApdu(data=challenge, 0x9000)
+
+    TUC005 -> TRANSPORT : transmit(smcbHandle,\n  INTERNAL AUTHENTICATE [INS=0x88, data=challenge])
+    TRANSPORT -> SMCB : INTERNAL AUTHENTICATE
+    SMCB --> TRANSPORT : signature
+    TRANSPORT --> TUC005 : ResponseApdu(data=signature, 0x9000)
+
+    TUC005 -> TRANSPORT : transmit(egkHandle,\n  EXTERNAL AUTHENTICATE [INS=0x82, data=signature])
+    TRANSPORT -> EGK : EXTERNAL AUTHENTICATE
+    EGK --> TRANSPORT : 0x9000 (authenticated)
+    TRANSPORT --> TUC005 : ResponseApdu(0x9000)
+end
+
+TUC005 -> TUC005 : targetSession.authState\n  .markKeyAuthenticated(KeyRef.C_AUT)
+
+TUC005 --> FM : (void) — authState updated
+
+@enduml
