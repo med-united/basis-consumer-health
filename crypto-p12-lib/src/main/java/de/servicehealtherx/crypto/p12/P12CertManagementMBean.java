@@ -5,4 +5,6 @@ public interface P12CertManagementMBean {
     void uploadCertificate(String alias, byte[] p12Data, String password);
 
     String listCertificates();
+
+    void reloadCertificates();
 }

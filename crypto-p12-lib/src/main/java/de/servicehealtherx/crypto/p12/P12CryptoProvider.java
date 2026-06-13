@@ -43,12 +43,28 @@ public class P12CryptoProvider implements CryptoProvider {
             Security.insertProviderAt(new BouncyCastleProvider(), 1);
             LOG.info("[P12Provider] registered BouncyCastle JCE provider for brainpool curve support");
         }
+        loadCertificates();
+        LOG.infof("[P12Provider] initialised with %d keystore(s) from %s", adapters.size(), config.certsDir());
+    }
+
+    public void loadCertificates() {
         List<P12KeyStoreAdapter> loaded = scanner.scan(config.certsDir());
         for (P12KeyStoreAdapter adapter : loaded) {
             adapters.add(adapter);
             byAlias.put(adapter.descriptor().alias.value(), adapter);
         }
-        LOG.infof("[P12Provider] initialised with %d keystore(s) from %s", adapters.size(), config.certsDir());
+    }
+
+    public void reloadCertificates() {
+        writeLock.lock();
+        try {
+            adapters.clear();
+            byAlias.clear();
+            loadCertificates();
+            LOG.infof("[P12Provider] reloaded %d keystore(s) from %s", adapters.size(), config.certsDir());
+        } finally {
+            writeLock.unlock();
+        }
     }
 
     @Override

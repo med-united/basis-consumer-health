@@ -44,6 +44,7 @@ public class P12CertScanner {
 
     private P12KeyStoreAdapter loadAdapter(Path certsDir, Path p12Path) {
         Path passwordFile = p12Path.getParent().resolve("password.txt");
+
         String alias = deriveAlias(certsDir, p12Path);
 
         if (!Files.exists(passwordFile)) {
@@ -63,7 +64,8 @@ public class P12CertScanner {
             return adapter;
         }
 
-        P12KeyStoreAdapter adapter = new P12KeyStoreAdapter(alias, p12Path.toAbsolutePath().toString(), password, password);
+        P12KeyStoreAdapter adapter = new P12KeyStoreAdapter(alias, p12Path.toAbsolutePath().toString(), password,
+                password);
         try {
             adapter.engineLoad(null, null);
         } catch (IOException e) {
@@ -82,12 +84,12 @@ public class P12CertScanner {
         }
         // normalize to forward slashes, lowercase, replace disallowed chars
         String normalized = withoutExt
-            .replace('\\', '/')
-            .toLowerCase()
-            .replaceAll("[^a-z0-9\\-_./]", "-")
-            .replaceAll("-{2,}", "-")
-            .replaceAll("(^|/)\\-+", "$1")
-            .replaceAll("\\-+(/|$)", "$1");
+                .replace('\\', '/')
+                .toLowerCase()
+                .replaceAll("[^a-z0-9\\-_./]", "-")
+                .replaceAll("-{2,}", "-")
+                .replaceAll("(^|/)\\-+", "$1")
+                .replaceAll("\\-+(/|$)", "$1");
         return "p12/" + normalized;
     }
 
@@ -113,23 +115,23 @@ public class P12CertScanner {
     private void copyIfAbsent(Path classpathRoot, Path sourceDir, Path targetRoot) throws IOException {
         try (Stream<Path> walk = Files.walk(sourceDir)) {
             walk.filter(Files::isRegularFile)
-                .filter(p -> {
-                    String name = p.getFileName().toString().toLowerCase();
-                    return name.endsWith(".p12") || name.endsWith(".pfx") || name.equals("password.txt");
-                })
-                .forEach(src -> {
-                    Path relative = classpathRoot.relativize(src);
-                    Path target = targetRoot.resolve(relative);
-                    if (!Files.exists(target)) {
-                        try {
-                            Files.createDirectories(target.getParent());
-                            Files.copy(src, target, StandardCopyOption.COPY_ATTRIBUTES);
-                            LOG.infof("[P12Scanner] bootstrapped %s → %s", src, target);
-                        } catch (IOException e) {
-                            LOG.warnf("[P12Scanner] failed to bootstrap %s: %s", src, e.getMessage());
+                    .filter(p -> {
+                        String name = p.getFileName().toString().toLowerCase();
+                        return name.endsWith(".p12") || name.endsWith(".pfx") || name.equals("password.txt");
+                    })
+                    .forEach(src -> {
+                        Path relative = classpathRoot.relativize(src);
+                        Path target = targetRoot.resolve(relative);
+                        if (!Files.exists(target)) {
+                            try {
+                                Files.createDirectories(target.getParent());
+                                Files.copy(src, target, StandardCopyOption.COPY_ATTRIBUTES);
+                                LOG.infof("[P12Scanner] bootstrapped %s → %s", src, target);
+                            } catch (IOException e) {
+                                LOG.warnf("[P12Scanner] failed to bootstrap %s: %s", src, e.getMessage());
+                            }
                         }
-                    }
-                });
+                    });
         }
     }
 }

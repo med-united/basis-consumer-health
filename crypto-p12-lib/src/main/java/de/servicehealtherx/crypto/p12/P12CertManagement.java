@@ -8,6 +8,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
+import io.quarkus.runtime.Startup;
+
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import java.io.IOException;
@@ -17,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
 @ApplicationScoped
+@Startup
 public class P12CertManagement implements P12CertManagementMBean {
 
     private static final Logger LOG = Logger.getLogger(P12CertManagement.class);
@@ -77,18 +80,19 @@ public class P12CertManagement implements P12CertManagementMBean {
         try {
             Files.createDirectories(targetDir);
 
-            // Write atomically: first password, then P12 (scanner reads password before P12)
+            // Write atomically: first password, then P12 (scanner reads password before
+            // P12)
             Files.write(passwordFile, password.getBytes(),
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
             Files.write(p12File, p12Data,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
             // Derive alias using the same rule the scanner uses
             String alias = P12CertScanner.deriveAlias(certsDir, p12File);
             LOG.infof("[P12CertMgmt] wrote alias=%s to %s", alias, p12File);
 
             P12KeyStoreAdapter adapter = new P12KeyStoreAdapter(alias,
-                p12File.toAbsolutePath().toString(), password, password);
+                    p12File.toAbsolutePath().toString(), password, password);
             try {
                 adapter.engineLoad(null, null);
             } catch (IOException e) {
@@ -106,9 +110,10 @@ public class P12CertManagement implements P12CertManagementMBean {
         StringBuilder sb = new StringBuilder("[");
         boolean first = true;
         for (KeyStoreDescriptor d : provider.listKeyStores()) {
-            if (!first) sb.append(",");
+            if (!first)
+                sb.append(",");
             sb.append("{\"alias\":\"").append(d.alias.value()).append("\"")
-              .append(",\"availability\":\"").append(d.getAvailability()).append("\"");
+                    .append(",\"availability\":\"").append(d.getAvailability()).append("\"");
             if (d.getErrorMessage() != null) {
                 sb.append(",\"error\":\"").append(d.getErrorMessage().replace("\"", "'")).append("\"");
             }
@@ -117,5 +122,11 @@ public class P12CertManagement implements P12CertManagementMBean {
         }
         sb.append("]");
         return sb.toString();
+    }
+
+    @Override
+    public void reloadCertificates() {
+        LOG.info("[P12CertMgmt] reloading certificates from disk");
+        provider.reloadCertificates();
     }
 }
