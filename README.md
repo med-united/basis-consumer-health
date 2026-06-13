@@ -4,6 +4,13 @@ A multi-tenant TI (Telematikinfrastruktur) platform service providing Konnektor-
 hybrid document encryption/signing, VZD LDAP proxy, KOM-LE/KIM secure messaging, and SICCT card
 terminal management for German healthcare institutions.
 
+## Developer start
+
+```
+./mvn install
+./mvnw quarkus:dev -pl :quarkus-server
+```
+
 ## Architecture
 
 See the full feature specification at
@@ -22,41 +29,41 @@ It automatically renders `.puml` files inline — no server setup required.
 
 ### API / Shared libraries
 
-| Module | Description |
-|--------|-------------|
-| `api-telematik` | Generated JAXB/JAX-WS stubs from gematik WSDL/XSD (consumer + conn interfaces) |
-| `crypto-lib` | TSL management, certificate parsing/validation, CryptoProvider CDI interface and key store adapters, JMX beans |
+| Module                | Description                                                                                                                        |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `api-telematik`       | Generated JAXB/JAX-WS stubs from gematik WSDL/XSD (consumer + conn interfaces)                                                     |
+| `crypto-lib`          | TSL management, certificate parsing/validation, CryptoProvider CDI interface and key store adapters, JMX beans                     |
 | `crypto-services-lib` | EncryptionService, SignatureService, CertificateService business logic; MicroProfile ConfigSource DB; JPA AppConfigProperty entity |
-| `apdu-lib` | Pure APDU generation library implementing 27 TUCs from gemSpec_Kon V5.27.0 §4.1.5.4 (no transport) |
-| `sicct-lib` | SICCT ASN.1 codec, Netty 4 TCP/IP client pool, CardTerminal JPA entity, TPM 2.0 key sealing, BackupRestoreManagement JMX bean |
+| `apdu-lib`            | Pure APDU generation library implementing 27 TUCs from gemSpec_Kon V5.27.0 §4.1.5.4 (no transport)                                 |
+| `sicct-lib`           | SICCT ASN.1 codec, Netty 4 TCP/IP client pool, CardTerminal JPA entity, TPM 2.0 key sealing, BackupRestoreManagement JMX bean      |
 
 ### CryptoProvider adapters
 
-| Module | Description |
-|--------|-------------|
-| `crypto-p12-lib` | CryptoProvider backed by PKCS#12 keystores |
-| `crypto-pcsc-lib` | CryptoProvider backed by local PC/SC card readers via `javax.smartcardio` |
+| Module             | Description                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `crypto-p12-lib`   | CryptoProvider backed by PKCS#12 keystores                                            |
+| `crypto-pcsc-lib`  | CryptoProvider backed by local PC/SC card readers via `javax.smartcardio`             |
 | `crypto-sicct-lib` | CryptoProvider backed by networked SICCT card terminals via `quarkus-sicct-extension` |
 
 ### Quarkus extensions
 
-| Module | Description |
-|--------|-------------|
-| `quarkus-sicct-extension` | Quarkus extension: SicctTerminalManager, connection pool, card event router, SmallRye Health check (runtime + deployment) |
+| Module                                | Description                                                                                                                   |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `quarkus-sicct-extension`             | Quarkus extension: SicctTerminalManager, connection pool, card event router, SmallRye Health check (runtime + deployment)     |
 | `quarkus-ldap-proxy-server-extension` | Quarkus extension: Netty 4 LDAPv3 server pipeline, TI DNS-SD discovery, LDAPS upstream proxy to TI VZD (runtime + deployment) |
 
 ### Runnable servers
 
-| Module | Description |
-|--------|-------------|
-| `quarkus-server` | Main Quarkus application bundling all services; CDI integration; embeds Hawtio |
-| `consumer-soap-server` | Quarkus application exposing the Basis Consumer SOAP interface (`api-telematik/consumer`) |
+| Module                  | Description                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `quarkus-server`        | Main Quarkus application bundling all services; CDI integration; embeds Hawtio             |
+| `consumer-soap-server`  | Quarkus application exposing the Basis Consumer SOAP interface (`api-telematik/consumer`)  |
 | `konnektor-soap-server` | Quarkus application exposing Konnektor SOAP compatibility interface (`api-telematik/conn`) |
 
 ### External submodule
 
-| Module | Description |
-|--------|-------------|
+| Module    | Description                                                                                                         |
+| --------- | ------------------------------------------------------------------------------------------------------------------- |
 | `openkim` | KIM/KOM-LE client module (fork of [med-united/openkim](https://github.com/med-united/openkim), originally by sberg) |
 
 ## Key capabilities
