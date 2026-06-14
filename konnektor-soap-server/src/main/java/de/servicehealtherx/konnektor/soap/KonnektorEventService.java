@@ -141,11 +141,15 @@ public class KonnektorEventService implements EventServicePortType {
             response.setCards(new Cards());
 
             // Unified, transport-spanning view: aggregate every provider's own CM_CARD_LIST
-            // (PC/SC + SICCT), de-duplicated by cardHandle (feature 002-card-handle, FR-062/FR-064).
+            // (PC/SC + SICCT), de-duplicated by cardHandle (feature 002-card-handle,
+            // FR-062/FR-064).
             CardListAggregator aggregator = new CardListAggregator();
             for (CryptoProvider cryptoProvider : cryptoProviderInstances) {
                 if (cryptoProvider instanceof CardListProvider clp) {
                     aggregator.addSource(clp.cmCardList());
+                } else {
+                    // Non-PC/SC providers (e.g. SICCT) can still contribute via a custom adapter.
+                    aggregator.addCryptoProvider(cryptoProvider);
                 }
             }
             aggregator.findAll()
@@ -158,7 +162,10 @@ public class KonnektorEventService implements EventServicePortType {
         }
     }
 
-    /** Map a transport-neutral CM_CARD_LIST entry to the gematik CardInfoType (FR-064). */
+    /**
+     * Map a transport-neutral CM_CARD_LIST entry to the gematik CardInfoType
+     * (FR-064).
+     */
     public CardInfoType toCardInfoType(CardObject card) {
         CardInfoType info = new CardInfoType();
         info.setCardHandle(card.cardHandle());

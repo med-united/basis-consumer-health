@@ -6,13 +6,21 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
 
+import de.servicehealtherx.crypto.CryptoProvider;
+
 /**
- * Produces the unified, transport-spanning card view by aggregating across every provider's own
- * {@link CmCardList} (FR-064) and resolves a {@code cardHandle} to the single provider list that
- * owns it (FR-065). Transport-neutral: it operates only on {@link CmCardList}/{@link CardObject}.
+ * Produces the unified, transport-spanning card view by aggregating across
+ * every provider's own
+ * {@link CmCardList} (FR-064) and resolves a {@code cardHandle} to the single
+ * provider list that
+ * owns it (FR-065). Transport-neutral: it operates only on
+ * {@link CmCardList}/{@link CardObject}.
  *
- * <p>System-wide {@code cardHandle} uniqueness (random UUID per handle) keeps the union
- * duplicate-free (FR-067); {@link #findAll()} de-duplicates defensively by handle regardless.
+ * <p>
+ * System-wide {@code cardHandle} uniqueness (random UUID per handle) keeps the
+ * union
+ * duplicate-free (FR-067); {@link #findAll()} de-duplicates defensively by
+ * handle regardless.
  */
 public final class CardListAggregator {
 
@@ -31,7 +39,10 @@ public final class CardListAggregator {
         return this;
     }
 
-    /** Unified view across all sources, de-duplicated by {@code cardHandle} (FR-064, FR-067). */
+    /**
+     * Unified view across all sources, de-duplicated by {@code cardHandle} (FR-064,
+     * FR-067).
+     */
     public List<CardObject> findAll() {
         return distinctByHandle(sources.stream().flatMap(s -> s.findAll().stream()).toList());
     }
@@ -53,7 +64,10 @@ public final class CardListAggregator {
                 .findFirst();
     }
 
-    /** The single provider list that currently owns {@code cardHandle}, for routing (FR-065). */
+    /**
+     * The single provider list that currently owns {@code cardHandle}, for routing
+     * (FR-065).
+     */
     public Optional<CmCardList> resolveOwner(String cardHandle) {
         return sources.stream()
                 .filter(s -> s.findByHandle(cardHandle).isPresent())
@@ -66,5 +80,9 @@ public final class CardListAggregator {
             byHandle.putIfAbsent(c.cardHandle(), c);
         }
         return new ArrayList<>(byHandle.values());
+    }
+
+    public void addCryptoProvider(CryptoProvider cryptoProvider) {
+        sources.add(new CryptoProviderCardListAdapter(cryptoProvider));
     }
 }

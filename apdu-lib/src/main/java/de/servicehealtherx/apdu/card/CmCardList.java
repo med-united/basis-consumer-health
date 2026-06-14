@@ -13,21 +13,33 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Predicate;
 
 /**
- * CM_CARD_LIST — the Kartendienst card-management list (gemSpec_Kon §4.1.5), holding one
+ * CM_CARD_LIST — the Kartendienst card-management list (gemSpec_Kon §4.1.5),
+ * holding one
  * {@link CardObject} per card known to its owning provider.
  *
- * <p><strong>Per-provider, not shared</strong> (FR-062): the type is defined here in
- * {@code apdu-lib}, but each CryptoProvider instantiates and owns its own instance. The unified
- * card view is the aggregation of all providers' instances; {@code cardHandle} is unique
- * system-wide across that union (FR-067). This class is transport-neutral — it references no
+ * <p>
+ * <strong>Per-provider, not shared</strong> (FR-062): the type is defined here
+ * in
+ * {@code apdu-lib}, but each CryptoProvider instantiates and owns its own
+ * instance. The unified
+ * card view is the aggregation of all providers' instances; {@code cardHandle}
+ * is unique
+ * system-wide across that union (FR-067). This class is transport-neutral — it
+ * references no
  * PC/SC or SICCT type.
  *
- * <p>Thread-safe: insertions/removals may arrive concurrently from reader/terminal events.
+ * <p>
+ * Thread-safe: insertions/removals may arrive concurrently from reader/terminal
+ * events.
  */
-public final class CmCardList {
+public class CmCardList {
 
-    /** An invalidated cardHandle held back from reuse until {@code expiry} (FR-003, 48 h). */
-    private record BlacklistedEntry(String cardHandle, Instant expiry) {}
+    /**
+     * An invalidated cardHandle held back from reuse until {@code expiry} (FR-003,
+     * 48 h).
+     */
+    private record BlacklistedEntry(String cardHandle, Instant expiry) {
+    }
 
     /** 48-hour no-reuse window (FR-003). */
     static final Duration NO_REUSE_WINDOW = Duration.ofHours(48);
@@ -40,10 +52,12 @@ public final class CmCardList {
     private final ConcurrentLinkedDeque<BlacklistedEntry> recentlyInvalidated = new ConcurrentLinkedDeque<>();
 
     /**
-     * Add a CardObject (TUC_KON_001). Rejects a duplicate {@code cardHandle} or one still inside
+     * Add a CardObject (TUC_KON_001). Rejects a duplicate {@code cardHandle} or one
+     * still inside
      * the 48-hour no-reuse blacklist.
      *
-     * @throws IllegalStateException if the cardHandle is already active or blacklisted
+     * @throws IllegalStateException if the cardHandle is already active or
+     *                               blacklisted
      */
     public void add(CardObject card) {
         Objects.requireNonNull(card, "card");
@@ -58,7 +72,10 @@ public final class CmCardList {
         cardsByCtid.computeIfAbsent(card.ctid(), k -> new CopyOnWriteArrayList<>()).add(card);
     }
 
-    /** Remove a card by handle and add it to the 48-hour blacklist. Returns the removed card. */
+    /**
+     * Remove a card by handle and add it to the 48-hour blacklist. Returns the
+     * removed card.
+     */
     public Optional<CardObject> removeByHandle(String cardHandle) {
         CardObject removed = activeCards.remove(cardHandle);
         if (removed != null) {
@@ -73,7 +90,10 @@ public final class CmCardList {
         return findBySlot(ctid, slotNo).flatMap(c -> removeByHandle(c.cardHandle()));
     }
 
-    /** Bulk invalidation on disconnect/unplug of a reader or terminal (FR-044, FR-069). */
+    /**
+     * Bulk invalidation on disconnect/unplug of a reader or terminal (FR-044,
+     * FR-069).
+     */
     public List<CardObject> removeAllForTerminal(UUID ctid) {
         List<CardObject> cards = cardsByCtid.getOrDefault(ctid, List.of());
         List<CardObject> removed = new ArrayList<>();
@@ -96,7 +116,10 @@ public final class CmCardList {
                 .findFirst();
     }
 
-    /** All cards in this instance (the card service concatenates per-provider results, FR-064). */
+    /**
+     * All cards in this instance (the card service concatenates per-provider
+     * results, FR-064).
+     */
     public List<CardObject> findAll() {
         return List.copyOf(activeCards.values());
     }
@@ -112,7 +135,10 @@ public final class CmCardList {
         return activeCards.size();
     }
 
-    /** Whether a handle is currently held back from reuse (test/verification support). */
+    /**
+     * Whether a handle is currently held back from reuse (test/verification
+     * support).
+     */
     public boolean isBlacklisted(String cardHandle) {
         Instant now = Instant.now();
         return recentlyInvalidated.stream()
