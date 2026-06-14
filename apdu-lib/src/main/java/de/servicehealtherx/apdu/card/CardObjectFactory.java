@@ -17,6 +17,16 @@ import de.servicehealtherx.apdu.model.CardType;
  */
 public final class CardObjectFactory {
 
+    private final CardAttributeReader attributeReader;
+
+    public CardObjectFactory() {
+        this(new CardAttributeReader());
+    }
+
+    public CardObjectFactory(CardAttributeReader attributeReader) {
+        this.attributeReader = Objects.requireNonNull(attributeReader, "attributeReader");
+    }
+
     /**
      * Build a CardObject from resolved attributes and add it to {@code list}. The {@code ctid} and
      * {@code slotNo} come from the {@link CardReaderPort}; {@code cardHandle} is a fresh random UUID.
@@ -51,10 +61,11 @@ public final class CardObjectFactory {
      * there. Kept here so the call site is stable across the Phase-2 → US1 boundary.
      */
     public CardObject readAndCreate(CmCardList list, CardReaderPort port, int slotNo, CardType type) {
-        // T016 (US1) fills in: transmit SELECT/READ BINARY for EF.Version, parse CARDVERSION,
-        // read AUT certificate for cardHolderName/kvnr/certExpirationDate. For now, register with
-        // empty attributes so the lifecycle and CM_CARD_LIST wiring is exercisable.
-        return createAndRegister(list, port, slotNo, type, CardAttributes.empty());
+        // Reads ICCSN (EF.GDO) and CARDVERSION (EF.Version2) via the transport port (T016).
+        // Cert-derived fields (cardHolderName/expiry/KVNR) require selecting the AUT certificate
+        // file (object-system-specific DF.ESIGN path), supplied by the provider when available.
+        CardAttributes attrs = attributeReader.read(port, slotNo, type);
+        return createAndRegister(list, port, slotNo, type, attrs);
     }
 
     /**
