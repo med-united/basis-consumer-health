@@ -4,7 +4,7 @@ title Card Insertion Event Flow (TUC_KON_001)
 participant "SICCT Terminal" as KT
 participant "SicctChannelHandler" as SCH
 participant "CardHandleFactory" as CHF
-participant "CardHandleRegistry" as REG
+participant "CmCardList" as REG
 participant "SicctEventPublisher" as PUB
 participant "EventService (GetCards)" as ES
 

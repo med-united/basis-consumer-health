@@ -24,6 +24,11 @@
             <groupId>de.servicehealtherx</groupId>
             <artifactId>sicct-lib</artifactId>
         </dependency>
+        <!-- Transport-neutral CM_CARD_LIST type + CardReaderPort (feature 002-card-handle, FR-061/FR-062). -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>apdu-lib</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>

@@ -47,6 +47,32 @@
 
     <build>
         <plugins>
+            <!-- Keep apdu-lib transport-neutral: it MUST NOT depend on sicct-lib (FR-061, SC-019). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>ban-transport-dependencies</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>de.servicehealtherx:sicct-lib</exclude>
+                                        <exclude>de.servicehealtherx:crypto-sicct-lib</exclude>
+                                        <exclude>de.servicehealtherx:crypto-pcsc-lib</exclude>
+                                    </excludes>
+                                    <message>apdu-lib must stay transport-neutral: no sicct-lib or transport-provider dependency (feature 002-card-handle FR-061 / SC-019).</message>
+                                </bannedDependencies>
+                            </rules>
+                            <fail>true</fail>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>

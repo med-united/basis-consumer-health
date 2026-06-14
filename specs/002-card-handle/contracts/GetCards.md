@@ -3,11 +3,11 @@
 **Service**: EventService v7.2
 **Endpoint**: `/conn/EventService`
 **WSDL type**: `EventServicePortType.getCards(GetCards) → GetCardsResponse`
-**Spec refs**: FR-041, SC-012
+**Spec refs**: FR-041, FR-062, FR-064, SC-012, SC-017
 
 ## Behaviour
 
-Returns the cached in-memory card list. MUST NOT issue any commands to card terminals (read-only). Filters applied server-side before response.
+Returns the cached in-memory card list, **aggregated across every CryptoProvider's own CM_CARD_LIST** (PC/SC and SICCT) into one unified, transport-spanning response. MUST NOT issue any commands to card terminals/readers (read-only). Cards from a directly PC/SC-connected reader and from a SICCT terminal are indistinguishable in structure, differing only in `CtId` (and capability-dependent fields). Each `CardHandle` appears at most once (system-wide uniqueness across the union, FR-067). Filters applied server-side before response.
 
 ## Request Parameters
 
@@ -40,6 +40,7 @@ Returns the cached in-memory card list. MUST NOT issue any commands to card term
 
 ## Implementation Notes
 
-- `GetCardsResponse` is assembled entirely from `CardHandleRegistry.findAll(filter)` — zero terminal I/O
-- Cards for terminals that are currently disconnected are NOT returned (handles for disconnected terminals are already invalidated by FR-044)
-- Response latency target: ≤ 100 ms (in-memory lookup)
+- `GetCardsResponse` is assembled by concatenating each provider's `CmCardList.findAll(filter)` (PC/SC + SICCT) — zero terminal/reader I/O
+- Cards for terminals/readers that are currently disconnected/unplugged are NOT returned (their handles are already invalidated by FR-044/FR-069, both transports)
+- `CtId` distinguishes the source: a synthesized name-derived UUID for a PC/SC reader (FR-068) or the SICCT terminal id
+- Response latency target: ≤ 100 ms (in-memory aggregation)
