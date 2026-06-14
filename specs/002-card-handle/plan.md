@@ -4,7 +4,7 @@
 
 ## Summary
 
-Implement the in-memory `CardHandle` lifecycle (TUC_KON_001 / TUC_KON_056 / TUC_KON_057) including: data model, `CardHandleRegistry` CDI bean, SICCT insertion/removal event handling, startup reconstruction, disconnect invalidation/rebuild, card session subtypes (eGK / SM-B / HBAx), eGK session lock/unlock (TUC_KON_223/224), comfort-signature state (TUC_KON_171–173), CDI event publication (CARD/INSERTED, CARD/REMOVED, CERT/CARD/STATUS, CARD/SESSION/TIMEOUT), G2.0 pseudonym admin log, and the `GetCards`, `RequestCard`, `EjectCard` SOAP operations.
+Implement the in-memory **CM_CARD_LIST** card-management list and `CardObject`/`CardHandle` lifecycle (TUC_KON_001 / TUC_KON_056 / TUC_KON_057) as a **transport-agnostic** capability that works identically for directly PC/SC-connected card readers and SICCT-connected card terminals. The card-management domain objects and CM_CARD_LIST live in **`apdu-lib`**; a single shared CM_CARD_LIST instance is part of both `PcscCryptoProvider` (`crypto-pcsc-lib`) and `SicctCryptoProvider` (`crypto-sicct-lib`), each implementing the `apdu-lib` `CardReaderPort` transport boundary over its respective transport. Scope includes: data model, the shared CM_CARD_LIST CDI bean, insertion/removal handling over both transports, startup reconstruction, disconnect invalidation/rebuild, card session subtypes (eGK / SM-B / HBAx), eGK session lock/unlock (TUC_KON_223/224), comfort-signature state (TUC_KON_171–173), CDI event publication (CARD/INSERTED, CARD/REMOVED, CERT/CARD/STATUS, CARD/SESSION/TIMEOUT), G2.0 pseudonym admin log, and the `GetCards`, `RequestCard`, `EjectCard` SOAP operations — all returning a unified view across both transports.
 
 ## Technical Context
 
@@ -53,7 +53,9 @@ Implement the in-memory `CardHandle` lifecycle (TUC_KON_001 / TUC_KON_056 / TUC_
 
 | Gate | Status | Notes |
 |---|---|---|
-| Principle I — Code Quality: no single-implementation interfaces | ✅ PASS | `CardHandleRegistry` is a concrete CDI bean; no `ICardHandleRegistry` wrapper needed (single impl) |
+| Principle I — Code Quality: no single-implementation interfaces | ✅ PASS | `CmCardList` is a concrete CDI bean (no interface). `CardReaderPort` is an interface with **two** real implementations (`PcscCardReaderPort`, `SicctCardReaderPort`), justifying the abstraction. |
+| Principle (apdu-lib transport neutrality) | ✅ PASS | CM_CARD_LIST + domain objects in `apdu-lib`; no dependency on `sicct-lib` or PC/SC types; `apdu-lib` constructs APDUs but does not transmit (transmission lives behind `CardReaderPort` in the providers). |
+| Module wiring | ⚠ ACTION | `crypto-sicct-lib/pom.xml` adds `apdu-lib` dependency; both providers inject the single shared `CmCardList` bean. |
 | Principle I — Code Quality: no `Impl` suffix | ✅ PASS | All classes named by role: `CardHandleRegistry`, `CardHandleFactory`, `SicctEventPublisher` |
 | Principle II — Testing discipline | ✅ PASS | Unit tests for registry ops; IT tests for SOAP + SICCT event flow |
 | Principle III — Security: no handle bytes in logs | ✅ PASS | cardHandle logged only at DEBUG, never in ERROR/WARN |
@@ -87,37 +89,54 @@ specs/002-card-handle/
 
 ### Source Code
 
+Transport-agnostic core (`apdu-lib`) — domain objects + CM_CARD_LIST + transport port. No `sicct-lib` or PC/SC dependency:
+
+```text
+apdu-lib/src/main/java/de/servicehealtherx/apdu/card/
+├── CardObject.java               ← CardObject/CardHandle (CM_CARD_LIST entry; relocated from sicct.models)
+├── CardVersion.java              ← value object
+├── CardType.java                 ← enum (EGK, KVK, HBAx, SMB, SMC_KT, UNKNOWN …)
+├── CardSession.java              ← abstract base
+├── CardSession_eGK.java          ← key: cardHandle; adds sessionID, timer
+├── CardSession_SMB.java          ← key: cardHandle + mandantId
+├── CardSession_HBAx.java         ← key: cardHandle + csid + userId; adds comfort sig state
+├── AuthState.java                ← value object (C2C or CHV entry)
+├── CmCardList.java               ← @ApplicationScoped CM_CARD_LIST; ONE shared instance for both providers
+├── CardObjectFactory.java        ← TUC_KON_001: reads card attributes via CardReaderPort, returns CardObject
+└── transport/
+    └── CardReaderPort.java       ← transport-neutral port (transmit APDU, observe insert/remove, capabilities)
+```
+
+Provider adapters — each implements `CardReaderPort` over its transport and shares the injected CM_CARD_LIST:
+
+```text
+crypto-pcsc-lib/src/main/java/de/servicehealtherx/crypto/pcsc/
+├── PcscCryptoProvider.java       ← existing; inject shared CmCardList; drive PcscCardReaderPort
+└── PcscCardReaderPort.java       ← new; javax.smartcardio reader; poll insert/remove → CmCardList
+
+crypto-sicct-lib/src/main/java/de/servicehealtherx/crypto/sicct/
+├── SicctCryptoProvider.java      ← existing; inject shared CmCardList; drive SicctCardReaderPort
+└── SicctCardReaderPort.java      ← new; sicct-lib terminal; insert/remove events → CmCardList
+```
+> `crypto-sicct-lib/pom.xml` MUST add a dependency on `apdu-lib` (crypto-pcsc-lib already has it).
+
+SICCT-only event/JPA helpers and SOAP wiring (unchanged module homes):
+
 ```text
 sicct-lib/src/main/java/de/servicehealtherx/sicct/
-├── models/
-│   ├── CardHandle.java            ← fill existing empty class
-│   ├── CardVersion.java           ← new value object
-│   ├── CardType.java              ← new enum (EGK, KVK, HBAx, SMB, SMC_KT, UNKNOWN …)
-│   ├── CardSession.java           ← new abstract base
-│   ├── CardSession_eGK.java       ← new (key: cardHandle; adds sessionID, timer)
-│   ├── CardSession_SMB.java       ← new (key: cardHandle + mandantId)
-│   ├── CardSession_HBAx.java      ← new (key: cardHandle + csid + userId; adds comfort sig state)
-│   └── AuthState.java             ← new value object (C2C or CHV entry)
-├── jpa/
-│   ├── CardTerminal.java          ← existing (no changes)
-│   └── G2CardLog.java             ← new JPA entity (pseudonym admin log, A_25801)
-└── event/
-    ├── CardInsertedEvent.java     ← new CDI event record
-    ├── CardRemovedEvent.java      ← new CDI event record
-    ├── CardSessionTimeoutEvent.java ← new CDI event record
-    └── CertCardStatusEvent.java   ← new CDI event record
+├── jpa/G2CardLog.java            ← JPA entity (pseudonym admin log, A_25801)
+└── event/                        ← CDI event records: CardInsertedEvent, CardRemovedEvent,
+                                     CardSessionTimeoutEvent, CertCardStatusEvent
 
 quarkus-sicct-extension/runtime/src/main/java/de/servicehealtherx/quarkus/sicct/runtime/
-├── CardHandleRegistry.java        ← new @ApplicationScoped (CM_CARD_LIST)
-├── CardHandleFactory.java         ← new (reads card attributes via APDU, returns CardHandle)
-├── SicctEventPublisher.java       ← new (CDI @Observes → TUC_KON_256 log/dispatch)
-├── SicctChannelHandler.java       ← existing; extend to fire CDI events on card insert/remove
-└── SicctTerminalManager.java      ← existing; extend @PostConstruct for startup reconstruction,
-                                       onTerminalDisconnected for handle invalidation
+├── SicctEventPublisher.java      ← new (CDI @Observes → TUC_KON_256 log/dispatch)
+├── SicctChannelHandler.java      ← existing; route card insert/remove into SicctCardReaderPort
+└── SicctTerminalManager.java     ← existing; @PostConstruct startup reconstruction (→ CmCardList),
+                                     onTerminalDisconnected invalidation
 
 konnektor-soap-server/src/main/java/de/servicehealtherx/konnektor/soap/
-├── KonnektorEventService.java     ← existing; implement getCards() properly
-└── KonnektorCardTerminalService.java ← existing; implement requestCard(), ejectCard() properly
+├── KonnektorEventService.java    ← existing; implement getCards() over unified CmCardList
+└── KonnektorCardTerminalService.java ← existing; implement requestCard(), ejectCard() over both transports
 ```
 
 ## Complexity Tracking
