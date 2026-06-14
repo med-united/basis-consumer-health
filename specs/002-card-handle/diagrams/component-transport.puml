@@ -1,0 +1,59 @@
+@startuml component-transport
+title Transport-Agnostic Card Management — per-provider CM_CARD_LIST (PC/SC + SICCT)
+
+package "apdu-lib (transport-neutral)" {
+  interface CardReaderPort
+  class CmCardList
+  class CardObject
+  class CardObjectFactory
+  class CardPresenceCoordinator
+  class CardListAggregator
+  interface CardListProvider
+  class CardSessionService
+  class ComfortSignatureService
+  class EgkSessionLock
+  class G2Pseudonym
+  note bottom of CmCardList
+    One instance PER provider
+    (never shared, FR-062).
+    Holds CardObject entries,
+    48h no-reuse blacklist.
+  end note
+}
+
+package "crypto-pcsc-lib" {
+  class PcscCryptoProvider
+  class PcscCardReaderPort
+  class PcscReaderRegistry
+  class PcscEjectHandler
+  PcscCardReaderPort ..|> CardReaderPort
+  PcscCryptoProvider ..|> CardListProvider
+  PcscCryptoProvider *-- CmCardList : owns its own
+  PcscReaderRegistry --> PcscCardReaderPort : poll (javax.smartcardio)
+}
+
+package "crypto-sicct-lib" {
+  class SicctCryptoProvider
+  class SicctCardReaderPort
+  SicctCardReaderPort ..|> CardReaderPort
+  SicctCryptoProvider ..|> CardListProvider
+  SicctCryptoProvider *-- CmCardList : owns its own
+  SicctCardReaderPort --> SicctChannel : sicct-lib terminal
+}
+
+package "konnektor-soap-server" {
+  class KonnektorEventService
+  KonnektorEventService --> CardListAggregator : getCards()
+}
+
+CardListAggregator --> CardListProvider : aggregate each\nprovider's CmCardList
+CardPresenceCoordinator --> CardObjectFactory
+CardObjectFactory --> CardObject
+CardObjectFactory --> CardReaderPort : reads ICCSN / EF.Version
+
+note as N1
+  apdu-lib MUST NOT depend on sicct-lib (FR-061, SC-019).
+  APDU transmission only behind CardReaderPort in the providers.
+  Unified GetCards = aggregation across per-provider lists (FR-064).
+end note
+@enduml
