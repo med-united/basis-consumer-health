@@ -21,6 +21,10 @@
             <artifactId>crypto-lib</artifactId>
         </dependency>
         <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>apdu-lib</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
         </dependency>
