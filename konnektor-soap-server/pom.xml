@@ -28,6 +28,11 @@
             <groupId>de.servicehealtherx</groupId>
             <artifactId>crypto-services-lib</artifactId>
         </dependency>
+        <!-- CM_CARD_LIST aggregation across providers for GetCards (feature 002-card-handle, FR-064). -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>apdu-lib</artifactId>
+        </dependency>
         <dependency>
             <groupId>de.servicehealtherx</groupId>
             <artifactId>quarkus-sicct-extension</artifactId>

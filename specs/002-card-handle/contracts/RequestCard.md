@@ -3,11 +3,13 @@
 **Service**: CardTerminalService v1.1
 **Endpoint**: `/conn/CardTerminalService`
 **WSDL type**: `CardTerminalServicePortType.requestCard(RequestCard) → RequestCardResponse`
-**Spec refs**: FR-033–FR-040, SC-011, TUC_KON_056 (TAB_KON_723)
+**Spec refs**: FR-033–FR-040, FR-063, FR-071, SC-011, TUC_KON_056 (TAB_KON_723)
 
 ## Behaviour
 
-Actively prompts a card terminal slot to accept a card via SICCT REQUEST ICC. Returns when a card is present (whether pre-existing or freshly inserted). Drives `TUC_KON_001` on card insertion which fires `CARD/INSERTED` and creates the `CardHandle`.
+Actively prompts a card terminal/reader slot to accept a card. Over the SICCT transport this is a SICCT REQUEST ICC with a display prompt; over a directly PC/SC-connected reader it waits for card presence via the `CardReaderPort`. Returns when a card is present (whether pre-existing or freshly inserted). Drives `TUC_KON_001` on card insertion which fires `CARD/INSERTED` and creates the `CardHandle`.
+
+**Transport capability degradation (FR-063/FR-071)**: when the addressed reader provides no display (`hasDisplay=false`, typical PC/SC), the display prompt is skipped and the call proceeds; when the reader has no slot selection, the slot reference is omitted. These degradations MUST NOT cause an error.
 
 ## Request Parameters
 
@@ -61,7 +63,7 @@ Slot reference omitted if terminal has no slot selection.
 ```
 1. checkArguments → error 4000 on syntax / 4058 on unsupported cardType
 2. TUC_KON_000 access check → propagate error on failure
-3. check CardHandleRegistry for existing handle at (ctId, slotId)
+3. check CmCardList for existing handle at (ctId, slotId)
    → if present: set alreadyInserted=true; skip SICCT call; go to step 5
 4. Send SICCT_REQUEST_ICC(ctId, slotId, displayMessage, timeoutSec)
    → on timeout: error 4202

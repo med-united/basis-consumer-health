@@ -6,15 +6,23 @@
 
 **Status**: Draft
 
+## Overview
+
+This feature implements the Konnektor **Kartendienst** (card service) card-handle lifecycle defined in gemSpec_Kon V5.27.0 §4.1.5. The central runtime structure is **CM_CARD_LIST** — the card-management list of CardObjects that the Kartendienst maintains: TUC_KON_001 ("Karte öffnen") adds a CardObject on insertion, "Reaktion auf Karte entfernt" removes it, and all card-addressing TUCs resolve a card via `CM_CARD_LIST(cardHandle)` or `CM_CARD_LIST(CtID, SlotNo)`.
+
+**Transport-agnostic by design**: every card-handle use case works identically whether a card is read through a **directly PC/SC-connected card reader** or through a **SICCT-connected card terminal**. The two transports are equal, first-class card-access paths — neither is deferred. A client system cannot tell from the Card Handle which transport produced it; only the terminal identifier (`ctid`) distinguishes the source.
+
+**Module placement**: the card-management domain objects (CM_CARD_LIST, CardObject/CardHandle, CardVersion, CardType, CardSession and its subtypes, AuthState) and the transport-neutral lifecycle logic live in the **`apdu-lib`** module so they carry no transport dependency (`apdu-lib` MUST NOT depend on `sicct-lib`). **CM_CARD_LIST is per-provider, not shared**: each CryptoProvider owns its own CM_CARD_LIST instance — the **PCSC Crypto Provider** (`PcscCryptoProvider`, backed by directly connected PC/SC readers) maintains one, and the **Sicct Crypto Provider** (`SicctCryptoProvider`, backed by SICCT terminals) maintains a separate one. The CM_CARD_LIST *type* is defined once in `apdu-lib` and reused by both providers, but the two instances are independent. A unified, transport-spanning card view (e.g. GetCards) is produced by the card service **aggregating across every provider's CM_CARD_LIST**, not by reading a single shared list.
+
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 — SICCT Card Insertion Creates a Usable Card Handle (Priority: P1)
+### User Story 1 — Card Insertion Creates a Usable Card Handle on Any Connected Reader (Priority: P1)
 
-When a smart card (SMC-B, HBA, or eGK) is inserted into a slot of a networked SICCT card terminal, the system immediately creates a Card Handle for that card. A client system (Primärsystem) can reference the card by its handle to initiate card-based operations — certificate reading, signing, PIN verification — without knowing the physical terminal or slot details. The handle captures all card metadata at insertion time, including card type, version info, cardholder identity, and certificate validity status.
+When a smart card (SMC-B, HBA, or eGK) is inserted — into a slot of a SICCT card terminal **or** into a directly connected PC/SC reader — the system immediately creates a Card Handle for that card and adds the corresponding CardObject to CM_CARD_LIST. A client system (Primärsystem) can reference the card by its handle to initiate card-based operations — certificate reading, signing, PIN verification — without knowing the physical transport, terminal, or slot details. The handle captures all card metadata at insertion time, including card type, version info, cardholder identity, and certificate validity status, identically for both transports.
 
-**Why this priority**: SICCT is the primary card access path in multi-tenant deployments. Without a reliable card handle created at insertion time, no card operations are possible. This is the foundational capability on which all cryptographic workflows depend.
+**Why this priority**: card access is the foundational capability on which all cryptographic workflows depend. Both SICCT (multi-tenant networked terminals) and directly PC/SC-connected readers (local/co-located hardware) are primary access paths in this product, so the handle and its CM_CARD_LIST entry MUST be created uniformly regardless of transport.
 
-**Independent Test**: Insert a card into a SICCT terminal slot. Verify that the system assigns a unique handle, that the handle includes the card's type, ICCSN, cardholder name, and insert timestamp, and that the handle can be passed to GetCards and used in a subsequent signing or PIN verification request.
+**Independent Test**: Insert a card into a SICCT terminal slot, then repeat with the same card type in a directly PC/SC-connected reader. Verify that in both cases the system assigns a unique handle, that the handle includes the card's type, ICCSN, cardholder name, and insert timestamp, that the resulting CardObject appears in its provider's CM_CARD_LIST and in the aggregated GetCards view, and that the handle can be passed to GetCards and used in a subsequent signing or PIN verification request — with identical field structure for both transports.
 
 **Acceptance Scenarios**:
 
@@ -31,18 +39,35 @@ When a smart card (SMC-B, HBA, or eGK) is inserted into a slot of a networked SI
 
 ---
 
-### User Story 2 — PC/SC Card Insertion Creates a Card Handle (Priority: P2)
+### User Story 2 — Directly PC/SC-Connected Reader Creates a Card Handle (Priority: P1)
 
-When a smart card is inserted into a locally connected PC/SC reader, the system applies the same Card Handle creation logic. The handle is indistinguishable from a SICCT-originated handle to client systems — the terminal ID (`ctid`) identifies the source, but the handle format and fields are identical.
+When a smart card is inserted into a directly connected PC/SC reader, the system applies the same Card Handle creation logic as for SICCT and registers the CardObject into the PCSC Crypto Provider's own CM_CARD_LIST (which the aggregated GetCards view includes). The handle is indistinguishable from a SICCT-originated handle to client systems — the terminal ID (`ctid`) identifies the source reader, but the handle format and fields are identical.
 
-**Why this priority**: PC/SC provides local card access for development and scenarios where physical hardware is co-located. The handle must be uniform so client system code needs no terminal-type awareness.
+**Why this priority**: directly PC/SC-connected readers are a first-class card-access path in this product (not a deferred development convenience). Every use case in this feature — handle creation, GetCards, RequestCard, EjectCard, sessions, signing, PIN verification — MUST be available over PC/SC with the same behaviour as over SICCT, so client system code needs no transport awareness.
 
-**Independent Test**: Insert a card into a PC/SC reader. Confirm a Card Handle is created with the same field structure as a SICCT-originated handle and that GetCards returns it under the same response schema.
+**Independent Test**: Insert a card into a directly PC/SC-connected reader. Confirm a Card Handle is created with the same field structure as a SICCT-originated handle, that the CardObject is added to the PCSC provider's own CM_CARD_LIST, and that the aggregated GetCards returns it under the same response schema. Exercise RequestCard and EjectCard against the PC/SC reader and confirm equivalent behaviour to the SICCT path.
 
 **Acceptance Scenarios**:
 
-1. **Given** a PC/SC reader is registered and a card is inserted, **When** the insertion event fires, **Then** a Card Handle is created with a `ctid` referencing the PC/SC reader and a `slotNo` identifying the reader position.
+1. **Given** a directly PC/SC-connected reader is registered and a card is inserted, **When** the insertion is detected, **Then** a Card Handle is created with a `ctid` referencing the PC/SC reader and a `slotNo` identifying the reader position, and the CardObject is added to CM_CARD_LIST.
 2. **Given** a PC/SC-originated Card Handle, **When** a client system queries GetCards, **Then** the handle appears in the response with the same field structure as a SICCT handle.
+3. **Given** a directly PC/SC-connected reader, **When** RequestCard or EjectCard is called for that reader, **Then** the operation behaves equivalently to the SICCT path (display prompt where the reader supports it, `AlreadyInserted` semantics, lock checks, mechanical/logical eject), differing only where the PC/SC reader lacks a capability (e.g. no terminal display or no slot selection).
+
+---
+
+### User Story 3 — Unified Card View Aggregated Across Per-Provider Lists (Priority: P1)
+
+The PCSC Crypto Provider and the Sicct Crypto Provider each maintain their own CM_CARD_LIST. Cards inserted via PC/SC readers live in the PCSC provider's list; cards inserted via SICCT terminals live in the SICCT provider's list. The card service produces a unified, transport-spanning view (GetCards) by aggregating across every provider's CM_CARD_LIST, and any `cardHandle` resolves to exactly one provider — the one whose list contains it.
+
+**Why this priority**: keeping each provider's card state self-contained avoids cross-provider coupling and lets each transport own its own lifecycle, while aggregation still gives higher layers a single logical view and the ability to address any card by handle without knowing its transport.
+
+**Independent Test**: With one card in a SICCT terminal and one card in a directly PC/SC-connected reader simultaneously, call GetCards once and confirm both CardObjects are returned — one drawn from each provider's CM_CARD_LIST. Resolve each `cardHandle` and confirm it maps to exactly one provider, which handles subsequent APDU operations.
+
+**Acceptance Scenarios**:
+
+1. **Given** one card present in a SICCT terminal and one card present in a directly PC/SC-connected reader, **When** GetCards is queried, **Then** both CardObjects are returned — aggregated from the two providers' separate CM_CARD_LIST instances — with identical field structure and distinct `ctid` values.
+2. **Given** a `cardHandle`, **When** it is resolved, **Then** it is found in exactly one provider's CM_CARD_LIST and the APDU-level operation is routed to that provider, transparently to the caller.
+3. **Given** a card is removed from either transport, **When** the removal is detected, **Then** the corresponding CardObject is removed from that provider's own CM_CARD_LIST and no longer appears in the aggregated GetCards view.
 
 ---
 
@@ -69,8 +94,23 @@ When a smart card is inserted into a locally connected PC/SC reader, the system 
 
 ### Functional Requirements
 
-- **FR-001**: When a card is inserted in a SICCT terminal slot, the system MUST create a Card Handle within 2 seconds of the insertion event being received.
-- **FR-002**: When a card is inserted in a PC/SC reader, the system MUST create a Card Handle using the same structure as a SICCT-originated handle.
+- **FR-001**: When a card is inserted, the system MUST create a Card Handle within 2 seconds of the insertion being detected and add the CardObject to CM_CARD_LIST. This ≤2 s target applies to BOTH transports: a SICCT insertion event and a PC/SC insertion detection. For PC/SC, the reader polling interval MUST be chosen so detection-to-handle latency stays within the 2 s budget.
+- **FR-002**: When a card is inserted in a directly PC/SC-connected reader, the system MUST create a Card Handle and CM_CARD_LIST entry using the same structure, fields, and lifecycle as a SICCT-originated handle; PC/SC is a first-class transport, not a deferred path.
+
+#### CM_CARD_LIST & Transport-Agnostic Card Access
+
+- **FR-060**: The system MUST maintain a single card-management list, **CM_CARD_LIST**, holding one CardObject per card currently known to the Kartendienst, per gemSpec_Kon §4.1.5. CM_CARD_LIST MUST be addressable both by `cardHandle` (`CM_CARD_LIST(cardHandle)`) and by the (`ctid`, `slotNo`) pair (`CM_CARD_LIST(CtID, SlotNo)`).
+- **FR-061**: CM_CARD_LIST and the card-management domain objects (CardObject/CardHandle, CardVersion, CardType, CardSession and subtypes, AuthState) MUST reside in the `apdu-lib` module so they carry no transport dependency. CM_CARD_LIST MUST NOT depend on `sicct-lib` or on any PC/SC-specific type.
+- **FR-062**: Each CryptoProvider MUST own its own CM_CARD_LIST instance; CM_CARD_LIST MUST NOT be shared between providers. The PCSC Crypto Provider (`PcscCryptoProvider`) maintains its own list of PC/SC-originated CardObjects and the Sicct Crypto Provider (`SicctCryptoProvider`) maintains a separate list of SICCT-originated CardObjects. Each provider registers and removes CardObjects only in its own instance. The CM_CARD_LIST type is defined once in `apdu-lib` and instantiated per provider.
+- **FR-063**: Every card-handle use case in this specification (TUC_KON_001 handle creation, GetCards, RequestCard/TUC_KON_056, EjectCard/TUC_KON_057, card-session create/start/stop, PIN verification, signing, decryption, certificate read) MUST function identically whether the addressed card is reached through a directly PC/SC-connected reader or through a SICCT terminal, except where a specific reader physically lacks a capability (e.g. no display, no mechanical eject, no slot selection), in which case the system MUST degrade gracefully rather than fail.
+- **FR-064**: GetCards MUST return a unified view spanning both transports by aggregating across every provider's CM_CARD_LIST; a card reached via PC/SC and a card reached via SICCT MUST be indistinguishable in structure, differing only in `ctid` (and capability-dependent fields). The aggregation MUST de-duplicate by `cardHandle` even though, in normal operation, a given handle appears in only one provider's list.
+- **FR-065**: Resolving a `cardHandle` MUST locate the single provider whose CM_CARD_LIST contains it and route subsequent APDU execution to that provider, transparently to the caller. The provider boundary is the only place transport-specific APDU transmission occurs; `apdu-lib` defines the CM_CARD_LIST type and constructs APDUs but MUST NOT transmit APDUs itself.
+- **FR-066**: The transport-execution boundary MUST be expressed as a transport-neutral port (abstraction) defined in `apdu-lib`; `PcscCryptoProvider` MUST implement it over a directly connected PC/SC reader and `SicctCryptoProvider` MUST implement it over a SICCT terminal. No single-transport assumption may leak into CM_CARD_LIST or the domain objects.
+- **FR-067**: `cardHandle` uniqueness, the 48-hour no-reuse rule, and per-tenant scoping (FR-003, FR-019) MUST hold across the **union** of all providers' CM_CARD_LIST instances — i.e. a `cardHandle` MUST be unique system-wide, never appearing in more than one provider's list at the same time, regardless of which transport created each entry.
+- **FR-068**: For a directly PC/SC-connected reader, the system MUST derive a stable `ctid` as a UUID from the PC/SC reader name and register the reader as a `CardTerminal` entry, so `ctid` has the same UUID/FK shape as a SICCT terminal. The same physical reader MUST map to the same `ctid` across reconnects.
+- **FR-069**: Startup reconstruction (FR-042), disconnect invalidation (FR-044), and reconnect rebuild (FR-045) MUST apply to PC/SC readers with full parity: cards present in a connected reader at startup are scanned and given handles; unplugging a reader invalidates all its handles immediately; re-plugging applies the same reconstruction logic with fresh `cardHandle` identifiers. No PC/SC session state survives an unplug.
+- **FR-070**: When EjectCard (FR-051) addresses a card in a reader that lacks mechanical throwout (typical PC/SC reader), the system MUST perform a logical eject — invalidate the Card Handle and remove the CardObject from CM_CARD_LIST — and return success WITHOUT raising error 4203. Error 4203 applies only to readers/terminals that physically eject but whose card is not removed by the user in time.
+- **FR-071**: Per FR-034 and FR-052, when the addressed reader provides no display, RequestCard/EjectCard MUST skip the display prompt and proceed (graceful degradation), rather than failing with a display-related error.
 - **FR-003**: The Card Handle MUST carry a globally unique, opaque identifier (`cardHandle`) assigned by the system at creation time; it MUST NOT be derivable from card attributes. An invalidated `cardHandle` MUST NOT be reused for any new card within 48 hours of its invalidation.
 - **FR-004**: The Card Handle MUST record the terminal ID (`ctid`) referencing the `CardTerminal` entity and the slot number (`slotNo`) where the card is physically located.
 - **FR-005**: The Card Handle MUST record the card's ICCSN if the value is readable from the card; if unreadable, `iccsn` MUST be left empty rather than failing handle creation.
@@ -165,7 +205,9 @@ When a smart card is inserted into a locally connected PC/SC reader, the system 
 
 ### Key Entities
 
-- **CardHandle**: The runtime representation of a single inserted card. Carries the card's unique handle, location (terminal + slot), identification (ICCSN, type, cardholder name, KVNR), version metadata (CARDVERSION), certificate status, and a list of active card sessions. Scoped per tenant.
+- **CM_CARD_LIST**: The card-management list of the Kartendienst (gemSpec_Kon §4.1.5) — a transport-agnostic registry of CardObjects, indexed by `cardHandle` and by (`ctid`, `slotNo`), maintained by TUC_KON_001 on insertion (add CardObject) and by the card-removal reaction (remove CardObject). The type is defined once in `apdu-lib`, but **each CryptoProvider owns its own instance** (`PcscCryptoProvider` and `SicctCryptoProvider` each have a separate CM_CARD_LIST); instances are never shared between providers. Each instance enforces the 48-hour no-reuse blacklist and per-tenant scoping for its own entries, while system-wide `cardHandle` uniqueness holds across the union of all instances. The unified card view is the aggregation of all providers' lists. Independent of the underlying transport (PC/SC reader or SICCT terminal).
+- **CardObject / CardHandle**: The runtime representation of a single inserted card and the entry type held in CM_CARD_LIST (gemSpec_Kon calls it the *CardObject*; clients reference it by its `cardHandle`). Carries the card's unique handle, location (terminal/reader + slot), identification (ICCSN, type, cardholder name, KVNR), version metadata (CARDVERSION), certificate status, the originating transport's terminal id (`ctid`), and a list of active card sessions. Scoped per tenant. Identical in structure whether created by the PC/SC or the SICCT provider.
+- **CardReaderPort (transport port)**: The transport-neutral abstraction, defined in `apdu-lib`, through which constructed APDUs are transmitted to a physical card and through which insertion/removal is observed. `PcscCryptoProvider` implements it over a directly connected PC/SC reader; `SicctCryptoProvider` implements it over a SICCT terminal. It is the only place transport-specific transmission occurs; CM_CARD_LIST and the domain objects never reference a concrete transport.
 - **CardVersion**: Nested within CardHandle. Contains eight version fields read from the card's EF.Version and related structures (COS version, object system version, personalization version, data structure version, logging version, ATR version, GDO version, key info version).
 - **CardSession**: Represents a single active context on a card. Three concrete subtypes exist — `CardSession_eGK` (key: `cardHandle`), `CardSession_SM-B` (key: `cardHandle + mandantId`), `CardSession_HBAx` (key: `cardHandle + clientSystemId + userId`). Every session tracks achieved authentication states (`authState`), the unlocking session (`authBy`, eGK only), and comfort signature mode (`signMode`, HBA only). eGK sessions additionally carry a `sessionID` (UUID, RFC 4122) assigned at session start, and a reference to the active `CARD_SESSION_TIMEOUT` timer.
 - **AuthState**: A single achieved security state within a CardSession. Either a C2C entry (key reference `KeyRef` + `Role` per gemSpec_PKI_TI#Tab_PKI_918) or a CHV entry (PIN reference `PINRef`). Multiple entries accumulate as the session progresses through authentication steps.
@@ -189,6 +231,10 @@ When a smart card is inserted into a locally connected PC/SC reader, the system 
 - **SC-013**: After Konnektor startup, all cards present in connected terminals are discoverable via `GetCards` within 10 seconds of the last terminal's TLS connection being established; no manual card re-insertion is required.
 - **SC-014**: When a SICCT terminal disconnects, all its Card Handles are invalidated within 1 second; after reconnection, handles for all physically present cards are reconstructed within 10 seconds without any client action.
 - **SC-015**: Every Card Handle creation emits a `CARD/INSERTED` event and every invalidation emits a `CARD/REMOVED` event; a subscriber observing both event topics sees a perfectly balanced insert/remove sequence with no missing or duplicate events in a test scenario of 50 sequential card insertions and ejections.
+- **SC-016**: A card inserted via a directly PC/SC-connected reader and a card inserted via a SICCT terminal both produce Card Handles whose field set and types are identical (verified field-by-field); no field is present or differently typed in one transport versus the other.
+- **SC-017**: With one card in a SICCT terminal and one in a directly PC/SC-connected reader simultaneously, a single GetCards call returns both CardObjects aggregated from the two providers' separate CM_CARD_LIST instances; each `cardHandle` appears in exactly one provider's list, with zero duplicate or divergent entries in a test of 20 concurrent mixed-transport insertions.
+- **SC-018**: 100% of card-handle use cases (handle creation, GetCards, RequestCard, EjectCard, session create/start/stop, PIN verify, sign, decrypt, read certificate) pass their acceptance tests when executed over the PC/SC transport and again when executed over the SICCT transport, except capability-gated steps that degrade gracefully (and are asserted to degrade, not fail).
+- **SC-019**: CM_CARD_LIST and all card-management domain objects compile and unit-test within the `apdu-lib` module with no compile-time dependency on `sicct-lib` or any PC/SC-specific type (verified by the module's dependency set).
 
 ## Assumptions
 
@@ -198,7 +244,9 @@ When a smart card is inserted into a locally connected PC/SC reader, the system 
 - The `kvnr` field is only populated for eGK cards; all other card types leave it empty.
 - MRPIN state is excluded from `authState` for eGK G2.0 cards per gematik specification; no other card types have this exclusion.
 - Comfort signature mode (`signMode = Comfort`) is only meaningful for HBA cards; for all other card types the field exists but defaults to `PIN` and is not toggled.
-- PC/SC reader support shares the same Card Handle structure but is lower priority than SICCT; PC/SC-specific edge cases (multi-reader, hot-plug) are deferred to a follow-up.
+- PC/SC reader support is a first-class, equal-priority transport sharing the same Card Handle structure and CM_CARD_LIST as SICCT; it is NOT deferred. PC/SC-specific capability gaps (no terminal display, no slot selection, no mechanical eject) are handled by graceful degradation, not by excluding the use case.
+- CM_CARD_LIST and the card-management domain objects live in `apdu-lib` (transport-neutral); `apdu-lib` does not depend on `sicct-lib` and does not transmit APDUs. APDU transmission and insertion/removal detection happen in the provider that implements the `apdu-lib` transport port (`PcscCryptoProvider` over a PC/SC reader, `SicctCryptoProvider` over a SICCT terminal).
+- CM_CARD_LIST is per-provider: each CryptoProvider instantiates and owns its own list; the lists are never shared between providers. The unified card view is produced by the card service aggregating across all providers' lists (de-duplicated by `cardHandle`).
 - A re-inserted card (same physical card after ejection) receives a new `cardHandle` identifier; the previous handle is not reused.
 - Card Handles are runtime in-memory objects and are not persisted. On Konnektor restart, handles are reconstructed by querying all connected terminals (FR-042); CardSession state is never restored after a restart (FR-043).
 - The eGK Start/Stop session lifecycle (TUC_KON_223/TUC_KON_224) applies only to eGK cards; SM-B and HBAx sessions do not use an explicit lock/unlock mechanism with a `sessionID`.
@@ -213,6 +261,16 @@ When a smart card is inserted into a locally connected PC/SC reader, the system 
 - Access authorization for `RequestCard` is enforced via TUC_KON_000 before TUC_KON_056 is invoked; authorization failures are surfaced as errors from TUC_KON_000, not TUC_KON_056.
 
 ## Clarifications
+
+### Session 2026-06-14
+
+- Q: Should directly PC/SC-connected readers be a first-class transport on equal footing with SICCT, or remain a deferred secondary path? → A: First-class and equal. Every use case (handle creation, GetCards, RequestCard, EjectCard, sessions, sign/decrypt/verify, certificate read) MUST work identically over both transports, degrading gracefully only where a specific reader lacks a capability.
+- Q: Where do CM_CARD_LIST and the card-management domain objects live, given `apdu-lib` MUST NOT depend on `sicct-lib`? → A: In `apdu-lib`, transport-neutral. The transport boundary is a port interface defined in `apdu-lib`; PC/SC and SICCT providers implement it. `apdu-lib` constructs APDUs and owns CM_CARD_LIST but does not transmit APDUs.
+- Q: Is CM_CARD_LIST per-provider or shared? → A: Per-provider. Each CryptoProvider (`PcscCryptoProvider`, `SicctCryptoProvider`) owns its own CM_CARD_LIST instance; the lists are never shared. The unified GetCards view is produced by the card service aggregating across all providers' lists, with system-wide `cardHandle` uniqueness across their union. (Supersedes an earlier draft that used a single shared instance.)
+- Q: How is the terminal id (`ctid`) determined for a directly PC/SC-connected reader? → A: Synthesize a stable UUID from the PC/SC reader name and register it as a `CardTerminal` entry, so `ctid` handling is uniform with SICCT (same UUID/FK shape).
+- Q: Do startup reconstruction and disconnect invalidation/rebuild apply to PC/SC readers? → A: Full parity — cards present at startup are scanned, reader unplug invalidates its handles, and replug rebuilds them, exactly as for SICCT terminal connect/disconnect.
+- Q: EjectCard on a PC/SC reader with no mechanical throwout? → A: Logical eject — invalidate the handle and return success without error 4203 (graceful capability degradation per FR-063).
+- Q: Does the ≤2 s handle-creation target apply to PC/SC? → A: Yes, the same ≤2 s from insertion detection applies to both transports; the PC/SC polling interval must be chosen to fit within that budget.
 
 ### Session 2026-06-07
 

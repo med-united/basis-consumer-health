@@ -1,9 +1,11 @@
 # Quickstart Validation Guide: Card Handle
 
 **Feature**: Card Handle (specs/002-card-handle)
-**Date**: 2026-06-07
+**Date**: 2026-06-14 (transport-agnostic PC/SC + SICCT; per-provider CM_CARD_LIST)
 
-This guide describes how to validate the Card Handle feature end-to-end without physical hardware.
+This guide describes how to validate the Card Handle feature end-to-end without physical hardware, over **both** transports — directly PC/SC-connected readers and SICCT terminals.
+
+> **Transport parity**: Scenarios 1–7 are written for the SICCT path but MUST also pass over the PC/SC path. Run each as a parameterised test across both transports via a fake `CardReaderPort` (SC-018). Scenarios 10–12 cover PC/SC-specific and cross-transport behaviour.
 
 ---
 
@@ -11,6 +13,7 @@ This guide describes how to validate the Card Handle feature end-to-end without 
 
 - Java 21, Maven 3.9+
 - The SICCT emulator built into the IT test framework (`EmbeddedChannel` test double in `quarkus-sicct-extension`)
+- A fake `CardReaderPort` (transport-neutral test double in `apdu-lib` tests) and/or a PC/SC reader simulator for the PC/SC path
 - No physical card terminal or smart card required
 
 ---
@@ -19,7 +22,7 @@ This guide describes how to validate the Card Handle feature end-to-end without 
 
 **What it validates**: FR-001, FR-003–FR-013, SC-001, SC-002, FR-046
 
-**Test class**: `CardHandleRegistryIT` in `quarkus-sicct-extension/runtime/src/it/java/`
+**Test class**: `CmCardListIT` in `quarkus-sicct-extension/runtime/src/it/java/`
 
 **Steps**:
 1. Start `@QuarkusTest` with embedded H2 and the SICCT `EmbeddedChannel` double
@@ -136,6 +139,45 @@ This guide describes how to validate the Card Handle feature end-to-end without 
 2. Call `ActivateComfortSignature` → assert `signMode = Comfort` on session; `countRemaining` initialized
 3. Simulate 3 signing operations → assert `countRemaining` decremented by 3
 4. Call `DeactivateComfortSignature` → assert `signMode = PIN`; timer cancelled; PIN.QES removed from `authState`
+
+---
+
+## Scenario 10 — PC/SC reader insertion parity (transport-agnostic core)
+
+**What it validates**: FR-002, FR-061, FR-063, SC-016, SC-018, SC-019
+
+**Test class**: `CmCardListTest` in `apdu-lib/src/test/java/` (no transport, fake `CardReaderPort`)
+
+**Steps**:
+1. Drive a fake `CardReaderPort` configured as a PC/SC reader (`hasMechanicalEject=false`, `hasDisplay=false`) to signal an insertion
+2. Assert `PcscCryptoProvider`'s `CmCardList` now contains one `CardObject` whose `ctid` = `UUID.nameUUIDFromBytes(readerName)` (FR-068)
+3. Assert the `CardObject` field set/types are identical to a SICCT-originated one (field-by-field, SC-016)
+4. Assert `apdu-lib` test module has no compile dependency on `sicct-lib` or any PC/SC type (SC-019)
+
+---
+
+## Scenario 11 — Unified GetCards aggregated across both providers
+
+**What it validates**: FR-062, FR-064, FR-067, SC-017
+
+**Steps**:
+1. Insert one card via the SICCT path (Scenario 1) and one card via the PC/SC path (Scenario 10) simultaneously
+2. Call `GetCards(mandantId=M1)` once
+3. Assert both `Card` elements are returned, with distinct `ctid` values, aggregated from the two providers' separate `CmCardList` instances
+4. Assert each `cardHandle` resolves to exactly one provider (no handle appears in both lists)
+
+---
+
+## Scenario 12 — EjectCard logical eject on a PC/SC reader (no mechanical throwout)
+
+**What it validates**: FR-070, FR-071, FR-069
+
+**Steps**:
+1. Insert a card via the PC/SC path (Scenario 10); note the `cardHandle`
+2. Call `EjectCard(cardHandle=<handle>)`
+3. Assert `Status=OK` and **no** error 4203 (logical eject — handle invalidated, CardObject removed from CM_CARD_LIST)
+4. Assert no display prompt was attempted (reader `hasDisplay=false`, FR-071)
+5. Unplug the reader (fake port reports terminal-absent) → assert all its handles invalidated within 1 s (FR-069); re-plug → assert fresh handle with a new `cardHandle` but the same `ctid`
 
 ---
 

@@ -23,7 +23,7 @@ class TucKon215SearchRecordTest {
 
     @Test
     void test_TIP1_A_4578_search_pattern_in_command_data() {
-        var pattern = new byte[]{0x42, 0x00, 0xFF};
+        var pattern = new byte[]{0x42, 0x00, (byte) 0xFF};
         var tuc = new TucKon215SearchRecord();
 
         var result = tuc.generateSearchRecord(newSession(CardType.EGK), (byte) 0x01, pattern);

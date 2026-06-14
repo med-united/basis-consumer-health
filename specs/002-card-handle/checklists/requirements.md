@@ -2,6 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-06-07
+**Updated**: 2026-06-14 (transport-agnostic PC/SC + SICCT; CM_CARD_LIST entity)
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -32,7 +33,9 @@
 ## Notes
 
 - 56 functional requirements covering: card handle creation (FR-001–FR-013), card sessions (FR-014–FR-020), session subtypes (FR-021–FR-025), eGK session lifecycle (FR-026–FR-028), comfort signature (FR-029–FR-032), active card request/RequestCard/TUC_KON_056 (FR-033–FR-041), card ejection/EjectCard/TUC_KON_057 (FR-051–FR-056), startup reconstruction + disconnect (FR-042–FR-045), event notifications (FR-046–FR-050)
-- SICCT is explicitly P1, PC/SC is P2
+- SICCT and directly PC/SC-connected readers are BOTH P1, first-class, equal transports (US1, US2, US3); PC/SC is no longer deferred (updated 2026-06-14)
+- CM_CARD_LIST is a first-class entity (Kartendienst card-management list, gemSpec_Kon §4.1.5), lives in `apdu-lib`, shared by both `PcscCryptoProvider` and `SicctCryptoProvider` — FR-060–FR-067, SC-016–SC-019
+- Transport-neutral domain objects relocated to `apdu-lib` (`de.servicehealtherx.apdu.card.*`); transport boundary is `CardReaderPort` with PCSC + SICCT implementations — data-model.md, plan.md
 - Certificate validation (certStatus, certOcspResponse) is async by design — SC-003 captures the timing expectation
 - eGK-specific rules (KVNR, MRPIN exclusion, authBy, sessionID, CARD_SESSION_TIMEOUT) are captured in FR-010, FR-016, FR-020, FR-026–FR-028
 - HBA comfort signature mode scoped per-session in FR-017, FR-029–FR-032

@@ -7,7 +7,7 @@ INVALIDATED --> [*] : cardHandle added to\n48-hour blacklist
 
 note right of ACTIVE
   cardHandle registered in
-  CardHandleRegistry.activeHandles
+  CmCardList.activeHandles
   CARD/INSERTED event fired
 end note
 
