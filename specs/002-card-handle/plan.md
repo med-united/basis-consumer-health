@@ -4,7 +4,7 @@
 
 ## Summary
 
-Implement the in-memory **CM_CARD_LIST** card-management list and `CardObject`/`CardHandle` lifecycle (TUC_KON_001 / TUC_KON_056 / TUC_KON_057) as a **transport-agnostic** capability that works identically for directly PC/SC-connected card readers and SICCT-connected card terminals. The card-management domain objects and CM_CARD_LIST live in **`apdu-lib`**; a single shared CM_CARD_LIST instance is part of both `PcscCryptoProvider` (`crypto-pcsc-lib`) and `SicctCryptoProvider` (`crypto-sicct-lib`), each implementing the `apdu-lib` `CardReaderPort` transport boundary over its respective transport. Scope includes: data model, the shared CM_CARD_LIST CDI bean, insertion/removal handling over both transports, startup reconstruction, disconnect invalidation/rebuild, card session subtypes (eGK / SM-B / HBAx), eGK session lock/unlock (TUC_KON_223/224), comfort-signature state (TUC_KON_171–173), CDI event publication (CARD/INSERTED, CARD/REMOVED, CERT/CARD/STATUS, CARD/SESSION/TIMEOUT), G2.0 pseudonym admin log, and the `GetCards`, `RequestCard`, `EjectCard` SOAP operations — all returning a unified view across both transports.
+Implement the in-memory **CM_CARD_LIST** card-management list and `CardObject`/`CardHandle` lifecycle (TUC_KON_001 / TUC_KON_056 / TUC_KON_057) as a **transport-agnostic** capability that works identically for directly PC/SC-connected card readers and SICCT-connected card terminals. The card-management domain objects and the CM_CARD_LIST type live in **`apdu-lib`**; **each provider owns its own CM_CARD_LIST instance** (not shared) — `PcscCryptoProvider` (`crypto-pcsc-lib`) and `SicctCryptoProvider` (`crypto-sicct-lib`) each maintain a separate list and each implement the `apdu-lib` `CardReaderPort` transport boundary over its respective transport. The card service produces the unified GetCards view by aggregating across the providers' lists. Scope includes: data model, the per-provider CM_CARD_LIST instances, insertion/removal handling over both transports, startup reconstruction, disconnect invalidation/rebuild, card session subtypes (eGK / SM-B / HBAx), eGK session lock/unlock (TUC_KON_223/224), comfort-signature state (TUC_KON_171–173), CDI event publication (CARD/INSERTED, CARD/REMOVED, CERT/CARD/STATUS, CARD/SESSION/TIMEOUT), G2.0 pseudonym admin log, and the `GetCards`, `RequestCard`, `EjectCard` SOAP operations — all returning a unified view across both transports.
 
 ## Technical Context
 
@@ -53,9 +53,9 @@ Implement the in-memory **CM_CARD_LIST** card-management list and `CardObject`/`
 
 | Gate | Status | Notes |
 |---|---|---|
-| Principle I — Code Quality: no single-implementation interfaces | ✅ PASS | `CmCardList` is a concrete CDI bean (no interface). `CardReaderPort` is an interface with **two** real implementations (`PcscCardReaderPort`, `SicctCardReaderPort`), justifying the abstraction. |
-| Principle (apdu-lib transport neutrality) | ✅ PASS | CM_CARD_LIST + domain objects in `apdu-lib`; no dependency on `sicct-lib` or PC/SC types; `apdu-lib` constructs APDUs but does not transmit (transmission lives behind `CardReaderPort` in the providers). |
-| Module wiring | ⚠ ACTION | `crypto-sicct-lib/pom.xml` adds `apdu-lib` dependency; both providers inject the single shared `CmCardList` bean. |
+| Principle I — Code Quality: no single-implementation interfaces | ✅ PASS | `CmCardList` is a concrete class (no interface). `CardReaderPort` is an interface with **two** real implementations (`PcscCardReaderPort`, `SicctCardReaderPort`), justifying the abstraction. |
+| Principle (apdu-lib transport neutrality) | ✅ PASS | CM_CARD_LIST type + domain objects in `apdu-lib`; no dependency on `sicct-lib` or PC/SC types; `apdu-lib` constructs APDUs but does not transmit (transmission lives behind `CardReaderPort` in the providers). |
+| Module wiring | ⚠ ACTION | `crypto-sicct-lib/pom.xml` adds `apdu-lib` dependency; each provider owns its own `CmCardList` instance (not shared); the card service aggregates across providers for GetCards. |
 | Principle I — Code Quality: no `Impl` suffix | ✅ PASS | All classes named by role: `CardHandleRegistry`, `CardHandleFactory`, `SicctEventPublisher` |
 | Principle II — Testing discipline | ✅ PASS | Unit tests for registry ops; IT tests for SOAP + SICCT event flow |
 | Principle III — Security: no handle bytes in logs | ✅ PASS | cardHandle logged only at DEBUG, never in ERROR/WARN |
@@ -101,7 +101,7 @@ apdu-lib/src/main/java/de/servicehealtherx/apdu/card/
 ├── CardSession_SMB.java          ← key: cardHandle + mandantId
 ├── CardSession_HBAx.java         ← key: cardHandle + csid + userId; adds comfort sig state
 ├── AuthState.java                ← value object (C2C or CHV entry)
-├── CmCardList.java               ← @ApplicationScoped CM_CARD_LIST; ONE shared instance for both providers
+├── CmCardList.java               ← CM_CARD_LIST type; each provider owns a SEPARATE instance (not shared)
 ├── CardObjectFactory.java        ← TUC_KON_001: reads card attributes via CardReaderPort, returns CardObject
 └── transport/
     └── CardReaderPort.java       ← transport-neutral port (transmit APDU, observe insert/remove, capabilities)
@@ -111,11 +111,11 @@ Provider adapters — each implements `CardReaderPort` over its transport and sh
 
 ```text
 crypto-pcsc-lib/src/main/java/de/servicehealtherx/crypto/pcsc/
-├── PcscCryptoProvider.java       ← existing; inject shared CmCardList; drive PcscCardReaderPort
+├── PcscCryptoProvider.java       ← existing; own its CmCardList instance; drive PcscCardReaderPort
 └── PcscCardReaderPort.java       ← new; javax.smartcardio reader; poll insert/remove → CmCardList
 
 crypto-sicct-lib/src/main/java/de/servicehealtherx/crypto/sicct/
-├── SicctCryptoProvider.java      ← existing; inject shared CmCardList; drive SicctCardReaderPort
+├── SicctCryptoProvider.java      ← existing; own its CmCardList instance; drive SicctCardReaderPort
 └── SicctCardReaderPort.java      ← new; sicct-lib terminal; insert/remove events → CmCardList
 ```
 > `crypto-sicct-lib/pom.xml` MUST add a dependency on `apdu-lib` (crypto-pcsc-lib already has it).
@@ -135,7 +135,7 @@ quarkus-sicct-extension/runtime/src/main/java/de/servicehealtherx/quarkus/sicct/
                                      onTerminalDisconnected invalidation
 
 konnektor-soap-server/src/main/java/de/servicehealtherx/konnektor/soap/
-├── KonnektorEventService.java    ← existing; implement getCards() over unified CmCardList
+├── KonnektorEventService.java    ← existing; implement getCards() by aggregating each provider's CmCardList
 └── KonnektorCardTerminalService.java ← existing; implement requestCard(), ejectCard() over both transports
 ```
 

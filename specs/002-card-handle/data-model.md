@@ -5,7 +5,7 @@
 
 All CardHandle entities are **runtime in-memory only** unless noted otherwise. The sole persisted entity is `G2CardLog`.
 
-**Module placement (transport-agnostic)**: CM_CARD_LIST and the card-management domain objects (`CardObject`/`CardHandle`, `CardVersion`, `CardType`, `CardSession` and subtypes, `AuthState`) live in the **`apdu-lib`** module under `de.servicehealtherx.apdu.card.*`. They MUST NOT depend on `sicct-lib` or any PC/SC-specific type. APDU transmission and card insert/remove detection are performed by the two providers through the `apdu-lib` transport port (`CardReaderPort`): `PcscCryptoProvider` (directly connected PC/SC reader) and `SicctCryptoProvider` (SICCT terminal). A single CM_CARD_LIST instance is shared by both providers.
+**Module placement (transport-agnostic)**: CM_CARD_LIST and the card-management domain objects (`CardObject`/`CardHandle`, `CardVersion`, `CardType`, `CardSession` and subtypes, `AuthState`) live in the **`apdu-lib`** module under `de.servicehealtherx.apdu.card.*`. They MUST NOT depend on `sicct-lib` or any PC/SC-specific type. APDU transmission and card insert/remove detection are performed by the two providers through the `apdu-lib` transport port (`CardReaderPort`): `PcscCryptoProvider` (directly connected PC/SC reader) and `SicctCryptoProvider` (SICCT terminal). **CM_CARD_LIST is per-provider, not shared**: the type is defined once in `apdu-lib`, but each provider instantiates and owns its own list. The unified card view is produced by aggregating across all providers' lists.
 
 > Package-rename note: the prior draft placed these types in `de.servicehealtherx.sicct.models`. They move to `apdu-lib` (`de.servicehealtherx.apdu.card.*`) so both crypto providers can share them without a transport dependency. SICCT-only event/JPA helpers (`G2CardLog`, CDI event records) remain in their transport/runtime modules.
 
@@ -14,28 +14,29 @@ All CardHandle entities are **runtime in-memory only** unless noted otherwise. T
 ## CM_CARD_LIST
 
 **Package**: `de.servicehealtherx.apdu.card`
-**Storage**: In-memory; the single Kartendienst card-management list (gemSpec_Kon §4.1.5)
-**Lifecycle**: one shared `@ApplicationScoped` instance injected into both `PcscCryptoProvider` and `SicctCryptoProvider`
+**Storage**: In-memory; the Kartendienst card-management list (gemSpec_Kon §4.1.5)
+**Lifecycle**: per-provider — each CryptoProvider owns its own instance; instances are never shared between providers. The type is defined once in `apdu-lib`.
 
-CM_CARD_LIST is the authoritative registry of every `CardObject` currently known to the system, across both transports. TUC_KON_001 adds an entry on insertion; the card-removal reaction removes it.
+CM_CARD_LIST is the authoritative registry of every `CardObject` known to *its owning provider*. TUC_KON_001 adds an entry on insertion; the card-removal reaction removes it. The system-wide card view is the aggregation of all providers' CM_CARD_LIST instances; `cardHandle` is unique across that union.
 
 | Aspect | Definition |
 |---|---|
 | Entry type | `CardObject` (a.k.a. `CardHandle`, see below) |
 | Primary index | `cardHandle` → `CardObject` (`CM_CARD_LIST(cardHandle)`) |
 | Secondary index | (`ctid`, `slotNo`) → `CardObject` (`CM_CARD_LIST(CtID, SlotNo)`) |
-| Uniqueness | `cardHandle` unique across the whole list (spanning both transports) |
+| Ownership | one instance per CryptoProvider; never shared between providers |
+| Uniqueness | `cardHandle` unique system-wide, across the union of all providers' instances |
 | No-reuse rule | an invalidated `cardHandle` MUST NOT be reissued within 48 h |
 | Tenant scoping | queries are filtered per tenant (FR-019) |
 | Transport neutrality | no field or method references a concrete transport; origin is recorded only via `ctid` |
 
-**Operations**:
-- `add(CardObject)` — used by TUC_KON_001 from either provider; rejects duplicate/blacklisted `cardHandle`
+**Operations** (each provider invokes these on its own instance):
+- `add(CardObject)` — used by TUC_KON_001; rejects duplicate/blacklisted `cardHandle`
 - `removeByHandle(cardHandle)` / `removeBySlot(ctid, slotNo)` — card removal / terminal disconnect; adds to 48 h blacklist
 - `findByHandle(cardHandle)` — O(1) resolution used by every card-addressing TUC
 - `findBySlot(ctid, slotNo)` — slot addressing (RequestCard/EjectCard, startup reconstruction)
 - `removeAllForTerminal(ctid)` — bulk invalidation on disconnect of a SICCT terminal or PC/SC reader
-- `findAll(GetCardsFilter)` — unified, per-tenant view for GetCards across both transports
+- `findAll(GetCardsFilter)` — per-tenant view of this provider's cards; the card service concatenates the result of each provider's `findAll` to form the unified GetCards response
 
 **State transition (per entry)**:
 ```
@@ -214,14 +215,14 @@ Comfort → [DeactivateComfortSignature / TUC_KON_172, or admin disable, or coun
 
 ---
 
-## CM_CARD_LIST implementation (CDI bean, not an entity)
+## CM_CARD_LIST implementation (class, not an entity)
 
 **Package**: `de.servicehealtherx.apdu.card`
-**Scope**: `@ApplicationScoped` — **one shared instance injected into both `PcscCryptoProvider` and `SicctCryptoProvider`**
+**Type/Scope**: a plain `CmCardList` class defined in `apdu-lib`; **each provider holds its own instance** (e.g. a `@Dependent`/per-provider bean or a field constructed by the provider). It is **not** an `@ApplicationScoped` singleton shared across providers.
 
-This is the concrete realization of the CM_CARD_LIST entity above. It lives in `apdu-lib` so it carries no transport dependency; both providers depend on `apdu-lib` and inject the same bean.
+This is the concrete realization of the CM_CARD_LIST entity above. It lives in `apdu-lib` so it carries no transport dependency; both providers depend on `apdu-lib`, but `PcscCryptoProvider` and `SicctCryptoProvider` each own a separate `CmCardList`.
 
-Internal state:
+Internal state (per instance):
 
 | Field | Type | Purpose |
 |---|---|---|
@@ -229,14 +230,14 @@ Internal state:
 | `cardsByCtid` | `ConcurrentHashMap<UUID, List<CardObject>>` | Inverse index; keyed by `ctid` (reader **or** terminal) for fast invalidation |
 | `recentlyInvalidated` | `ConcurrentLinkedDeque<BlacklistedEntry>` | 48-hour reuse blacklist; pruned lazily on each new card add |
 
-Operations exposed to both providers:
-- `add(CardObject)` — adds to both maps; rejects duplicate cardHandle or blacklisted UUID (TUC_KON_001, either transport)
+Operations (each provider invokes these on its own instance):
+- `add(CardObject)` — adds to both maps; rejects duplicate cardHandle or blacklisted UUID (TUC_KON_001)
 - `removeByHandle(String cardHandle)` — removes from both maps; adds to blacklist; triggers `CardRemovedEvent`
 - `removeAllForTerminal(UUID ctid)` — bulk invalidation on disconnect of a SICCT terminal or PC/SC reader
 - `rebuildFromReader(ReaderRef, List<SlotInfo>)` — startup/reconnect; invokes `CardObjectFactory` per slot via the providing transport
-- `findByHandle(String)` — O(1) lookup used by every card-addressing TUC, transport-agnostic
+- `findByHandle(String)` — O(1) lookup within this provider's cards
 - `findBySlot(UUID ctid, int slotNo)` — slot addressing
-- `findAll(GetCardsFilter)` — unified, per-tenant view spanning both transports for `GetCards`
+- `findAll(GetCardsFilter)` — per-tenant view of this provider's cards; the card service concatenates each provider's result for the unified `GetCards` response (system-wide `cardHandle` uniqueness keeps the union duplicate-free)
 
 ---
 
