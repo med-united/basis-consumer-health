@@ -142,10 +142,12 @@ Multi-module Maven reactor. Key roots:
 
 **Purpose**: SICCT-only eventing, startup reconstruction, and the G2.0 admin log that the runtime layer owns.
 
-- [ ] T038 [P] Create CDI event records `CardInsertedEvent`, `CardRemovedEvent`, `CertCardStatusEvent`, `CardSessionTimeoutEvent` in `sicct-lib/src/main/java/de/servicehealtherx/sicct/event/`
-- [ ] T039 Implement `SicctEventPublisher` (`@Observes` the `CardLifecycleListener` hook from T018 → TUC_KON_256 log/dispatch: CARD/INSERTED, CARD/REMOVED, CERT/CARD/STATUS, CARD/SESSION/TIMEOUT) in `quarkus-sicct-extension/runtime/src/main/java/de/servicehealtherx/quarkus/sicct/runtime/SicctEventPublisher.java` (FR-046–FR-049)
-- [ ] T040 Extend `SicctTerminalManager` for SICCT startup reconstruction (→ SICCT provider's `CmCardList`) and `onTerminalDisconnected` invalidation (FR-042, FR-044, FR-045) in `quarkus-sicct-extension/runtime/src/main/java/de/servicehealtherx/quarkus/sicct/runtime/SicctTerminalManager.java`
-- [ ] T041 [P] Create `G2CardLog` JPA entity + ICCSN-unique upsert and JMX MBean for the G2.0 pseudonym admin log (A_25801, FR-050) in `sicct-lib/src/main/java/de/servicehealtherx/sicct/jpa/G2CardLog.java`
+- [X] T038 [P] Create CDI event records `CardInsertedEvent`, `CardRemovedEvent`, `CertCardStatusEvent`, `CardSessionTimeoutEvent` in `sicct-lib/src/main/java/de/servicehealtherx/sicct/event/` (carry gemSpec event params as primitives → no apdu-lib coupling; FR-046–FR-049)
+- [ ] T039 Implement `SicctEventPublisher` (`@Observes` the `CardLifecycleListener` hook from T018 → TUC_KON_256 log/dispatch: CARD/INSERTED, CARD/REMOVED, CERT/CARD/STATUS, CARD/SESSION/TIMEOUT) in `quarkus-sicct-extension/runtime/.../SicctEventPublisher.java` (FR-046–FR-049) — **DEFERRED** (runtime CDI wiring)
+- [ ] T040 Extend `SicctTerminalManager` for SICCT startup reconstruction (→ SICCT provider's `CmCardList`) and `onTerminalDisconnected` invalidation (FR-042, FR-044, FR-045) in `quarkus-sicct-extension/runtime/.../SicctTerminalManager.java` — **DEFERRED** (runtime Netty/SICCT wiring; binds `SicctChannel`)
+- [X] T041 [P] Create `G2CardLog` JPA Panache entity + ICCSN-unique `upsert` in `sicct-lib/src/main/java/de/servicehealtherx/sicct/jpa/G2CardLog.java`, and the pure pseudonym computation `G2Pseudonym` (first 10 hex of SHA-256(ICCSN‖expiry)) in `apdu-lib/.../card/G2Pseudonym.java` — tested (A_25801, FR-050). **Note**: pseudonym lives in apdu-lib (transport-neutral, keeps sicct-lib decoupled); the admin **JMX MBean** view is deferred to runtime.
+
+> **Phase 6 progress**: T038 (event records) + T041 (G2 pseudonym + JPA log) done & compiling; pseudonym unit-tested in apdu-lib. T039/T040 (event publisher + terminal-manager wiring) deferred — they need the live `quarkus-sicct-extension` runtime (CDI observers + Netty SICCT channel), best done with the app runnable.
 
 ---
 
