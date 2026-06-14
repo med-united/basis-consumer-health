@@ -33,6 +33,9 @@ import jakarta.jws.soap.SOAPBinding;
 
 import de.servicehealtherx.crypto.CryptoProvider;
 import de.servicehealtherx.crypto.KeyStoreDescriptor;
+import de.servicehealtherx.apdu.card.CardListAggregator;
+import de.servicehealtherx.apdu.card.CardListProvider;
+import de.servicehealtherx.apdu.card.CardObject;
 
 import java.util.List;
 import java.util.UUID;
@@ -137,12 +140,16 @@ public class KonnektorEventService implements EventServicePortType {
             GetCardsResponse response = new GetCardsResponse();
             response.setCards(new Cards());
 
+            // Unified, transport-spanning view: aggregate every provider's own CM_CARD_LIST
+            // (PC/SC + SICCT), de-duplicated by cardHandle (feature 002-card-handle, FR-062/FR-064).
+            CardListAggregator aggregator = new CardListAggregator();
             for (CryptoProvider cryptoProvider : cryptoProviderInstances) {
-                List<KeyStoreDescriptor> listKeyStores = cryptoProvider.listKeyStores();
-                listKeyStores.stream()
-                        // .filter(k -> k.getAvailability() == KeyStoreAvailability.AVAILABLE)
-                        .forEach(k -> response.getCards().getCard().add(toCardInfoType(k)));
+                if (cryptoProvider instanceof CardListProvider clp) {
+                    aggregator.addSource(clp.cmCardList());
+                }
             }
+            aggregator.findAll()
+                    .forEach(card -> response.getCards().getCard().add(toCardInfoType(card)));
 
             response.setStatus(okStatus());
             return response;
@@ -151,9 +158,34 @@ public class KonnektorEventService implements EventServicePortType {
         }
     }
 
-    public CardInfoType toCardInfoType(de.servicehealtherx.crypto.KeyStoreDescriptor k) {
-        CardInfoType card = new CardInfoType();
-        card.setCardHandle(k.getAlias().value());
-        return card;
+    /** Map a transport-neutral CM_CARD_LIST entry to the gematik CardInfoType (FR-064). */
+    public CardInfoType toCardInfoType(CardObject card) {
+        CardInfoType info = new CardInfoType();
+        info.setCardHandle(card.cardHandle());
+        info.setCardType(toCardTypeType(card.type()));
+        if (card.ctid() != null) {
+            info.setCtId(card.ctid().toString());
+        }
+        if (card.iccsn() != null) {
+            info.setIccsn(card.iccsn());
+        }
+        if (card.cardHolderName() != null) {
+            info.setCardHolderName(card.cardHolderName());
+        }
+        if (card.kvnr() != null) {
+            info.setKvnr(card.kvnr());
+        }
+        return info;
+    }
+
+    private static CardTypeType toCardTypeType(de.servicehealtherx.apdu.model.CardType type) {
+        return switch (type) {
+            case EGK -> CardTypeType.EGK;
+            case HBA -> CardTypeType.HBA;
+            case HBAX -> CardTypeType.HB_AX;
+            case SMC_B -> CardTypeType.SMC_B;
+            case KVK -> CardTypeType.KVK;
+            case UNKNOWN -> CardTypeType.UNKNOWN;
+        };
     }
 }

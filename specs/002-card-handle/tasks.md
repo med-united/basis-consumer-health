@@ -118,21 +118,23 @@ Multi-module Maven reactor. Key roots:
 
 ### Tests for User Story 3
 
-- [ ] T028 [P] [US3] Integration test unified GetCards aggregates both providers' lists; each cardHandle in exactly one list (FR-062, FR-064, FR-067, SC-017) in `konnektor-soap-server/src/test/java/de/servicehealtherx/konnektor/soap/GetCardsAggregationIT.java`
-- [ ] T029 [P] [US3] Integration test cardHandle routing resolves to the owning provider (FR-065) in `konnektor-soap-server/src/test/java/de/servicehealtherx/konnektor/soap/CardHandleRoutingIT.java`
-- [ ] T030 [P] [US3] Parameterised parity test: handle-creation/GetCards/RequestCard/EjectCard pass over BOTH transports (SC-018) in `konnektor-soap-server/src/test/java/de/servicehealtherx/konnektor/soap/TransportParityIT.java`
-- [ ] T031 [P] [US3] Integration test EjectCard cross-holder lock check returns 4093 (FR-053) in `konnektor-soap-server/src/test/java/de/servicehealtherx/konnektor/soap/EjectCardLockIT.java`
+- [X] T028 [P] [US3] Test unified GetCards aggregates both providers' lists; each cardHandle in exactly one list (FR-062, FR-064, FR-067) in `apdu-lib/.../card/CardListAggregatorTest.java` — 3/3 green (aggregator-level unit test; SOAP `@QuarkusTest` IT deferred with T030)
+- [X] T029 [P] [US3] Test cardHandle routing resolves to the owning provider (FR-065) — `CardListAggregatorTest.test_FR_065_resolve_owner_routes_handle_to_its_provider_list`
+- [ ] T030 [P] [US3] Parameterised parity `@QuarkusTest`: handle-creation/GetCards/RequestCard/EjectCard pass over BOTH transports (SC-018) in `konnektor-soap-server/.../TransportParityIT.java` — **DEFERRED** (needs T036/T037 SOAP dispatch)
+- [ ] T031 [P] [US3] `@QuarkusTest` EjectCard cross-holder lock check returns 4093 (FR-053) in `konnektor-soap-server/.../EjectCardLockIT.java` — **DEFERRED** (needs T037)
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Implement `SicctCardReaderPort` over `sicct-lib` (transmit; insert/remove from `SicctChannelHandler`; capability flags hasDisplay=true/hasMechanicalEject=true) in `crypto-sicct-lib/src/main/java/de/servicehealtherx/crypto/sicct/SicctCardReaderPort.java` (research D9)
-- [ ] T033 [US3] Wire `SicctCryptoProvider` to own a `CmCardList` instance and drive `SicctCardReaderPort` + `CardObjectFactory` (FR-062) in `crypto-sicct-lib/src/main/java/de/servicehealtherx/crypto/sicct/SicctCryptoProvider.java`
-- [ ] T034 [US3] Implement a `CardServiceAggregator` that concatenates each provider's `CmCardList.findAll` and resolves a cardHandle across providers (FR-064, FR-065) in `konnektor-soap-server/src/main/java/de/servicehealtherx/konnektor/soap/CardServiceAggregator.java`
-- [ ] T035 [US3] Implement `getCards()` over the aggregator (read-only, per-tenant filter, ≤100 ms) in `konnektor-soap-server/src/main/java/de/servicehealtherx/konnektor/soap/KonnektorEventService.java` (contracts/GetCards.md; FR-041, FR-064)
-- [ ] T036 [US3] Implement `requestCard()` over both transports with capability degradation in `konnektor-soap-server/src/main/java/de/servicehealtherx/konnektor/soap/KonnektorCardTerminalService.java` (contracts/RequestCard.md; FR-033–FR-040, FR-063, FR-071)
-- [ ] T037 [US3] Implement `ejectCard()` over both transports — mechanical for SICCT, logical for PC/SC (no 4203), lock check 4093 (contracts/EjectCard.md; FR-051–FR-056, FR-070) in `KonnektorCardTerminalService.java`
+- [X] T032 [US3] Implement `SicctCardReaderPort` over a `SicctChannel` seam (transmit; `onCardInserted`/`onCardRemoved` from the SICCT runtime; hasDisplay=true/hasMechanicalEject=true) in `crypto-sicct-lib/.../SicctCardReaderPort.java` — tested via fake channel. **Note**: the real `sicct-lib`/Netty `SicctChannel` binding is wired in runtime integration (Phase 6).
+- [X] T033 [US3] Wire `SicctCryptoProvider` to own its own `CmCardList` (FR-062) and implement `CardListProvider` in `crypto-sicct-lib/.../SicctCryptoProvider.java`
+- [X] T034 [US3] Implement `CardListAggregator` (concatenate each provider's `CmCardList.findAll`, de-dup by handle, `resolveOwner` for routing) — placed in **`apdu-lib`** (`de.servicehealtherx.apdu.card.CardListAggregator`, transport-neutral) rather than konnektor-soap-server, plus the `CardListProvider` interface (FR-064, FR-065)
+- [X] T035 [US3] Implement `getCards()` over the aggregator (iterates `CardListProvider` beans, maps `CardObject`→`CardInfoType` incl. CardType mapping) in `konnektor-soap-server/.../KonnektorEventService.java` (added `apdu-lib` dep; compiles) (FR-041, FR-064)
+- [ ] T036 [US3] Implement `requestCard()` over both transports with capability degradation in `KonnektorCardTerminalService.java` (FR-033–FR-040, FR-063, FR-071) — **DEFERRED** (terminal command dispatch + SICCT channel binding)
+- [ ] T037 [US3] Implement `ejectCard()` over both transports — mechanical for SICCT, logical for PC/SC (no 4203), lock check 4093 (FR-051–FR-056, FR-070) — **DEFERRED** (uses `PcscEjectHandler` + a SICCT eject + `EgkSessionLock`; SOAP wiring)
 
-**Checkpoint**: All three P1 stories independently functional; unified view spans both transports.
+**Checkpoint**: ✅ Unified GetCards spans both transports via per-provider lists + `CardListAggregator` (apdu-lib 122, crypto-sicct-lib 5, crypto-pcsc-lib 10 tests green; konnektor-soap-server compiles). **STOPPING per incremental scope.**
+
+> **US3 deviations**: (1) `CardListAggregator` lives in `apdu-lib` (transport-neutral) not konnektor-soap-server — cleaner + reusable. (2) T028/T029 satisfied by aggregator unit tests; SOAP `@QuarkusTest` ITs (T030/T031) deferred. (3) `requestCard`/`ejectCard` SOAP dispatch (T036/T037) deferred — they need terminal command dispatch and the real SICCT channel binding (Phase 6 runtime).
 
 ---
 

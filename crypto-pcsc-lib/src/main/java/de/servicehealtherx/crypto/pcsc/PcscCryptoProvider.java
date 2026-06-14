@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import de.servicehealtherx.apdu.card.CardLifecycleListener;
+import de.servicehealtherx.apdu.card.CardListProvider;
 import de.servicehealtherx.apdu.card.CardObjectFactory;
 import de.servicehealtherx.apdu.card.CmCardList;
 import de.servicehealtherx.crypto.CryptoProvider;
@@ -26,7 +27,7 @@ import jakarta.enterprise.context.ApplicationScoped;
  * with no PC/SC subsystem present.
  */
 @ApplicationScoped
-public class PcscCryptoProvider implements CryptoProvider {
+public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
 
     /** Default PC/SC poll cadence (ms) — within the ≤2 s handle-creation budget (FR-001). */
     private static final long POLL_PERIOD_MS = 500L;
