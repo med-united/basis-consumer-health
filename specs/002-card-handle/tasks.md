@@ -153,9 +153,11 @@ Multi-module Maven reactor. Key roots:
 
 **Purpose**: Session subtypes and lifecycle that ride on top of CM_CARD_LIST regardless of transport.
 
-- [ ] T042 Implement TUC_KON_026 session create/get with subtype identity keys (eGK / SM-B / HBAx; FR-021–FR-025) in `konnektor-soap-server/src/main/java/de/servicehealtherx/konnektor/soap/CardSessionService.java`
-- [ ] T043 Implement eGK StartCardSession/StopCardSession (TUC_KON_223/224): lock via `EgkSessionLock`, UUID sessionID, CARD_SESSION_TIMEOUT timer, error 4288 on unknown sessionID (FR-026–FR-028) in `CardSessionService.java`
-- [ ] T044 [P] Implement HBAx comfort-signature activate/deactivate with countRemaining/timeRemaining and limits (FR-029–FR-032; 4278 on max) in `konnektor-soap-server/src/main/java/de/servicehealtherx/konnektor/soap/ComfortSignatureService.java`
+- [X] T042 Implement TUC_KON_026 session create/get with subtype identity keys (eGK / SM-B / HBAx; FR-021–FR-025) in `apdu-lib/src/main/java/de/servicehealtherx/apdu/card/CardSessionService.java` (placed in apdu-lib — transport-neutral — not konnektor-soap-server)
+- [X] T043 Implement eGK StartCardSession/StopCardSession (TUC_KON_223/224): lock via `EgkSessionLock`, UUID sessionID, error 4288 on unknown sessionID (FR-026–FR-028) in `CardSessionService.java`. **Note**: CARD_SESSION_TIMEOUT auto-stop timer scheduling deferred to runtime wiring (needs a scheduler); the lock/sessionID lifecycle is complete and tested.
+- [X] T044 [P] Implement HBAx comfort-signature activate/deactivate with countRemaining + hardware cap 250 and concurrent-session limit (FR-029–FR-032; 4278 on max via new `CardServiceException`) in `apdu-lib/src/main/java/de/servicehealtherx/apdu/card/ComfortSignatureService.java`
+
+> **Phase 7 deviations**: (1) `CardSessionService`/`ComfortSignatureService` live in `apdu-lib` (transport-neutral, reusable by the SOAP layer) rather than konnektor-soap-server. (2) Added `CardServiceException` for card-service codes outside `TucException`'s validated [4001,4094] range (4278/4288/4101). (3) The `CARD_SESSION_TIMEOUT` and comfort-signature timers are modeled as fields; their scheduled firing is wired in runtime integration.
 
 ---
 
