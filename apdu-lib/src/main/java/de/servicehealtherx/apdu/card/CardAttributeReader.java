@@ -320,8 +320,10 @@ public class CardAttributeReader {
             throw new CardTransportException("SELECT " + String.format("%04X", fid & 0xFFFF)
                     + " failed: SW=" + Integer.toHexString(selResp.getSW()));
         }
+        // Ne=256 (Le byte 0x00) — an ISO case-2 READ BINARY. Passing Ne=0 would emit a case-1
+        // APDU with no Le byte (00 B0 00 00), which gematik G2 cards reject with SW=6700.
         CommandAPDU readBinary = new CommandAPDU(
-                GematikISO7816.CLA_ISO, GematikISO7816.INS_READ_BINARY, 0x00, 0x00, 0x00);
+                GematikISO7816.CLA_ISO, GematikISO7816.INS_READ_BINARY, 0x00, 0x00, 256);
         ResponseAPDU readResp = port.transmit(slotNo, readBinary);
         if (readResp.getSW() != GematikISO7816.SW_SUCCESS) {
             throw new CardTransportException("READ BINARY failed: SW=" + Integer.toHexString(readResp.getSW()));
@@ -360,7 +362,7 @@ public class CardAttributeReader {
         while (offset < 0x8000) {
             CommandAPDU read = new CommandAPDU(
                     GematikISO7816.CLA_ISO, GematikISO7816.INS_READ_BINARY,
-                    (offset >> 8) & 0x7F, offset & 0xFF, 0x00);
+                    (offset >> 8) & 0x7F, offset & 0xFF, 256); // Ne=256 → Le=0x00; Ne=0 omits Le (SW=6700)
             ResponseAPDU resp = port.transmit(slotNo, read);
             int sw = resp.getSW();
             byte[] chunk = resp.getData();
