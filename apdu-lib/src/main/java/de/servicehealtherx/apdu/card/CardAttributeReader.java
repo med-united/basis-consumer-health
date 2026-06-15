@@ -37,13 +37,28 @@ import de.servicehealtherx.apdu.model.GematikISO7816;
  * <p>Per FR-005/FR-007 every read is best-effort: a field that cannot be read is returned as
  * {@code null} rather than failing handle creation. For an eGK the AUT certificate is read from
  * DF.ESIGN by {@link #readEgkAutCertificate} (ECC {@code EF.C.CH.AUT.E256} preferred, RSA
- * {@code EF.C.CH.AUT.R2048} fallback) and parsed into cardholder name, expiry and KVNR. The HBAx
- * ({@code C.HP.AUT}) and SMC-B ({@code C.HCI.AUT}) certificate paths are not yet wired; for those
- * card types {@link #read(CardReaderPort, int, CardType)} still leaves the cert-derived fields
- * null, or a caller may supply the DER explicitly via
- * {@link #read(CardReaderPort, int, CardType, byte[])}.
+ * {@code EF.C.CH.AUT.R2048} fallback) and parsed into cardholder name, expiry and KVNR.
+ *
+ * <h2>Card-type dispatch</h2>
+ * This base class implements the read steps common to every gematik G2 card and serves as the
+ * factory for the card-type-specific subclasses. {@link #forCard(CardReaderPort, int)} performs
+ * TUC_KON_001 "Karte zuordnen": it first reads the three universally-present MF files
+ * — {@code EF.ATR}, {@code EF.GDO} and {@code EF.Version2} (see {@link #readCommonData}) — and then
+ * {@link #detectCardType(CardReaderPort, int) detects the card type} by probing which application
+ * the card carries (SELECT by AID of the eGK / HBA / SMC-B application as listed in EF.DIR). The
+ * matching subclass is returned:
+ * <ul>
+ *   <li>{@link EgkCardAttributeReader} — eGK, reads {@code C.CH.AUT} and extracts the KVNR</li>
+ *   <li>{@link HbaCardAttributeReader} — HBA, reads {@code C.HP.AUT}</li>
+ *   <li>{@link SmcBCardAttributeReader} — SMC-B, reads {@code C.HCI.AUT}</li>
+ *   <li>{@link KvkCardAttributeReader} — legacy KVK (no DF.ESIGN AUT certificate)</li>
+ *   <li>{@link UnknownCardAttributeReader} — fallback when no known application is present</li>
+ * </ul>
+ * Each subclass overrides {@link #cardType()} and {@link #readAutCertificate(CardReaderPort, int)};
+ * the rest of the read logic is shared here. {@link #read(CardReaderPort, int)} then assembles the
+ * full {@link CardObjectFactory.CardAttributes} for the detected card.
  */
-public final class CardAttributeReader {
+public class CardAttributeReader {
 
     /** gematik EF.Version2 file identifier. */
     static final short FID_EF_VERSION2 = (short) 0x2F11;
@@ -51,13 +66,118 @@ public final class CardAttributeReader {
     /** DO tag carrying the ICCSN in EF.GDO. */
     private static final int TAG_ICCSN = 0x5A;
 
+    /** The card type this reader handles. Overridden by each card-type subclass. */
+    public CardType cardType() {
+        return CardType.UNKNOWN;
+    }
+
+    /**
+     * TUC_KON_001 "Karte zuordnen": read the universally-present MF files ({@code EF.ATR},
+     * {@code EF.GDO}, {@code EF.Version2}), determine the card type from the application the card
+     * carries, and return the matching card-type-specific reader. Never fails: an unidentifiable
+     * card yields an {@link UnknownCardAttributeReader} so handle creation can still proceed
+     * (FR-005).
+     */
+    public static CardAttributeReader forCard(CardReaderPort port, int slotNo) {
+        return readerFor(detectCardType(port, slotNo));
+    }
+
+    /** The card-type reader for an already-resolved {@link CardType}. */
+    public static CardAttributeReader readerFor(CardType type) {
+        return switch (type) {
+            case EGK -> new EgkCardAttributeReader();
+            case HBA, HBAX -> new HbaCardAttributeReader();
+            case SMC_B -> new SmcBCardAttributeReader();
+            case KVK -> new KvkCardAttributeReader();
+            case UNKNOWN -> new UnknownCardAttributeReader();
+        };
+    }
+
+    /**
+     * Detect the card type of the card in {@code slotNo}. First reads the three MF files every
+     * gematik G2 card exposes ({@code EF.ATR}, {@code EF.GDO}, {@code EF.Version2}); a card that
+     * does not answer these at all is treated as {@link CardType#UNKNOWN}. Otherwise the type is
+     * resolved by probing which application is present (SELECT by AID, EF.DIR DO '4F'):
+     * eGK → HBA → SMC-B. Suitable for use as a {@link CardPresenceCoordinator.CardTypeResolver}.
+     */
+    public static CardType detectCardType(CardReaderPort port, int slotNo) {
+        CommonCardData common = new CardAttributeReader().readCommonData(port, slotNo);
+        if (common.isUnreadable()) {
+            return CardType.UNKNOWN;
+        }
+        if (selectApplication(port, slotNo, GematikISO7816.AID_EGK)) {
+            return CardType.EGK;
+        }
+        if (selectApplication(port, slotNo, GematikISO7816.AID_HBA)) {
+            return CardType.HBA;
+        }
+        if (selectApplication(port, slotNo, GematikISO7816.AID_SMC_B)) {
+            return CardType.SMC_B;
+        }
+        return CardType.UNKNOWN;
+    }
+
+    /** Whether the application identified by {@code aid} can be SELECTed in the slot. */
+    private static boolean selectApplication(CardReaderPort port, int slotNo, byte[] aid) {
+        try {
+            CommandAPDU select = new CommandAPDU(
+                    GematikISO7816.CLA_ISO, GematikISO7816.INS_SELECT,
+                    GematikISO7816.SELECT_BY_DF_NAME, 0x0C, aid);
+            return port.transmit(slotNo, select).getSW() == GematikISO7816.SW_SUCCESS;
+        } catch (CardTransportException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** The three MF files read before the card type is known. Each field is null if unreadable. */
+    public record CommonCardData(byte[] efAtr, String iccsn, CardVersionInfo cardVersion) {
+        /** True when none of the common files could be read (likely no/foreign card). */
+        public boolean isUnreadable() {
+            return efAtr == null && iccsn == null
+                    && (cardVersion == null || cardVersion.equals(CardVersionInfo.empty()));
+        }
+    }
+
+    /** Read {@code EF.ATR}, {@code EF.GDO} (ICCSN) and {@code EF.Version2} — common to all G2 cards. */
+    public CommonCardData readCommonData(CardReaderPort port, int slotNo) {
+        return new CommonCardData(readEfAtr(port, slotNo), readIccsn(port, slotNo),
+                readCardVersion(port, slotNo));
+    }
+
+    /** SELECT EF.ATR + READ BINARY; raw answer-to-reset attributes, or {@code null} if unreadable. */
+    public byte[] readEfAtr(CardReaderPort port, int slotNo) {
+        try {
+            return selectAndReadBinary(port, slotNo, GematikISO7816.FID_EF_ATR);
+        } catch (CardTransportException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Read all attributes for the card this reader handles: ICCSN + card version, plus — when the
+     * card type carries one — the AUT certificate (cardholder name, expiry, and KVNR for eGK),
+     * obtained via the subclass's {@link #readAutCertificate(CardReaderPort, int)}.
+     */
+    public CardObjectFactory.CardAttributes read(CardReaderPort port, int slotNo) {
+        return read(port, slotNo, cardType(), readAutCertificate(port, slotNo));
+    }
+
+    /**
+     * Read the DER-encoded AUT certificate for this card type, or {@code null} if the card type has
+     * none / it is unreadable. Overridden by the eGK, HBA and SMC-B subclasses.
+     */
+    protected byte[] readAutCertificate(CardReaderPort port, int slotNo) {
+        return null;
+    }
+
     /**
      * Read ICCSN + card version from the card and, for an eGK, the AUT certificate from DF.ESIGN
-     * (cardholder name, expiry, KVNR). For other card types the cert-derived fields are left null
-     * until their object-system AUT-certificate path is wired.
+     * (cardholder name, expiry, KVNR). The cert is acquired through the per-type subclass reader
+     * ({@link #readerFor(CardType)}), so passing {@code type=HBA}/{@code SMC_B} now reads their
+     * {@code C.HP.AUT} / {@code C.HCI.AUT} certificate too.
      */
     public CardObjectFactory.CardAttributes read(CardReaderPort port, int slotNo, CardType type) {
-        byte[] autCertDer = (type == CardType.EGK) ? readEgkAutCertificate(port, slotNo) : null;
+        byte[] autCertDer = readerFor(type).readAutCertificate(port, slotNo);
         return read(port, slotNo, type, autCertDer);
     }
 
@@ -96,6 +216,19 @@ public final class CardAttributeReader {
      * {@code null} if no certificate could be read (FR-005: must not fail handle creation).
      */
     public byte[] readEgkAutCertificate(CardReaderPort port, int slotNo) {
+        return readEsignAutCertificate(port, slotNo,
+                GematikISO7816.FID_EF_C_CH_AUT_E256, GematikISO7816.FID_EF_C_CH_AUT_R2048);
+    }
+
+    /**
+     * Read an AUT certificate from DF.ESIGN, preferring the ECC certificate ({@code eccFid}) and
+     * falling back to the RSA certificate ({@code rsaFid}) when the ECC file is absent or unreadable
+     * ("Wenn vorhanden, ist das ECC-Zertifikat zu verwenden, andernfalls das RSA-Zertifikat").
+     * Shared by the eGK ({@code C.CH.AUT}), HBA ({@code C.HP.AUT}) and SMC-B ({@code C.HCI.AUT})
+     * subclasses; READ BINARY on these files is access condition ALWAYS (no PIN). Returns DER bytes,
+     * or {@code null} if no certificate could be read (FR-005: must not fail handle creation).
+     */
+    protected byte[] readEsignAutCertificate(CardReaderPort port, int slotNo, short eccFid, short rsaFid) {
         try {
             CommandAPDU selectDf = new CommandAPDU(
                     GematikISO7816.CLA_ISO, GematikISO7816.INS_SELECT,
@@ -104,8 +237,8 @@ public final class CardAttributeReader {
             if (dfResp.getSW() != GematikISO7816.SW_SUCCESS) {
                 return null;
             }
-            byte[] ecc = readCertificateFile(port, slotNo, GematikISO7816.FID_EF_C_CH_AUT_E256);
-            return ecc != null ? ecc : readCertificateFile(port, slotNo, GematikISO7816.FID_EF_C_CH_AUT_R2048);
+            byte[] ecc = readCertificateFile(port, slotNo, eccFid);
+            return ecc != null ? ecc : readCertificateFile(port, slotNo, rsaFid);
         } catch (CardTransportException | RuntimeException e) {
             return null;
         }

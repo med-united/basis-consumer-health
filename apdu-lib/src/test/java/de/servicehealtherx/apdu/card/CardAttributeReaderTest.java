@@ -1,11 +1,13 @@
 package de.servicehealtherx.apdu.card;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
+import java.util.Arrays;
 
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import de.servicehealtherx.apdu.card.transport.FakeCardReaderPort;
 import de.servicehealtherx.apdu.model.CardType;
+import de.servicehealtherx.apdu.model.GematikISO7816;
 
 /**
  * Unit tests for {@link CardAttributeReader} (US1 task T014; FR-005, FR-007, FR-009, FR-011).
@@ -169,6 +172,86 @@ class CardAttributeReaderTest {
         assertEquals(-1, CardAttributeReader.derTotalLength(new byte[] {0x5A, 0x02, 0x12, 0x34}));
     }
 
+    // --- card-type detection & dispatch ---------------------------------------------------------
+
+    @Test
+    void test_detect_egk_when_egk_application_is_present() {
+        FakeCardReaderPort port = typedCardPort(GematikISO7816.AID_EGK, 0xC504, null);
+        assertEquals(CardType.EGK, CardAttributeReader.detectCardType(port, 1));
+    }
+
+    @Test
+    void test_detect_hba_when_hba_application_is_present() {
+        FakeCardReaderPort port = typedCardPort(GematikISO7816.AID_HBA, 0xC506, null);
+        assertEquals(CardType.HBA, CardAttributeReader.detectCardType(port, 1));
+    }
+
+    @Test
+    void test_detect_smcb_when_smcb_application_is_present() {
+        FakeCardReaderPort port = typedCardPort(GematikISO7816.AID_SMC_B, 0xC506, null);
+        assertEquals(CardType.SMC_B, CardAttributeReader.detectCardType(port, 1));
+    }
+
+    @Test
+    void test_detect_unknown_when_no_known_application_present() {
+        // Common files readable, but no eGK/HBA/SMC-B application selectable.
+        FakeCardReaderPort port = typedCardPort(new byte[] {0x12, 0x34}, 0x0000, null);
+        assertEquals(CardType.UNKNOWN, CardAttributeReader.detectCardType(port, 1));
+    }
+
+    @Test
+    void test_detect_unknown_when_card_does_not_answer() {
+        FakeCardReaderPort port = FakeCardReaderPort.pcsc("dead");
+        port.setFailTransmit(true);
+        assertEquals(CardType.UNKNOWN, CardAttributeReader.detectCardType(port, 1));
+    }
+
+    @Test
+    void test_for_card_returns_the_card_type_specific_subclass() {
+        assertTrue(CardAttributeReader.forCard(
+                typedCardPort(GematikISO7816.AID_EGK, 0xC504, null), 1) instanceof EgkCardAttributeReader);
+        assertTrue(CardAttributeReader.forCard(
+                typedCardPort(GematikISO7816.AID_HBA, 0xC506, null), 1) instanceof HbaCardAttributeReader);
+        assertTrue(CardAttributeReader.forCard(
+                typedCardPort(GematikISO7816.AID_SMC_B, 0xC506, null), 1) instanceof SmcBCardAttributeReader);
+        FakeCardReaderPort dead = FakeCardReaderPort.pcsc("dead");
+        dead.setFailTransmit(true);
+        assertTrue(CardAttributeReader.forCard(dead, 1) instanceof UnknownCardAttributeReader);
+    }
+
+    @Test
+    void test_reader_for_maps_every_card_type() {
+        assertEquals(CardType.EGK, CardAttributeReader.readerFor(CardType.EGK).cardType());
+        assertEquals(CardType.HBA, CardAttributeReader.readerFor(CardType.HBA).cardType());
+        assertEquals(CardType.HBA, CardAttributeReader.readerFor(CardType.HBAX).cardType());
+        assertEquals(CardType.SMC_B, CardAttributeReader.readerFor(CardType.SMC_B).cardType());
+        assertEquals(CardType.KVK, CardAttributeReader.readerFor(CardType.KVK).cardType());
+        assertEquals(CardType.UNKNOWN, CardAttributeReader.readerFor(CardType.UNKNOWN).cardType());
+    }
+
+    @Test
+    void test_hba_subclass_reads_c_hp_aut_certificate_from_esign() throws Exception {
+        byte[] cert = resource("/card/test-aut-cert.der");
+        FakeCardReaderPort port = typedCardPort(GematikISO7816.AID_HBA, 0xC506, cert);
+
+        CardAttributeReader reader = CardAttributeReader.forCard(port, 1);
+        assertTrue(reader instanceof HbaCardAttributeReader);
+        CardObjectFactory.CardAttributes attrs = reader.read(port, 1);
+
+        assertEquals("80276001011234567890", attrs.iccsn());
+        assertEquals("GEM.TSL-CA3", attrs.cardHolderName());
+        assertNull(attrs.kvnr(), "HBA carries no KVNR");
+    }
+
+    @Test
+    void test_read_common_data_reads_atr_iccsn_and_version() {
+        FakeCardReaderPort port = typedCardPort(GematikISO7816.AID_EGK, 0xC504, null);
+        CardAttributeReader.CommonCardData common = new CardAttributeReader().readCommonData(port, 1);
+        assertEquals("80276001011234567890", common.iccsn());
+        assertNotNull(common.cardVersion());
+        assertFalse(common.isUnreadable());
+    }
+
     // --- test helpers ---------------------------------------------------------------------------
 
     private static byte[] resource(String path) throws Exception {
@@ -213,6 +296,53 @@ class CardAttributeReaderTest {
                     case 0x2F11 -> version;
                     case 0xC504, 0xC500 -> cert;
                     default -> new byte[0];
+                };
+                return readChunk(content, offset);
+            }
+            return sw(0x6D00);
+        });
+        return port;
+    }
+
+    /**
+     * Build a card that answers the common MF files (EF.ATR/EF.GDO/EF.Version2), exposes the
+     * application {@code appAid} (SELECT by AID succeeds only for that AID and — when a cert is
+     * supplied — DF.ESIGN), and serves {@code cert} from the {@code certFid} file in DF.ESIGN.
+     */
+    private static FakeCardReaderPort typedCardPort(byte[] appAid, int certFid, byte[] cert) {
+        byte[] atr = {(byte) 0xE0, 0x02, 0x12, 0x34};
+        byte[] gdo = {0x5A, 0x0A,
+                (byte) 0x80, 0x27, 0x60, 0x01, 0x01, 0x12, 0x34, 0x56, 0x78, (byte) 0x90};
+        byte[] version = {(byte) 0xC0, 0x03, 0x04, 0x03, 0x00, (byte) 0xC1, 0x03, 0x05, 0x02, 0x00};
+
+        FakeCardReaderPort port = FakeCardReaderPort.pcsc("typed-card");
+        int[] selectedFid = {-1};
+        port.setResponder((slot, cmd) -> {
+            if (cmd.getINS() == 0xA4) { // SELECT
+                if (cmd.getP1() == 0x04) { // by DF name (AID)
+                    byte[] aid = cmd.getData();
+                    if (Arrays.equals(aid, appAid)) {
+                        return sw(0x9000);
+                    }
+                    if (Arrays.equals(aid, GematikISO7816.AID_DF_ESIGN)) {
+                        return cert != null ? sw(0x9000) : sw(0x6A82);
+                    }
+                    return sw(0x6A82); // application not present
+                }
+                if (cmd.getP1() == 0x02) { // by file id
+                    byte[] d = cmd.getData();
+                    selectedFid[0] = ((d[0] & 0xFF) << 8) | (d[1] & 0xFF);
+                    return (selectedFid[0] == certFid && cert == null) ? sw(0x6A82) : sw(0x9000);
+                }
+                return sw(0x9000);
+            }
+            if (cmd.getINS() == 0xB0) { // READ BINARY
+                int offset = (cmd.getP1() << 8) | cmd.getP2();
+                byte[] content = switch (selectedFid[0]) {
+                    case 0x2F01 -> atr;
+                    case 0x2F02 -> gdo;
+                    case 0x2F11 -> version;
+                    default -> (selectedFid[0] == certFid && cert != null) ? cert : new byte[0];
                 };
                 return readChunk(content, offset);
             }
