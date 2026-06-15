@@ -11,6 +11,31 @@ terminal management for German healthcare institutions.
 ./mvnw quarkus:dev -pl :quarkus-server
 ```
 
+## Logging / APDU tracing
+
+Every card exchange can be traced in hex. `ApduTrace` (in `apdu-lib`) logs each sent command APDU
+and received response APDU on the logger **`de.servicehealtherx.apdu.trace`** at level **FINE**
+(`DEBUG` for the JBoss LogManager). It is off by default and adds no overhead unless enabled. PINs
+in VERIFY / CHANGE / RESET REFERENCE DATA commands are masked; certificate and personal data read
+from the card is logged in full, so only enable tracing for debugging and protect the output.
+
+Example output:
+
+```
+APDU > [reader-A slot 1] 00 A4 04 0C 07 D2 76 00 01 44 80 00
+APDU < [reader-A slot 1] 6F 1A ... 90 00 SW=9000
+```
+
+Tracing is configured in `quarkus-server/src/main/resources/application.properties`. It is **on in
+the `dev` profile** (`mvnw quarkus:dev`) and off otherwise:
+
+```properties
+%dev.quarkus.log.category."de.servicehealtherx.apdu.trace".level=DEBUG
+```
+
+To trace in production too, add the same property without the `%dev.` prefix. The console handler
+emits the records as soon as the category is lowered to `DEBUG`.
+
 ## Architecture
 
 See the full feature specification at

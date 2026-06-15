@@ -7,6 +7,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
 
+import de.servicehealtherx.apdu.card.transport.ApduTrace;
 import de.servicehealtherx.apdu.card.transport.CardReaderPort;
 import de.servicehealtherx.apdu.card.transport.CardTransportException;
 import de.servicehealtherx.apdu.card.transport.ReaderCapabilities;
@@ -58,7 +59,7 @@ public final class SicctCardReaderPort implements CardReaderPort {
 
     @Override
     public ResponseAPDU transmit(int slotNo, CommandAPDU command) throws CardTransportException {
-        return channel.transmit(slotNo, command);
+        return ApduTrace.trace(readerName(), slotNo, command, () -> channel.transmit(slotNo, command));
     }
 
     @Override

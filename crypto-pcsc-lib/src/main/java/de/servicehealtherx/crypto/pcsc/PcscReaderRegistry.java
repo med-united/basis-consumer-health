@@ -112,10 +112,11 @@ public final class PcscReaderRegistry {
     }
 
     /**
-     * Default PC/SC card-type resolution. ATR-to-card-type mapping is object-system specific and
-     * not yet implemented; returns {@link CardType#UNKNOWN}. (Deferred refinement.)
+     * Default PC/SC card-type resolution: the transport-neutral AID-probing resolver shared with
+     * the SICCT provider, which detects every known health card (eGK, HBA, SMC-B) and falls back to
+     * {@link CardType#UNKNOWN}. See {@link CardPresenceCoordinator#defaultTypeResolver()}.
      */
     public static CardPresenceCoordinator.CardTypeResolver defaultTypeResolver() {
-        return (port, slot) -> CardType.UNKNOWN;
+        return CardPresenceCoordinator.defaultTypeResolver();
     }
 }

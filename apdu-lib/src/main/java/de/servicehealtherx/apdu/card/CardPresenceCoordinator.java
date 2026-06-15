@@ -23,6 +23,25 @@ public final class CardPresenceCoordinator implements CardReaderPort.PresenceLis
         CardType resolve(CardReaderPort port, int slotNo);
     }
 
+    /**
+     * The default, transport-neutral card-type resolver covering every auto-detectable known card.
+     * It performs TUC_KON_001 "Karte zuordnen" via {@link CardAttributeReader#detectCardType}:
+     * after reading the universally-present MF files it probes the card's application by AID and
+     * resolves
+     * <ul>
+     *   <li>{@link CardType#EGK} — AID {@code D2 76 00 01 44 80 00}</li>
+     *   <li>{@link CardType#HBA} — AID {@code D2 76 00 01 46 01}</li>
+     *   <li>{@link CardType#SMC_B} — AID {@code D2 76 00 01 46 06}</li>
+     * </ul>
+     * Any card whose MF files are unreadable or that carries no known health-card application
+     * resolves to {@link CardType#UNKNOWN} (FR-005); the legacy {@link CardType#KVK} memory card has
+     * no SELECTable application and is therefore never auto-detected (resolve it explicitly). Both
+     * the PC/SC and SICCT providers share this resolver.
+     */
+    public static CardTypeResolver defaultTypeResolver() {
+        return CardAttributeReader::detectCardType;
+    }
+
     private final CardReaderPort port;
     private final CmCardList cardList;
     private final CardObjectFactory factory;
