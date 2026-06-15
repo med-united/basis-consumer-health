@@ -40,7 +40,15 @@ public final class CardObjectFactory {
         Objects.requireNonNull(type, "type");
         CardAttributes attrs = attributes != null ? attributes : CardAttributes.empty();
 
+        // Step 1: if CM_CARD_LIST already holds an entry for this ctId/slotId, delete it. Removal
+        // invalidates the previous CardHandle and places it on the 48-hour no-reuse list (FR-003).
+        list.removeBySlot(port.ctid(), slotNo);
+
+        // Step 2a: generate a CardHandle unique within CM_CARD_LIST and not reused within 48 h.
+        String cardHandle = list.generateCardHandle();
+
         CardObject card = CardObject.builder()
+                .cardHandle(cardHandle)
                 .ctid(port.ctid())
                 .slotNo(slotNo)
                 .type(type)
@@ -65,7 +73,14 @@ public final class CardObjectFactory {
         // Cert-derived fields (cardHolderName/expiry/KVNR) require selecting the AUT certificate
         // file (object-system-specific DF.ESIGN path), supplied by the provider when available.
         CardAttributes attrs = attributeReader.read(port, slotNo, type);
-        return createAndRegister(list, port, slotNo, type, attrs);
+
+        // Fehlerfall: if the card data mandatory for the resolved card type could not be read
+        // (ICCSN is the minimal required datum), register the card as UNKNOWN so step 3 still runs
+        // — TUC_KON_001 "Auch im Fehlerfall wird Schritt 3 mit CardType=UNKNOWN durchlaufen".
+        CardType effectiveType = (type != CardType.UNKNOWN && attrs.iccsn() == null)
+                ? CardType.UNKNOWN
+                : type;
+        return createAndRegister(list, port, slotNo, effectiveType, attrs);
     }
 
     /**

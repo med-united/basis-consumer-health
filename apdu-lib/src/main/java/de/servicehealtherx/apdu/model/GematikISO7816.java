@@ -78,6 +78,17 @@ public final class GematikISO7816 {
             (byte) 0xD2, 0x76, 0x00, 0x01, 0x44, (byte) 0x80, 0x00
     };
 
+    // AID — ESIGN crypto application (gemSpec_eGK_ObjSys_G2_1 §5.5, Tab_eGK_ObjSys_059:
+    // applicationIdentifier 'A000000167 455349474E')
+    public static final byte[] AID_DF_ESIGN = new byte[]{
+            (byte) 0xA0, 0x00, 0x00, 0x01, 0x67, 0x45, 0x53, 0x49, 0x47, 0x4E
+    };
+
+    // eGK C.CH.AUT certificate files inside DF.ESIGN (gemSpec_eGK_ObjSys_G2_1 §5.5.1 / §5.5.9).
+    // The ECC certificate is preferred over the RSA certificate when present (TUC_KON_001 §2c).
+    public static final short FID_EF_C_CH_AUT_E256 = (short) 0xC504;  // Tab_eGK_ObjSys_200
+    public static final short FID_EF_C_CH_AUT_R2048 = (short) 0xC500; // Tab_eGK_ObjSys_060
+
     public static int pinTriesRemaining(int sw) {
         return sw & 0x0F;
     }

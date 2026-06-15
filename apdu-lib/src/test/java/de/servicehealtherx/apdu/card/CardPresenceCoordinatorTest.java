@@ -2,6 +2,7 @@ package de.servicehealtherx.apdu.card;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -77,6 +78,80 @@ class CardPresenceCoordinatorTest {
         assertFalse(list.findByHandle(handle).isPresent());
         assertEquals(List.of(handle), listener.removed);
         assertTrue(list.isBlacklisted(handle), "removed handle is held back from reuse (FR-003)");
+    }
+
+    @Test
+    void test_step1_reinserting_in_same_slot_replaces_entry_and_invalidates_old_handle() {
+        FakeCardReaderPort port = portWithCard();
+        CmCardList list = new CmCardList();
+        RecordingListener listener = new RecordingListener();
+        CardPresenceCoordinator coordinator = new CardPresenceCoordinator(
+                port, list, new CardObjectFactory(), listener, (p, slot) -> CardType.EGK);
+        coordinator.start();
+
+        port.simulateInsert(1);
+        String firstHandle = list.findBySlot(port.ctid(), 1).orElseThrow().cardHandle();
+
+        // Re-open the same slot: step 1 must delete the prior entry first.
+        port.simulateInsert(1);
+        String secondHandle = list.findBySlot(port.ctid(), 1).orElseThrow().cardHandle();
+
+        assertEquals(1, list.size(), "only the new CardObject remains for the slot");
+        assertNotEquals(firstHandle, secondHandle, "a fresh CardHandle is generated");
+        assertFalse(list.findByHandle(firstHandle).isPresent(), "old handle removed");
+        assertTrue(list.isBlacklisted(firstHandle), "old handle held back from reuse (FR-003)");
+    }
+
+    @Test
+    void test_step2a_generated_handle_avoids_blacklisted_value() {
+        FakeCardReaderPort port = portWithCard();
+        CmCardList list = new CmCardList();
+        // Pre-invalidate a handle, then assert a freshly generated one differs from it.
+        list.add(CardObject.builder().cardHandle("reserved").ctid(port.ctid()).slotNo(1)
+                .type(CardType.EGK).build());
+        list.removeByHandle("reserved");
+
+        for (int i = 0; i < 100; i++) {
+            assertNotEquals("reserved", list.generateCardHandle());
+        }
+        assertTrue(list.isBlacklisted("reserved"));
+    }
+
+    @Test
+    void test_fehlerfall_unreadable_card_still_fires_step3_with_unknown_type() {
+        FakeCardReaderPort port = FakeCardReaderPort.pcsc("reader-A");
+        port.setFailTransmit(true); // ICCSN/version cannot be read
+        CmCardList list = new CmCardList();
+        RecordingListener listener = new RecordingListener();
+        CardPresenceCoordinator coordinator = new CardPresenceCoordinator(
+                port, list, new CardObjectFactory(), listener, (p, slot) -> CardType.EGK);
+        coordinator.start();
+
+        port.simulateInsert(1);
+
+        CardObject card = list.findBySlot(port.ctid(), 1).orElseThrow();
+        assertEquals(CardType.UNKNOWN, card.type(),
+                "incomplete read downgrades CardType to UNKNOWN");
+        assertEquals(List.of(card.cardHandle()), listener.inserted,
+                "step 3 (CARD/INSERTED) still fires in the error case");
+    }
+
+    @Test
+    void test_fehlerfall_type_resolver_failure_still_fires_step3() {
+        FakeCardReaderPort port = portWithCard();
+        CmCardList list = new CmCardList();
+        RecordingListener listener = new RecordingListener();
+        CardPresenceCoordinator coordinator = new CardPresenceCoordinator(
+                port, list, new CardObjectFactory(), listener, (p, slot) -> {
+                    throw new IllegalStateException("type resolution failed");
+                });
+        coordinator.start();
+
+        port.simulateInsert(1);
+
+        CardObject card = list.findBySlot(port.ctid(), 1).orElseThrow();
+        assertEquals(CardType.UNKNOWN, card.type());
+        assertEquals(List.of(card.cardHandle()), listener.inserted);
     }
 
     @Test

@@ -5,6 +5,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Set;
+import java.util.function.BiFunction;
 
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
@@ -26,6 +27,7 @@ public final class FakeCardReaderPort implements CardReaderPort {
 
     private ResponseAPDU cannedResponse = new ResponseAPDU(SW_OK);
     private boolean failTransmit = false;
+    private BiFunction<Integer, CommandAPDU, ResponseAPDU> responder;
 
     public FakeCardReaderPort(String readerName, ReaderCapabilities capabilities) {
         this.readerName = readerName;
@@ -68,6 +70,9 @@ public final class FakeCardReaderPort implements CardReaderPort {
         if (failTransmit) {
             throw new CardTransportException("simulated transmit failure on slot " + slotNo);
         }
+        if (responder != null) {
+            return responder.apply(slotNo, command);
+        }
         return cannedResponse;
     }
 
@@ -101,5 +106,14 @@ public final class FakeCardReaderPort implements CardReaderPort {
 
     public void setFailTransmit(boolean failTransmit) {
         this.failTransmit = failTransmit;
+    }
+
+    /**
+     * Install a programmable responder that maps {@code (slotNo, command)} to a response, letting a
+     * test simulate a multi-step APDU dialogue (e.g. SELECT DF.ESIGN → SELECT EF → READ BINARY).
+     * When set it takes precedence over the single canned response.
+     */
+    public void setResponder(BiFunction<Integer, CommandAPDU, ResponseAPDU> responder) {
+        this.responder = responder;
     }
 }

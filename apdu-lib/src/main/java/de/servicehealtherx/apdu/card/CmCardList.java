@@ -104,6 +104,20 @@ public class CmCardList {
         return removed;
     }
 
+    /**
+     * Generate a fresh CardHandle for TUC_KON_001 step 2a: guaranteed unique within this
+     * CM_CARD_LIST and not currently held back by the 48-hour no-reuse window (FR-003). The
+     * returned handle is not yet registered — pass it to a {@link CardObject} before {@link #add}.
+     */
+    public String generateCardHandle() {
+        pruneBlacklist();
+        String handle;
+        do {
+            handle = UUID.randomUUID().toString();
+        } while (activeCards.containsKey(handle) || isBlacklisted(handle));
+        return handle;
+    }
+
     /** O(1) resolution used by every card-addressing TUC. */
     public Optional<CardObject> findByHandle(String cardHandle) {
         return Optional.ofNullable(activeCards.get(cardHandle));

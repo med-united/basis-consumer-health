@@ -50,8 +50,18 @@ public final class CardPresenceCoordinator implements CardReaderPort.PresenceLis
 
     @Override
     public void onCardInserted(int slotNo) {
-        CardType type = typeResolver.resolve(port, slotNo);
-        CardObject card = factory.readAndCreate(cardList, port, slotNo, type);
+        CardObject card;
+        try {
+            CardType type = typeResolver.resolve(port, slotNo);
+            card = factory.readAndCreate(cardList, port, slotNo, type);
+        } catch (RuntimeException e) {
+            // Fehlerfall: even when card-type resolution or reading fails, TUC_KON_001 step 3 must
+            // still run. Register a minimal CardObject with CardType=UNKNOWN so CARD/INSERTED is
+            // published for the slot rather than the insertion being silently dropped.
+            card = factory.createAndRegister(cardList, port, slotNo, CardType.UNKNOWN,
+                    CardObjectFactory.CardAttributes.empty());
+        }
+        // Step 3: notify the runtime to publish TUC_KON_256 CARD/INSERTED (eventType=Op, Info).
         listener.onCardInserted(card);
     }
 
