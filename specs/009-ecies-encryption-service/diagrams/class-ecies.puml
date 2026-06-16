@@ -1,0 +1,80 @@
+@startuml
+title ECIES domain & JCE seam — Class Diagram
+
+skinparam classAttributeIconSize 0
+
+class EciesTransportEncryption {
+  - bcProvider : Provider
+  + encrypt(document : byte[], certs : List<X509Certificate>) : byte[]
+  + decrypt(envelope : byte[], key : PrivateKey, prov : Provider) : byte[]
+  - selectRecipient(env, certForAlias) : RecipientInfo
+}
+
+class ElcKeyWrapper {
+  + wrap(transportKey : byte[], recipientPub : ECPublicKey) : ElcCryptogram
+}
+
+class ElcCryptogram {
+  - curveOid : ASN1ObjectIdentifier
+  - po : byte[]
+  - c : byte[]
+  - t : byte[]
+  + toAsn1() : byte[]
+  + {static} parse(der : byte[]) : ElcCryptogram
+}
+
+class ElcParameters {
+  + {static} forCurve(oid : ASN1ObjectIdentifier) : ElcParameters
+  + kdf() : DigestDerivationFunction
+  + macLength() : int
+}
+
+class ElcSecurityProvider {
+  + ElcSecurityProvider()
+}
+
+class ElcCipherSpi {
+  - decryptor : ElcDecryptor
+  # engineInit(opmode : int, key : Key)
+  # engineDoFinal(in : byte[], off : int, len : int) : byte[]
+  # engineSetMode(mode : String) : void
+  # engineWrap(key : Key) : byte[]
+}
+note right of ElcCipherSpi : engineSetMode/engineWrap and other\nunused SPI methods throw\nUnsupportedOperationException (Principle VIII)
+
+interface ElcDecryptor {
+  + unwrapTransportKey(c : ElcCryptogram) : byte[]
+}
+
+class SoftwareElcDecryptor {
+  - privateKey : ECPrivateKey
+  + unwrapTransportKey(c : ElcCryptogram) : byte[]
+}
+
+class CardElcDecryptor {
+  - alias : KeyAlias
+  + unwrapTransportKey(c : ElcCryptogram) : byte[]
+}
+
+class CardElcPrivateKey {
+  - alias : KeyAlias
+  - decryptor : ElcDecryptor
+  + getEncoded() : byte[]
+  + getFormat() : String
+}
+note bottom of CardElcPrivateKey : carries no key bytes —\ngetEncoded()/getFormat() return null
+
+EciesTransportEncryption --> ElcKeyWrapper
+EciesTransportEncryption ..> ElcCryptogram
+ElcKeyWrapper --> ElcCryptogram
+ElcKeyWrapper --> ElcParameters
+ElcSecurityProvider --> ElcCipherSpi : registers Cipher.ELC
+ElcCipherSpi --> ElcDecryptor
+SoftwareElcDecryptor ..|> ElcDecryptor
+CardElcDecryptor ..|> ElcDecryptor
+CardElcPrivateKey --> ElcDecryptor
+ElcCipherSpi ..> ElcCryptogram
+CardElcPrivateKey ..|> "java.security.PrivateKey"
+ElcCipherSpi --|> "javax.crypto.CipherSpi"
+ElcSecurityProvider --|> "java.security.Provider"
+@enduml

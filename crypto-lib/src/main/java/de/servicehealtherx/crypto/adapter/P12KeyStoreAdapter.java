@@ -140,7 +140,10 @@ public class P12KeyStoreAdapter extends KeyStoreAdapter {
         try {
             String entryAlias = extractEntryAlias();
             PrivateKey privateKey = (PrivateKey) keyStore.getKey(entryAlias, entryPassword);
-            var cipher = javax.crypto.Cipher.getInstance(request.algorithm);
+            var cipher = "ELC".equalsIgnoreCase(request.algorithm)
+                    ? javax.crypto.Cipher.getInstance("ELC",
+                        new de.servicehealtherx.crypto.ecies.jce.ElcSecurityProvider())
+                    : javax.crypto.Cipher.getInstance(request.algorithm);
             cipher.init(javax.crypto.Cipher.DECRYPT_MODE, privateKey);
             byte[] plaintext = cipher.doFinal(request.data);
             return new CryptoOperationResult(request.alias, plaintext, null, request.algorithm);

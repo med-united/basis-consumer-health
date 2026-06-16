@@ -1,0 +1,34 @@
+@startuml
+title Encrypt document for N recipients (TI-ECIES, A_17220)
+
+actor Caller
+participant "EncryptionService" as ES
+participant "TrustService" as TRUST
+participant "EciesTransportEncryption" as ETE
+participant "ElcKeyWrapper" as WRAP
+participant "Bouncy Castle\n(CMS/EC/KDF/CMAC)" as BC
+
+Caller -> ES : encryptDocument(certs[1..N], document)
+loop each recipient cert
+  ES -> TRUST : verify(cert, false)
+  TRUST --> ES : valid + EC + supported curve
+end
+ES -> ETE : encrypt(document, certs)
+ETE -> BC : random 256-bit transport key
+ETE -> BC : AES-256-GCM(document, transportKey) -> encryptedContent, mac, IV
+loop each recipient cert
+  ETE -> WRAP : wrap(transportKey, recipientPubKey)
+  WRAP -> BC : ephemeral keypair on cert curve
+  WRAP -> BC : ECKA-DH -> shared secret
+  WRAP -> BC : X9.63-KDF/SHA-256 -> K_ENC, K_MAC
+  WRAP -> BC : C = AES-256-CBC(transportKey); T = CMAC(C)
+  WRAP --> ETE : (PO, C, T) cryptogram
+  ETE -> ETE : build ktri{ keyEncAlg=1.2.276.0.76.4.222, encryptedKey=(PO,C,T) }
+  WRAP -> WRAP : zeroize ephemeral private key
+end
+ETE -> BC : assemble AuthEnvelopedData(N ktri + content + mac)
+ETE --> ES : DER bytes
+ES -> ETE : zeroize transport key
+ES -> ES : audit success (no secret material)
+ES --> Caller : CMS AuthEnvelopedData
+@enduml
