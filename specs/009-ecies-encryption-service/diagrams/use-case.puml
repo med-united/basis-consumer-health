@@ -1,0 +1,33 @@
+@startuml
+title ECIES Transport Encryption — Use Cases
+
+left to right direction
+skinparam actorStyle awesome
+
+actor "Calling Application" as Caller
+actor "TI Partner\n(gematik-conformant)" as Partner
+actor "Smart Card\n(eGK / SMC-B / HBA)" as Card
+
+rectangle "EncryptionService (crypto-services-lib)" {
+  usecase "Encrypt document\nfor 1..N EC recipients" as UC_ENC
+  usecase "Decrypt ECIES object\nby key alias" as UC_DEC
+  usecase "Verify recipient\ncertificate trust" as UC_TRUST
+  usecase "Audit operation" as UC_AUDIT
+}
+
+Caller --> UC_ENC
+Caller --> UC_DEC
+UC_ENC ..> UC_TRUST : <<include>>
+UC_ENC ..> UC_AUDIT : <<include>>
+UC_DEC ..> UC_AUDIT : <<include>>
+
+UC_ENC --> Partner : produces CMS AuthEnvelopedData\n(decryptable by any recipient)
+Partner --> UC_DEC : supplies ECIES object
+UC_DEC --> Card : PSO:DECIPHER (card key)\nvia JCE Cipher("ELC")
+
+note bottom of UC_DEC
+  Caller names the key by alias.
+  Software (P12) and card keys
+  use the same JCE Cipher seam.
+end note
+@enduml

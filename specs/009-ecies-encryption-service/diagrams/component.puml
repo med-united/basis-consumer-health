@@ -1,0 +1,55 @@
+@startuml
+title ECIES Transport Encryption — Component View
+
+skinparam componentStyle rectangle
+
+package "crypto-services-lib" {
+  [EncryptionService] as ES
+}
+
+package "crypto-lib" {
+  package "ecies" {
+    [EciesTransportEncryption] as ETE
+    [ElcKeyWrapper] as WRAP
+    [ElcCryptogram] as POCT
+    [ElcParameters] as PARAMS
+  }
+  package "ecies.jce" {
+    [ElcSecurityProvider] as PROV
+    [ElcCipherSpi] as SPI
+    [SoftwareElcDecryptor] as SW
+    interface "ElcDecryptor" as IDEC
+  }
+  [TrustService] as TRUST
+}
+
+package "crypto-pcsc-lib / crypto-sicct-lib" {
+  [CardElcDecryptor] as CARD
+}
+
+package "Bouncy Castle" {
+  [CMS / ASN.1 / EC / KDF / CMAC] as BC
+}
+
+ES --> ETE : build / parse envelope
+ES --> TRUST : verify recipient certs
+ES ..> PROV : Cipher.getInstance("ELC")
+ETE --> WRAP : wrap transport key (encrypt)
+ETE --> POCT
+WRAP --> POCT
+WRAP --> PARAMS
+ETE --> BC : AuthEnvelopedData + AES-256-GCM
+WRAP --> BC : ECKA + X9.63-KDF + AES-CBC + CMAC
+SPI ..> IDEC
+SW ..|> IDEC
+CARD ..|> IDEC
+PROV --> SPI
+SW --> BC
+
+note right of SPI
+  DECRYPT dispatch by key type:
+   ECPrivateKey   -> SoftwareElcDecryptor
+   CardElcPrivateKey -> CardElcDecryptor (APDU)
+  EncryptionService stays card-agnostic.
+end note
+@enduml

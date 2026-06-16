@@ -1,0 +1,41 @@
+@startuml
+title Decrypt ECIES object with a smart-card key (JCE seam, FR-015)
+
+actor Caller
+participant "EncryptionService" as ES
+participant "EciesTransportEncryption" as ETE
+participant "Cipher(\"ELC\")\n= ElcCipherSpi" as SPI
+participant "CardElcDecryptor\n(crypto-pcsc/sicct-lib)" as CARD
+participant "Smart Card" as HW
+participant "Bouncy Castle" as BC
+
+Caller -> ES : decryptDocument(alias=pcsc/..., ciphertext)
+ES -> ETE : parse(ciphertext)
+ETE --> ES : AuthEnvelopedData (N ktri, content, mac)
+ES -> ES : select ktri by rid matching alias' cert
+alt no matching ktri
+  ES --> Caller : error "no matching key" (no plaintext)
+end
+ES -> ES : assert keyEncAlg == 1.2.276.0.76.4.222
+ES -> SPI : Cipher.init(DECRYPT, CardElcPrivateKey)
+ES -> SPI : doFinal(encryptedKey = (PO,C,T))
+SPI -> CARD : unwrapTransportKey((PO,C,T))
+CARD -> HW : PSO:DECIPHER APDU (gemSpec_COS 6.8.2.3)
+HW --> CARD : transport key
+CARD --> SPI : transport key
+SPI --> ES : transport key
+ES -> BC : AES-256-GCM decrypt(content, mac, transportKey)
+alt GCM tag invalid
+  BC --> ES : tag failure
+  ES --> Caller : error "integrity failure" (no plaintext)
+else ok
+  BC --> ES : plaintext
+  ES -> ES : zeroize transport key; audit success
+  ES --> Caller : original document
+end
+note over ES
+  EncryptionService imports no
+  smartcardio/APDU types — only
+  javax.crypto.Cipher + PrivateKey.
+end note
+@enduml
