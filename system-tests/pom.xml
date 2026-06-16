@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.servicehealtherx</groupId>
+        <artifactId>basis-consumer-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>system-tests</artifactId>
+    <name>Basis Consumer :: System Tests</name>
+    <description>Black-box SOAP system tests that drive the running Konnektor endpoints over HTTP
+        (e.g. the full e-prescription signing flow). Requires a live server; tests skip themselves
+        when no server is reachable.</description>
+
+    <properties>
+        <!-- Base URL of the running CXF endpoints (quarkus.cxf.path defaults to /ws). -->
+        <systemtest.base.url>http://localhost:8080/ws</systemtest.base.url>
+    </properties>
+
+    <dependencies>
+        <!-- Pure black-box tests: only JUnit 5 + the JDK HTTP client are needed. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <systemtest.base.url>${systemtest.base.url}</systemtest.base.url>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
