@@ -9,6 +9,7 @@ import de.gematik.ws.conn.eventservice.v7.GetCards;
 import de.gematik.ws.conn.eventservice.v7.GetCardsResponse;
 import de.gematik.ws.conn.cardservicecommon.v2.CardTypeType;
 import de.gematik.ws.conn.cardservice.v8.CardInfoType;
+import de.gematik.ws.conn.cardservice.v8.VersionInfoType;
 import de.gematik.ws.conn.eventservice.v7.GetCardTerminals;
 import de.gematik.ws.conn.eventservice.v7.GetCardTerminalsResponse;
 import de.gematik.ws.conn.eventservice.v7.GetResourceInformation;
@@ -36,7 +37,17 @@ import de.servicehealtherx.crypto.KeyStoreDescriptor;
 import de.servicehealtherx.apdu.card.CardListAggregator;
 import de.servicehealtherx.apdu.card.CardListProvider;
 import de.servicehealtherx.apdu.card.CardObject;
+import de.servicehealtherx.apdu.card.CardVersionInfo;
 
+import javax.xml.datatype.DatatypeConfigurationException;
+import javax.xml.datatype.DatatypeConstants;
+import javax.xml.datatype.DatatypeFactory;
+import javax.xml.datatype.XMLGregorianCalendar;
+import java.math.BigInteger;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.UUID;
 
@@ -173,8 +184,13 @@ public class KonnektorEventService implements EventServicePortType {
         if (card.ctid() != null) {
             info.setCtId(card.ctid().toString());
         }
+        // SlotId is a required positiveInteger; CardObject guarantees slotNo >= 1.
+        info.setSlotId(BigInteger.valueOf(card.slotNo()));
         if (card.iccsn() != null) {
             info.setIccsn(card.iccsn());
+        }
+        if (card.insertTime() != null) {
+            info.setInsertTime(toXmlDateTime(card.insertTime()));
         }
         if (card.cardHolderName() != null) {
             info.setCardHolderName(card.cardHolderName());
@@ -182,7 +198,87 @@ public class KonnektorEventService implements EventServicePortType {
         if (card.kvnr() != null) {
             info.setKvnr(card.kvnr());
         }
+        if (card.certExpirationDate() != null) {
+            info.setCertificateExpirationDate(toXmlDate(card.certExpirationDate()));
+        }
+        CardInfoType.CardVersion version = toCardVersion(card.cardVersion());
+        if (version != null) {
+            info.setCardVersion(version);
+        }
         return info;
+    }
+
+    /**
+     * Map the eight CARDVERSION sub-fields to the gematik {@code CardVersion} structure. Returns
+     * {@code null} when no sub-field is readable so the optional element is simply omitted rather
+     * than emitted with its required COSVersion/ObjectSystemVersion missing.
+     */
+    private static CardInfoType.CardVersion toCardVersion(CardVersionInfo v) {
+        if (v == null) {
+            return null;
+        }
+        VersionInfoType cos = toVersionInfo(v.cosVersion());
+        VersionInfoType objectSystem = toVersionInfo(v.objectSystemVersion());
+        VersionInfoType cardPTPers = toVersionInfo(v.cardPersonalizationVersion());
+        VersionInfoType dataStructure = toVersionInfo(v.dataStructureVersion());
+        VersionInfoType logging = toVersionInfo(v.loggingVersion());
+        VersionInfoType atr = toVersionInfo(v.atrVersion());
+        VersionInfoType gdo = toVersionInfo(v.gdoVersion());
+        VersionInfoType keyInfo = toVersionInfo(v.keyInfoVersion());
+        if (cos == null && objectSystem == null && cardPTPers == null && dataStructure == null
+                && logging == null && atr == null && gdo == null && keyInfo == null) {
+            return null;
+        }
+        CardInfoType.CardVersion version = new CardInfoType.CardVersion();
+        version.setCOSVersion(cos);
+        version.setObjectSystemVersion(objectSystem);
+        version.setCardPTPersVersion(cardPTPers);
+        version.setDataStructureVersion(dataStructure);
+        version.setLoggingVersion(logging);
+        version.setATRVersion(atr);
+        version.setGDOVersion(gdo);
+        version.setKeyInfoVersion(keyInfo);
+        return version;
+    }
+
+    /**
+     * Parse a dotted-decimal version string (as produced by CardAttributeReader, e.g. "3.0.0")
+     * into Major/Minor/Revision. Missing components default to 0; non-numeric input yields
+     * {@code null} so the field is omitted.
+     */
+    private static VersionInfoType toVersionInfo(String dotted) {
+        if (dotted == null || dotted.isBlank()) {
+            return null;
+        }
+        String[] parts = dotted.split("\\.");
+        try {
+            VersionInfoType info = new VersionInfoType();
+            info.setMajor(parts.length > 0 ? Integer.parseInt(parts[0].trim()) : 0);
+            info.setMinor(parts.length > 1 ? Integer.parseInt(parts[1].trim()) : 0);
+            info.setRevision(parts.length > 2 ? Integer.parseInt(parts[2].trim()) : 0);
+            return info;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static XMLGregorianCalendar toXmlDateTime(Instant instant) {
+        GregorianCalendar cal = GregorianCalendar.from(instant.atZone(ZoneId.systemDefault()));
+        return datatypeFactory().newXMLGregorianCalendar(cal);
+    }
+
+    private static XMLGregorianCalendar toXmlDate(LocalDate date) {
+        return datatypeFactory().newXMLGregorianCalendarDate(
+                date.getYear(), date.getMonthValue(), date.getDayOfMonth(),
+                DatatypeConstants.FIELD_UNDEFINED);
+    }
+
+    private static DatatypeFactory datatypeFactory() {
+        try {
+            return DatatypeFactory.newInstance();
+        } catch (DatatypeConfigurationException e) {
+            throw new IllegalStateException("Cannot create DatatypeFactory", e);
+        }
     }
 
     private static CardTypeType toCardTypeType(de.servicehealtherx.apdu.model.CardType type) {

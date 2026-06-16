@@ -8,6 +8,7 @@ import de.servicehealtherx.crypto.SourceType;
 import de.servicehealtherx.crypto.adapter.P12KeyStoreAdapter;
 import de.servicehealtherx.crypto.model.CryptoOperationRequest;
 import de.servicehealtherx.crypto.model.CryptoOperationResult;
+import io.quarkus.arc.lookup.LookupIfProperty;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -23,6 +24,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
+@LookupIfProperty(name = "crypto.provider.p12.enabled", stringValue = "true")
 public class P12CryptoProvider implements CryptoProvider {
 
     private static final Logger LOG = Logger.getLogger(P12CryptoProvider.class);

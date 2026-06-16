@@ -27,6 +27,7 @@
         <module>konnektor-soap-server</module>
         <module>quarkus-server</module>
         <module>openkim</module>
+	<!-- <module>system-tests</module> -->
     </modules>
 
     <properties>
