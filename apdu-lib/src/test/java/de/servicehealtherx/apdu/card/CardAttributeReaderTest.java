@@ -252,6 +252,22 @@ class CardAttributeReaderTest {
         assertFalse(common.isUnreadable());
     }
 
+    @Test
+    void test_read_iccsn_after_esign_selected_reselects_mf_and_keeps_type() {
+        // Regression: a DF-aware card rejects SELECT EF.GDO (MF-level) while DF.ESIGN is the current
+        // DF (SW=6A82), exactly as observed on a real SMC-B. read() must re-select the MF so the
+        // ICCSN is still read after the AUT certificate — otherwise CardObjectFactory downgrades the
+        // correctly-detected SMC-B to CardType.UNKNOWN.
+        byte[] cert = certBytesOrSkip();
+        FakeCardReaderPort port = dfAwarePort(GematikISO7816.AID_SMC_B, 0xC506, cert);
+
+        CardObjectFactory.CardAttributes attrs =
+                CardAttributeReader.readerFor(CardType.SMC_B).read(port, 1, CardType.SMC_B);
+
+        assertEquals("80276001011234567890", attrs.iccsn(),
+                "ICCSN must still be read after DF.ESIGN was selected for the certificate");
+    }
+
     // --- test helpers ---------------------------------------------------------------------------
 
     private static byte[] resource(String path) throws Exception {
@@ -333,6 +349,70 @@ class CardAttributeReaderTest {
                     byte[] d = cmd.getData();
                     selectedFid[0] = ((d[0] & 0xFF) << 8) | (d[1] & 0xFF);
                     return (selectedFid[0] == certFid && cert == null) ? sw(0x6A82) : sw(0x9000);
+                }
+                return sw(0x9000);
+            }
+            if (cmd.getINS() == 0xB0) { // READ BINARY
+                int offset = (cmd.getP1() << 8) | cmd.getP2();
+                byte[] content = switch (selectedFid[0]) {
+                    case 0x2F01 -> atr;
+                    case 0x2F02 -> gdo;
+                    case 0x2F11 -> version;
+                    default -> (selectedFid[0] == certFid && cert != null) ? cert : new byte[0];
+                };
+                return readChunk(content, offset);
+            }
+            return sw(0x6D00);
+        });
+        return port;
+    }
+
+    private static byte[] certBytesOrSkip() {
+        try {
+            return resource("/card/test-aut-cert.der");
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /**
+     * A DF-aware card that mirrors real gematik G2 behaviour: a SELECT BY FILE ID of an MF-level EF
+     * (EF.GDO/EF.Version2/EF.ATR) only succeeds while the MF is the current DF. Selecting the
+     * application or DF.ESIGN by AID switches the current DF away from the MF, so the MF-level EFs
+     * become unreachable (SW=6A82) until the MF is re-selected (SELECT P1=0x00, data 3F00).
+     */
+    private static FakeCardReaderPort dfAwarePort(byte[] appAid, int certFid, byte[] cert) {
+        byte[] atr = {(byte) 0xE0, 0x02, 0x12, 0x34};
+        byte[] gdo = {0x5A, 0x0A,
+                (byte) 0x80, 0x27, 0x60, 0x01, 0x01, 0x12, 0x34, 0x56, 0x78, (byte) 0x90};
+        byte[] version = {(byte) 0xC0, 0x03, 0x04, 0x03, 0x00, (byte) 0xC1, 0x03, 0x05, 0x02, 0x00};
+
+        FakeCardReaderPort port = FakeCardReaderPort.pcsc("df-aware");
+        boolean[] mfCurrent = {true};
+        int[] selectedFid = {-1};
+        port.setResponder((slot, cmd) -> {
+            if (cmd.getINS() == 0xA4) { // SELECT
+                if (cmd.getP1() == 0x04) { // by DF name (AID) — switches current DF away from MF
+                    byte[] aid = cmd.getData();
+                    if (Arrays.equals(aid, appAid) || Arrays.equals(aid, GematikISO7816.AID_DF_ESIGN)) {
+                        mfCurrent[0] = false;
+                        return sw(0x9000);
+                    }
+                    return sw(0x6A82);
+                }
+                if (cmd.getP1() == 0x00) { // select MF (3F00)
+                    mfCurrent[0] = true;
+                    return sw(0x9000);
+                }
+                if (cmd.getP1() == 0x02) { // by file id, relative to current DF
+                    byte[] d = cmd.getData();
+                    int fid = ((d[0] & 0xFF) << 8) | (d[1] & 0xFF);
+                    boolean mfLevel = fid == 0x2F01 || fid == 0x2F02 || fid == 0x2F11;
+                    if (mfLevel && !mfCurrent[0]) {
+                        return sw(0x6A82); // MF-level EF not reachable from an application DF
+                    }
+                    selectedFid[0] = fid;
+                    return sw(0x9000);
                 }
                 return sw(0x9000);
             }

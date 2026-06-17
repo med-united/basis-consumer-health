@@ -311,6 +311,13 @@ public class CardAttributeReader {
     // --- ISO 7816 helpers ---------------------------------------------------------------------
 
     private byte[] selectAndReadBinary(CardReaderPort port, int slotNo, short fid) throws CardTransportException {
+        // EF.ATR/EF.GDO/EF.Version2 are MF-level transparent files. SELECT BY FILE ID (P1=0x02)
+        // resolves the EF relative to the *currently selected* DF, so if an application DF
+        // (e.g. DF.ESIGN, selected while reading the AUT certificate) is active, the card answers
+        // SW=6A82 "file not found". Re-select the MF first so these global EFs are always reachable
+        // — otherwise a successfully type-detected card loses its ICCSN and is downgraded to
+        // CardType.UNKNOWN (see CardObjectFactory#readAndCreate).
+        selectMf(port, slotNo);
         byte[] fidBytes = {(byte) (fid >> 8), (byte) (fid & 0xFF)};
         CommandAPDU select = new CommandAPDU(
                 GematikISO7816.CLA_ISO, GematikISO7816.INS_SELECT,
@@ -329,6 +336,20 @@ public class CardAttributeReader {
             throw new CardTransportException("READ BINARY failed: SW=" + Integer.toHexString(readResp.getSW()));
         }
         return readResp.getData();
+    }
+
+    /**
+     * SELECT the Master File (3F00) so a subsequent SELECT-by-file-id resolves MF-level EFs
+     * regardless of which application DF is currently active. Best-effort: the SW is not checked
+     * here — the caller's SELECT of the target EF is the real gate, and a card that rejects an
+     * explicit MF select but already has the MF current will still succeed there.
+     */
+    private void selectMf(CardReaderPort port, int slotNo) throws CardTransportException {
+        byte[] mf = {(byte) (GematikISO7816.FID_MF >> 8), (byte) (GematikISO7816.FID_MF & 0xFF)};
+        CommandAPDU selectMf = new CommandAPDU(
+                GematikISO7816.CLA_ISO, GematikISO7816.INS_SELECT,
+                GematikISO7816.SELECT_FIRST_OCCURRENCE, 0x0C, mf);
+        port.transmit(slotNo, selectMf);
     }
 
     /** SELECT a transparent certificate EF by file id and READ BINARY its whole content. */
