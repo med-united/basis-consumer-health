@@ -48,6 +48,9 @@ public class ConsumerCertificateService implements CertificateServicePortType {
             response.setVerificationStatus(verStatus);
 
             VerifyCertificateResponse.RoleList roleList = new VerifyCertificateResponse.RoleList();
+            if (result.roles() != null) {
+                roleList.getRole().addAll(result.roles());
+            }
             response.setRoleList(roleList);
 
             return response;

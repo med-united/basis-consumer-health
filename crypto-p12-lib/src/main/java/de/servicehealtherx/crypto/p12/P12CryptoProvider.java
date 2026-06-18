@@ -94,6 +94,12 @@ public class P12CryptoProvider implements CryptoProvider {
     }
 
     @Override
+    public java.security.cert.X509Certificate readCertificate(KeyAlias alias, String certRef, String crypt) {
+        P12KeyStoreAdapter adapter = resolve(alias);
+        return adapter.readCertificate();
+    }
+
+    @Override
     public List<KeyStoreDescriptor> listKeyStores() {
         return adapters.stream()
                 .map(P12KeyStoreAdapter::descriptor)

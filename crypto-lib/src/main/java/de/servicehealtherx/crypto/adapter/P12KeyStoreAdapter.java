@@ -128,6 +128,28 @@ public class P12KeyStoreAdapter extends KeyStoreAdapter {
         }
     }
 
+    /**
+     * Returns the X.509 end-entity certificate held in this P12 key store.
+     *
+     * <p>A software P12 holds a single key pair, so the card-specific {@code certRef}/{@code crypt}
+     * selection of TAB_KON_858 does not apply — the store's entry certificate is returned directly.
+     */
+    public X509Certificate readCertificate() {
+        ensureLoaded();
+        try {
+            String entryAlias = extractEntryAlias();
+            X509Certificate cert = (X509Certificate) keyStore.getCertificate(entryAlias);
+            if (cert == null) {
+                throw new IllegalStateException("P12 keystore for alias " + alias + " holds no certificate");
+            }
+            return cert;
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("readCertificate failed for alias " + alias, e);
+        }
+    }
+
     @Override
     public CryptoOperationResult encrypt(CryptoOperationRequest request) {
         throw new UnsupportedOperationException(
