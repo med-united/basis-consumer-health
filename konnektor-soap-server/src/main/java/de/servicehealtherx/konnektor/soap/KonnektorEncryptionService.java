@@ -43,7 +43,7 @@ import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.toKeyAli
 @CXFEndpoint(value = "/conn/EncryptionService")
 @WebService(portName = "EncryptionServicePort", serviceName = "EncryptionService",
         targetNamespace = "http://ws.gematik.de/conn/EncryptionService/WSDL/v6.1",
-        endpointInterface = "de.gematik.ws.conn.encryptionservice.wsdl.v6.EncryptionServicePortType")
+        endpointInterface = "de.gematik.ws.conn.encryptionservice.wsdl.v6_1.EncryptionServicePortType")
 public class KonnektorEncryptionService implements EncryptionServicePortType {
 
     @Inject
