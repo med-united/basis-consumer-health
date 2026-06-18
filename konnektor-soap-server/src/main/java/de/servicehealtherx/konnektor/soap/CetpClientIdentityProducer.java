@@ -5,6 +5,7 @@ import de.servicehealtherx.quarkus.sicct.runtime.tls.SmkCSAKAut;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 import javax.net.ssl.KeyManagerFactory;
 
@@ -22,7 +23,7 @@ public class CetpClientIdentityProducer {
 
     @Produces
     @KonnektorClientIdentity
-    @ApplicationScoped
+    @Singleton
     public KeyManagerFactory konnektorClientIdentity() {
         return smkCSAKAut.getKeyManagerFactory();
     }
