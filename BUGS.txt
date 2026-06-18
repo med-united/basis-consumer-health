@@ -1,2 +1,3 @@
-- Not all certificates for an eHBA (C.ENC, C.QES, C.AUT) are returned only C.ENC
-- CETP Events are not thrown when entering a card
+- [FIXED] Card Handle for an eHBA does not show the card holder name
+- [FIXED] Not all certificates for an eHBA (C.ENC, C.QES, C.AUT) are returned only C.ENC
+- [FIXED] CETP Events are not thrown when entering a card

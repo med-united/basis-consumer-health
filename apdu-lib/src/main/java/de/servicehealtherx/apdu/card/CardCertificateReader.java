@@ -61,6 +61,13 @@ public final class CardCertificateReader {
         if (cardType == CardType.EGK) {
             throw new CardCertificateException("Reading certificates from an eGK is not permitted (gemSpec_Kon 4090)");
         }
+        // The HBA addresses its certificate EFs by short file identifier in the relevant DF
+        // (C.HP.AUT/C.HP.ENC in DF.ESIGN, C.HP.QES in DF.QES) — the access path verified against the
+        // real gematik G2.1 HBA. SMC-B keeps the full-file-id path (TAB_KON_858) below.
+        SfiLocation sfi = hbaSfiLocation(cardType, certRef);
+        if (sfi != null) {
+            return readCertificateBySfi(port, slotNo, cardHandle, certRef, sfi);
+        }
         short fid = TucKon216ReadCertificate.fileIdentifierFor(cardType, certRef, ecc);
         try {
             selectEsign(port, slotNo);
@@ -84,6 +91,91 @@ public final class CardCertificateReader {
             throw new CardCertificateException(
                     "Transport failure reading " + certRef.id() + " from card " + cardHandle + ": " + e.getMessage(), e);
         }
+    }
+
+    /** A certificate EF addressed by its containing DF (by AID) and its short file identifier. */
+    private record SfiLocation(byte[] dfAid, int sfi) {}
+
+    /**
+     * The HBA's certificate EF location (DF AID + SFI) for a reference, or {@code null} when the
+     * card/reference must be read through the full-file-id path instead (SMC-B). Reading from an HBA
+     * uses SFIs verified against the real card: C.AUT/C.ENC live in DF.ESIGN, C.QES in DF.QES.
+     */
+    private static SfiLocation hbaSfiLocation(CardType cardType, CertificateRef certRef) {
+        if (cardType != CardType.HBA && cardType != CardType.HBAX) {
+            return null;
+        }
+        return switch (certRef) {
+            case C_AUT -> new SfiLocation(GematikISO7816.AID_DF_ESIGN, GematikISO7816.SFI_C_HP_AUT);
+            case C_ENC -> new SfiLocation(GematikISO7816.AID_DF_ESIGN, GematikISO7816.SFI_C_HP_ENC);
+            case C_QES -> new SfiLocation(GematikISO7816.AID_DF_QES, GematikISO7816.SFI_C_HP_QES);
+            case C_SIG -> throw new CardCertificateException(
+                    "No C.SIG certificate object defined for an HBA (TAB_KON_858)");
+        };
+    }
+
+    /** SELECT the certificate's DF by AID, then READ BINARY the whole transparent file via its SFI. */
+    private X509Certificate readCertificateBySfi(CardReaderPort port, int slotNo, String cardHandle,
+                                                 CertificateRef certRef, SfiLocation loc) {
+        try {
+            CommandAPDU selectDf = new CommandAPDU(
+                    GematikISO7816.CLA_ISO, GematikISO7816.INS_SELECT,
+                    GematikISO7816.SELECT_BY_DF_NAME, 0x0C, loc.dfAid());
+            ResponseAPDU dfResp = port.transmit(slotNo, selectDf);
+            if (dfResp.getSW() != GematikISO7816.SW_SUCCESS) {
+                throw new CardCertificateException(certRef.id() + " not present on card " + cardHandle
+                        + " (SELECT DF → SW=" + Integer.toHexString(dfResp.getSW()) + ")");
+            }
+            byte[] der = readBinaryBySfi(port, slotNo, loc.sfi());
+            if (der == null) {
+                throw new CardCertificateException(
+                        certRef.id() + " file on card " + cardHandle + " is not a readable X.509 certificate");
+            }
+            return parse(der);
+        } catch (CardTransportException e) {
+            throw new CardCertificateException(
+                    "Transport failure reading " + certRef.id() + " from card " + cardHandle + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * READ BINARY a transparent file addressed by short file identifier. The first READ BINARY carries
+     * the SFI in P1 (bit 8 set, bits 1-5 = SFI), selecting and reading the EF in one step; further
+     * blocks are read by 15-bit offset. Returns {@code null} if the content is not a DER certificate.
+     */
+    private byte[] readBinaryBySfi(CardReaderPort port, int slotNo, int sfi) throws CardTransportException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int total = -1;
+        int offset = 0;
+        boolean first = true;
+        while (offset < 0x8000) {
+            int p1 = first ? (0x80 | (sfi & 0x1F)) : ((offset >> 8) & 0x7F);
+            int p2 = first ? 0x00 : (offset & 0xFF);
+            CommandAPDU read = new CommandAPDU(
+                    GematikISO7816.CLA_ISO, GematikISO7816.INS_READ_BINARY, p1, p2, 256);
+            ResponseAPDU resp = port.transmit(slotNo, read);
+            int sw = resp.getSW();
+            byte[] chunk = resp.getData();
+            if ((sw != GematikISO7816.SW_SUCCESS && sw != SW_END_OF_FILE) || chunk.length == 0) {
+                break;
+            }
+            out.write(chunk, 0, chunk.length);
+            if (total < 0) {
+                total = derTotalLength(out.toByteArray());
+                if (total < 0) {
+                    return null; // not an X.509 certificate
+                }
+            }
+            offset += chunk.length;
+            first = false;
+            if (out.size() >= total || sw == SW_END_OF_FILE) {
+                break;
+            }
+        }
+        if (total <= 0 || out.size() < total) {
+            return null;
+        }
+        return Arrays.copyOf(out.toByteArray(), total);
     }
 
     private void selectEsign(CardReaderPort port, int slotNo) throws CardTransportException {

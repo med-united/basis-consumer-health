@@ -63,22 +63,20 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
     private static final int PIN_QES = 0x81;
 
     private final CmCardList cmCardList = new CmCardList();
-    private final PcscReaderRegistry readerRegistry;
+    private PcscReaderRegistry readerRegistry;
 
     /** Card-backed certificate read (gemSpec_Kon ReadCardCertificate / TUC_KON_216). */
-    private final CardCertificateReadService certReadService;
+    private CardCertificateReadService certReadService;
+
+    /**
+     * The runtime card-lifecycle listener (CDI), used to publish TUC_KON_256 CARD/INSERTED &
+     * CARD/REMOVED events on insert/remove. Optional: when no bean is present (e.g. a thin test
+     * deployment) the provider falls back to {@link CardLifecycleListener#NO_OP}.
+     */
+    @jakarta.inject.Inject
+    jakarta.enterprise.inject.Instance<CardLifecycleListener> lifecycleListener;
 
     private java.util.concurrent.ScheduledExecutorService scheduler;
-
-    public PcscCryptoProvider() {
-        this.readerRegistry = new PcscReaderRegistry(
-                cmCardList,
-                new CardObjectFactory(),
-                CardLifecycleListener.NO_OP, // runtime layer (US3/Phase 6) wires CDI eventing
-                PcscReaderRegistry.defaultTypeResolver(),
-                PcscReaderRegistry.defaultTerminalSource());
-        this.certReadService = new CardCertificateReadService(cmCardList, readerRegistry::portFor);
-    }
 
     /** This provider's own CM_CARD_LIST (FR-062); aggregated by the card service for GetCards. */
     public CmCardList cmCardList() {
@@ -91,6 +89,19 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
 
     @PostConstruct
     void startReaderDiscovery() {
+        // Build the reader registry now (not in the constructor) so the CDI-injected lifecycle
+        // listener is available — it bridges card insert/remove to TUC_KON_256 CETP events (the
+        // wiring the constructor comment used to defer). Falls back to NO_OP when no bean is present.
+        CardLifecycleListener listener = lifecycleListener != null && lifecycleListener.isResolvable()
+                ? lifecycleListener.get()
+                : CardLifecycleListener.NO_OP;
+        this.readerRegistry = new PcscReaderRegistry(
+                cmCardList,
+                new CardObjectFactory(),
+                listener,
+                PcscReaderRegistry.defaultTypeResolver(),
+                PcscReaderRegistry.defaultTerminalSource());
+        this.certReadService = new CardCertificateReadService(cmCardList, readerRegistry::portFor);
         try {
             readerRegistry.refreshTerminals();
             scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
@@ -186,6 +197,16 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
             throw new IllegalStateException("No C.AUT certificate readable from card " + cardHandle);
         }
         return der;
+    }
+
+    @Override
+    public byte[] readCardCertificate(String cardHandle, String certRef, String crypt) {
+        try {
+            return certReadService.readCertificate(cardHandle, certRef, crypt).getEncoded();
+        } catch (java.security.cert.CertificateEncodingException e) {
+            throw new IllegalStateException(
+                    "Encoding " + certRef + " from card " + cardHandle + " failed: " + e.getMessage(), e);
+        }
     }
 
     @Override

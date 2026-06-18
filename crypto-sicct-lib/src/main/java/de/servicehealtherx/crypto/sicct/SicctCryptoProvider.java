@@ -77,6 +77,21 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
     }
 
     @Override
+    public byte[] readCardCertificate(String cardHandle, String certRef, String crypt) {
+        try {
+            return certReadService.readCertificate(cardHandle, certRef, crypt).getEncoded();
+        } catch (java.security.cert.CertificateEncodingException e) {
+            throw new IllegalStateException(
+                    "Encoding " + certRef + " from card " + cardHandle + " failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public boolean ownsCard(String cardHandle) {
+        return cmCardList.findByHandle(cardHandle).isPresent();
+    }
+
+    @Override
     public List<KeyStoreDescriptor> listKeyStores() {
         return List.of();
     }

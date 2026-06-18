@@ -50,6 +50,16 @@ public interface CryptoProvider {
         throw new UnsupportedOperationException("readCardCertificate not supported by " + getClass().getSimpleName());
     }
 
+    /**
+     * Read the DER-encoded certificate addressed by {@code certRef} ({@code C.AUT} / {@code C.ENC} /
+     * {@code C.QES} / {@code C.SIG}) and crypto algorithm ({@code RSA} / {@code ECC}) of the inserted
+     * card identified by {@code cardHandle} (gemSpec_Kon ReadCardCertificate). READ BINARY on the
+     * certificate files is access condition ALWAYS, so no PIN is required.
+     */
+    default byte[] readCardCertificate(String cardHandle, String certRef, String crypt) {
+        throw new UnsupportedOperationException("readCardCertificate not supported by " + getClass().getSimpleName());
+    }
+
     /** Sign {@code hash} with the card's C.AUT key (ExternalAuthenticate); returns the raw signature. */
     default byte[] externalAuthenticate(String cardHandle, byte[] hash) {
         throw new UnsupportedOperationException("externalAuthenticate not supported by " + getClass().getSimpleName());

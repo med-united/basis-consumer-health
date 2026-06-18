@@ -15,16 +15,20 @@ import de.servicehealtherx.crypto.services.CertificateService;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
+import org.jboss.logging.Logger;
 
 import java.io.ByteArrayInputStream;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.List;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
 @CXFEndpoint(value = "/conn/CertificateService")
 @WebService(portName = "CertificateServicePort", serviceName = "CertificateService", targetNamespace = "http://ws.gematik.de/conn/CertificateService/WSDL/v6.0", endpointInterface = "de.gematik.ws.conn.certificateservice.wsdl.v6_0.CertificateServicePortType")
 public class KonnektorCertificateService implements CertificateServicePortType {
+
+    private static final Logger LOG = Logger.getLogger(KonnektorCertificateService.class);
 
     @Inject
     CertificateService certificateService;
@@ -40,17 +44,36 @@ public class KonnektorCertificateService implements CertificateServicePortType {
     @Override
     public ReadCardCertificateResponse readCardCertificate(ReadCardCertificate parameter) throws FaultMessage {
         try {
-            CertRefEnum firstRef = parameter.getCertRefList() != null
+            // Honour every requested certificate reference (TUC_KON_216): the response carries one
+            // X509DataInfo per ref, each read from the card and labelled with its own ref — not a
+            // single certificate mislabelled with the first ref.
+            List<CertRefEnum> refs = parameter.getCertRefList() != null
                     && !parameter.getCertRefList().getCertRef().isEmpty()
-                            ? parameter.getCertRefList().getCertRef().get(0)
-                            : CertRefEnum.C_AUT;
+                            ? parameter.getCertRefList().getCertRef()
+                            : List.of(CertRefEnum.C_AUT);
+            String crypt = parameter.getCrypt() != null ? parameter.getCrypt().name() : "ECC";
 
-            byte[] certDer = certificateService.readCardCertificate(
-                    parameter.getCardHandle(), "konnektor-soap");
+            X509DataInfoListType list = new X509DataInfoListType();
+            for (CertRefEnum ref : refs) {
+                try {
+                    byte[] certDer = certificateService.readCardCertificate(
+                            parameter.getCardHandle(), ref.value(), crypt, "konnektor-soap");
+                    list.getX509DataInfo().add(buildX509DataInfo(certDer, ref));
+                } catch (Exception perRef) {
+                    // A reference absent on this card type must not drop the certs that are present;
+                    // log and continue so the caller still receives the readable ones.
+                    LOG.warnf("ReadCardCertificate: %s unavailable on card %s: %s",
+                            ref.value(), parameter.getCardHandle(), perRef.getMessage());
+                }
+            }
+            if (list.getX509DataInfo().isEmpty()) {
+                throw new IllegalStateException(
+                        "no requested certificate could be read from card " + parameter.getCardHandle());
+            }
 
             ReadCardCertificateResponse response = new ReadCardCertificateResponse();
             response.setStatus(okStatus());
-            response.setX509DataInfoList(buildX509DataInfoList(certDer, firstRef));
+            response.setX509DataInfoList(list);
             return response;
         } catch (Exception e) {
             throw new FaultMessage("ReadCardCertificate failed: " + e.getMessage(), buildError(e.getMessage()));
@@ -90,15 +113,13 @@ public class KonnektorCertificateService implements CertificateServicePortType {
         };
     }
 
-    private static X509DataInfoListType buildX509DataInfoList(byte[] certDer, CertRefEnum certRef) {
-        X509DataInfoListType list = new X509DataInfoListType();
+    private static X509DataInfoListType.X509DataInfo buildX509DataInfo(byte[] certDer, CertRefEnum certRef) {
         X509DataInfoListType.X509DataInfo info = new X509DataInfoListType.X509DataInfo();
         info.setCertRef(certRef);
         X509DataInfoListType.X509DataInfo.X509Data data = new X509DataInfoListType.X509DataInfo.X509Data();
         data.setX509Certificate(certDer);
         info.setX509Data(data);
-        list.getX509DataInfo().add(info);
-        return list;
+        return info;
     }
 
     private static X509Certificate parseCertificate(byte[] der) throws Exception {

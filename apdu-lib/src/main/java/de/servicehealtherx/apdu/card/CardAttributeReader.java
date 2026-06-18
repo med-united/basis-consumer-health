@@ -7,10 +7,14 @@ import java.security.cert.X509Certificate;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.naming.ldap.LdapName;
 import javax.naming.ldap.Rdn;
+import javax.security.auth.x500.X500Principal;
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
 
@@ -59,6 +63,8 @@ import de.servicehealtherx.apdu.model.GematikISO7816;
  * full {@link CardObjectFactory.CardAttributes} for the detected card.
  */
 public class CardAttributeReader {
+
+    private static final System.Logger LOG = System.getLogger(CardAttributeReader.class.getName());
 
     /** gematik EF.Version2 file identifier. */
     static final short FID_EF_VERSION2 = (short) 0x2F11;
@@ -204,14 +210,22 @@ public class CardAttributeReader {
         if (autCertDer != null) {
             X509Certificate cert = toCertificate(autCertDer);
             if (cert != null) {
-                cardHolderName = commonName(cert.getSubjectX500Principal().getName());
+                cardHolderName = cardHolderName(cert);
                 expiry = cert.getNotAfter().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
                 // KVNR is only meaningful for eGK and is the "unveränderbarer Teil der KVNR"
                 // carried in the C.CH.AUT subject (TUC_KON_001 §2c).
                 if (type == CardType.EGK) {
                     kvnr = extractKvnr(cert.getSubjectX500Principal().getName());
                 }
+                if (cardHolderName == null) {
+                    LOG.log(System.Logger.Level.WARNING,
+                            () -> "No cardholder name derivable from " + type + " AUT certificate subject: "
+                                    + cert.getSubjectX500Principal().getName());
+                }
             }
+        } else {
+            LOG.log(System.Logger.Level.INFO,
+                    () -> "No AUT certificate read for card type " + type + " — cardholder name unavailable");
         }
         return new CardObjectFactory.CardAttributes(iccsn, version, cardHolderName, kvnr, expiry);
     }
@@ -294,13 +308,13 @@ public class CardAttributeReader {
         }
     }
 
-    /** Parse a DER-encoded AUT certificate into cardholder name (CN) and expiry. */
+    /** Parse a DER-encoded AUT certificate into cardholder name and expiry. */
     public CertInfo parseAutCertificate(byte[] der) {
         X509Certificate cert = toCertificate(der);
         if (cert == null) {
             return null;
         }
-        String cn = commonName(cert.getSubjectX500Principal().getName());
+        String cn = cardHolderName(cert);
         LocalDate notAfter = cert.getNotAfter().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
         return new CertInfo(cn, notAfter);
     }
@@ -518,16 +532,95 @@ public class CardAttributeReader {
         return sb.toString();
     }
 
-    private static String commonName(String dn) {
+    // RFC 2253 keyword mapping for the subject attributes that carry a person's name on an HBA but
+    // are not in X500Principal's built-in OID table — so they render as readable values, not #hex.
+    private static final Map<String, String> NAME_OID_KEYWORDS = Map.of(
+            "2.5.4.4", "SURNAME",
+            "2.5.4.42", "GIVENNAME");
+
+    /**
+     * Derive the cardholder name from an AUT certificate subject. Prefers the {@code CN} (carries the
+     * holder/institution name on every gematik card); when absent — as on some HBAs whose C.HP.AUT
+     * subject splits the name into {@code givenName} + {@code surname} — falls back to those.
+     */
+    private static String cardHolderName(X509Certificate cert) {
+        String dn = cert.getSubjectX500Principal().getName(X500Principal.RFC2253, NAME_OID_KEYWORDS);
+        String cn = rdnValue(dn, "CN");
+        if (cn != null && !cn.isBlank()) {
+            return cn;
+        }
+        String name = Stream.of(rdnValue(dn, "GIVENNAME"), rdnValue(dn, "SURNAME"))
+                .filter(v -> v != null && !v.isBlank())
+                .collect(Collectors.joining(" "));
+        return name.isBlank() ? null : name;
+    }
+
+    /** First value of the RDN attribute {@code type} in an RFC 2253 DN, or {@code null}. */
+    private static String rdnValue(String dn, String type) {
         try {
             LdapName ldap = new LdapName(dn);
             return ldap.getRdns().stream()
-                    .filter(r -> r.getType().equalsIgnoreCase("CN"))
+                    .filter(r -> r.getType().equalsIgnoreCase(type))
                     .map(r -> String.valueOf(r.getValue()))
                     .findFirst()
                     .orElse(null);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * SELECT a DF by its AID, then READ BINARY a transparent certificate file by short file
+     * identifier (first READ BINARY carries the SFI in P1 bit 8; further blocks read by offset).
+     * Returns DER bytes or {@code null} when nothing readable / not a certificate (best-effort,
+     * FR-005). Used as a fallback for cards (the HBA) that address their certificate EFs by SFI.
+     */
+    protected byte[] readCertificateBySfi(CardReaderPort port, int slotNo, byte[] dfAid, int sfi) {
+        try {
+            CommandAPDU selectDf = new CommandAPDU(
+                    GematikISO7816.CLA_ISO, GematikISO7816.INS_SELECT,
+                    GematikISO7816.SELECT_BY_DF_NAME, 0x0C, dfAid);
+            if (port.transmit(slotNo, selectDf).getSW() != GematikISO7816.SW_SUCCESS) {
+                return null;
+            }
+            return readBinaryBySfi(port, slotNo, sfi);
+        } catch (CardTransportException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private byte[] readBinaryBySfi(CardReaderPort port, int slotNo, int sfi) throws CardTransportException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int total = -1;
+        int offset = 0;
+        boolean first = true;
+        while (offset < 0x8000) {
+            int p1 = first ? (0x80 | (sfi & 0x1F)) : ((offset >> 8) & 0x7F);
+            int p2 = first ? 0x00 : (offset & 0xFF);
+            CommandAPDU read = new CommandAPDU(
+                    GematikISO7816.CLA_ISO, GematikISO7816.INS_READ_BINARY, p1, p2, 256);
+            ResponseAPDU resp = port.transmit(slotNo, read);
+            int sw = resp.getSW();
+            byte[] chunk = resp.getData();
+            if ((sw != GematikISO7816.SW_SUCCESS && sw != SW_END_OF_FILE) || chunk.length == 0) {
+                break;
+            }
+            out.write(chunk, 0, chunk.length);
+            if (total < 0) {
+                total = derTotalLength(out.toByteArray());
+                if (total < 0) {
+                    return null;
+                }
+            }
+            offset += chunk.length;
+            first = false;
+            if (out.size() >= total || sw == SW_END_OF_FILE) {
+                break;
+            }
+        }
+        if (total <= 0 || out.size() < total) {
+            return null;
+        }
+        return Arrays.copyOf(out.toByteArray(), total);
     }
 }

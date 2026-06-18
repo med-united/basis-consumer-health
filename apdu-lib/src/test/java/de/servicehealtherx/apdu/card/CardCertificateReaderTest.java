@@ -76,7 +76,7 @@ class CardCertificateReaderTest {
 
     @Test
     void throws_when_certificate_absent_on_card() throws Exception {
-        // SELECT DF.ESIGN succeeds, SELECT EF returns "file not found".
+        // SMC-B uses the full-file-id path: SELECT DF.ESIGN succeeds, SELECT EF returns "file not found".
         FakeCardReaderPort port = FakeCardReaderPort.pcsc("reader");
         port.simulateInsert(SLOT);
         port.setResponder((slot, cmd) -> {
@@ -87,7 +87,55 @@ class CardCertificateReaderTest {
         });
 
         CardCertificateException ex = assertThrows(CardCertificateException.class, () -> new CardCertificateReader()
-                .readCertificate(port, SLOT, "handle-3", CardType.HBA, CertificateRef.C_AUT, true));
+                .readCertificate(port, SLOT, "handle-3", CardType.SMC_B, CertificateRef.C_AUT, true));
+        org.junit.jupiter.api.Assertions.assertTrue(ex.getMessage().contains("not present"));
+    }
+
+    @Test
+    void reads_hba_aut_via_sfi_in_df_esign() throws Exception {
+        X509Certificate expected = selfSigned();
+        FakeCardReaderPort port = scriptedHbaCard(expected.getEncoded(),
+                GematikISO7816.AID_DF_ESIGN, GematikISO7816.SFI_C_HP_AUT);
+
+        X509Certificate read = new CardCertificateReader()
+                .readCertificate(port, SLOT, "hba-1", CardType.HBA, CertificateRef.C_AUT, true);
+
+        assertEquals(expected, read);
+    }
+
+    @Test
+    void reads_hba_enc_via_sfi_in_df_esign() throws Exception {
+        X509Certificate expected = selfSigned();
+        FakeCardReaderPort port = scriptedHbaCard(expected.getEncoded(),
+                GematikISO7816.AID_DF_ESIGN, GematikISO7816.SFI_C_HP_ENC);
+
+        X509Certificate read = new CardCertificateReader()
+                .readCertificate(port, SLOT, "hba-2", CardType.HBA, CertificateRef.C_ENC, true);
+
+        assertEquals(expected, read);
+    }
+
+    @Test
+    void reads_hba_qes_via_sfi_in_df_qes() throws Exception {
+        X509Certificate expected = selfSigned();
+        FakeCardReaderPort port = scriptedHbaCard(expected.getEncoded(),
+                GematikISO7816.AID_DF_QES, GematikISO7816.SFI_C_HP_QES);
+
+        X509Certificate read = new CardCertificateReader()
+                .readCertificate(port, SLOT, "hba-3", CardType.HBA, CertificateRef.C_QES, true);
+
+        assertEquals(expected, read);
+    }
+
+    @Test
+    void throws_when_hba_df_for_certificate_absent() {
+        // The DF holding the requested cert cannot be selected → "not present".
+        FakeCardReaderPort port = FakeCardReaderPort.pcsc("hba");
+        port.simulateInsert(SLOT);
+        port.setResponder((slot, cmd) -> sw(GematikISO7816.SW_OBJECT_NOT_FOUND));
+
+        CardCertificateException ex = assertThrows(CardCertificateException.class, () -> new CardCertificateReader()
+                .readCertificate(port, SLOT, "hba-x", CardType.HBA, CertificateRef.C_QES, true));
         org.junit.jupiter.api.Assertions.assertTrue(ex.getMessage().contains("not present"));
     }
 
@@ -134,6 +182,42 @@ class CardCertificateReaderTest {
 
     private static boolean isSelectEf(CommandAPDU cmd) {
         return cmd.getINS() == GematikISO7816.INS_SELECT && cmd.getP1() == GematikISO7816.SELECT_BY_FILE_ID;
+    }
+
+    /**
+     * A card answering SELECT {@code dfAid} (by DF name) OK and serving {@code der} via READ BINARY
+     * addressed by {@code sfi} — the first READ carries the SFI in P1 (bit 8 set), the rest read by
+     * offset. Mirrors the real gematik HBA certificate access path.
+     */
+    private static FakeCardReaderPort scriptedHbaCard(byte[] der, byte[] dfAid, int sfi) {
+        FakeCardReaderPort port = FakeCardReaderPort.pcsc("hba-reader");
+        port.simulateInsert(SLOT);
+        port.setResponder((slot, cmd) -> {
+            if (cmd.getINS() == GematikISO7816.INS_SELECT && cmd.getP1() == GematikISO7816.SELECT_BY_DF_NAME) {
+                return Arrays.equals(cmd.getData(), dfAid)
+                        ? sw(GematikISO7816.SW_SUCCESS)
+                        : sw(GematikISO7816.SW_OBJECT_NOT_FOUND);
+            }
+            if (cmd.getINS() == GematikISO7816.INS_READ_BINARY) {
+                int p1 = cmd.getP1();
+                int offset = (p1 & 0x80) != 0 ? 0 : ((p1 << 8) | cmd.getP2());
+                if ((p1 & 0x80) != 0 && (p1 & 0x1F) != (sfi & 0x1F)) {
+                    return sw(GematikISO7816.SW_OBJECT_NOT_FOUND); // wrong SFI
+                }
+                int remaining = der.length - offset;
+                if (remaining <= 0) {
+                    return sw(GematikISO7816.SW_SUCCESS);
+                }
+                int n = Math.min(256, remaining);
+                byte[] body = new byte[n + 2];
+                System.arraycopy(der, offset, body, 0, n);
+                body[n] = (byte) 0x90;
+                body[n + 1] = 0x00;
+                return new ResponseAPDU(body);
+            }
+            return sw(GematikISO7816.SW_SUCCESS);
+        });
+        return port;
     }
 
     private static ResponseAPDU sw(int sw) {

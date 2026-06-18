@@ -244,6 +244,23 @@ class CardAttributeReaderTest {
     }
 
     @Test
+    void test_hba_cardholder_name_read_via_sfi_when_file_id_absent() throws Exception {
+        // Real-card regression (BUGS.txt #1): the HBA does not expose C.HP.AUT by full file id, so
+        // the FID read returns nothing and GetCards shows no CardHolderName. The reader must fall back
+        // to the SFI access path (DF.ESIGN, SFI 0x01) so the cardholder name is still derived.
+        byte[] cert = resource("/card/test-aut-cert.der");
+        FakeCardReaderPort port = hbaSfiOnlyPort(cert);
+
+        CardObjectFactory.CardAttributes attrs =
+                CardAttributeReader.readerFor(CardType.HBA).read(port, 1, CardType.HBA);
+
+        assertEquals("GEM.TSL-CA3", attrs.cardHolderName(),
+                "cardholder name must come through via the SFI fallback");
+        assertEquals("80276001011234567890", attrs.iccsn());
+        assertNull(attrs.kvnr(), "HBA carries no KVNR");
+    }
+
+    @Test
     void test_read_common_data_reads_atr_iccsn_and_version() {
         FakeCardReaderPort port = typedCardPort(GematikISO7816.AID_EGK, 0xC504, null);
         CardAttributeReader.CommonCardData common = new CardAttributeReader().readCommonData(port, 1);
@@ -359,6 +376,61 @@ class CardAttributeReaderTest {
                     case 0x2F02 -> gdo;
                     case 0x2F11 -> version;
                     default -> (selectedFid[0] == certFid && cert != null) ? cert : new byte[0];
+                };
+                return readChunk(content, offset);
+            }
+            return sw(0x6D00);
+        });
+        return port;
+    }
+
+    /**
+     * An HBA-like card whose certificate EFs are NOT reachable by full file id (SELECT C5xx → 6A82),
+     * only by short file identifier (READ BINARY with the SFI in P1). Serves EF.GDO/EF.Version2 by
+     * file id and {@code cert} from DF.ESIGN SFI 0x01 — exercising the SFI fallback (BUGS.txt #1).
+     */
+    private static FakeCardReaderPort hbaSfiOnlyPort(byte[] cert) {
+        byte[] gdo = {0x5A, 0x0A,
+                (byte) 0x80, 0x27, 0x60, 0x01, 0x01, 0x12, 0x34, 0x56, 0x78, (byte) 0x90};
+        byte[] version = {(byte) 0xC0, 0x03, 0x04, 0x03, 0x00, (byte) 0xC1, 0x03, 0x05, 0x02, 0x00};
+
+        FakeCardReaderPort port = FakeCardReaderPort.pcsc("hba-sfi");
+        // Current read source: 0x2F02/0x2F11 = MF files, -1 = the SFI-selected certificate.
+        int[] source = {0};
+        port.setResponder((slot, cmd) -> {
+            if (cmd.getINS() == 0xA4) { // SELECT
+                if (cmd.getP1() == 0x04) { // by DF name (AID)
+                    return Arrays.equals(cmd.getData(), GematikISO7816.AID_DF_ESIGN) ? sw(0x9000) : sw(0x6A82);
+                }
+                if (cmd.getP1() == 0x00) { // select MF
+                    return sw(0x9000);
+                }
+                if (cmd.getP1() == 0x02) { // by file id
+                    byte[] d = cmd.getData();
+                    int fid = ((d[0] & 0xFF) << 8) | (d[1] & 0xFF);
+                    if (fid == 0xC506 || fid == 0xC500) {
+                        return sw(0x6A82); // C.HP.AUT not reachable by file id on this card
+                    }
+                    source[0] = fid;
+                    return sw(0x9000);
+                }
+                return sw(0x9000);
+            }
+            if (cmd.getINS() == 0xB0) { // READ BINARY
+                int p1 = cmd.getP1();
+                if ((p1 & 0x80) != 0) { // SFI read
+                    if ((p1 & 0x1F) != GematikISO7816.SFI_C_HP_AUT) {
+                        return sw(0x6A82);
+                    }
+                    source[0] = -1; // certificate session
+                    return readChunk(cert, 0);
+                }
+                int offset = (p1 << 8) | cmd.getP2();
+                byte[] content = switch (source[0]) {
+                    case 0x2F02 -> gdo;
+                    case 0x2F11 -> version;
+                    case -1 -> cert;
+                    default -> new byte[0];
                 };
                 return readChunk(content, offset);
             }

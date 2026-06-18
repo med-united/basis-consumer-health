@@ -104,6 +104,29 @@ public class CertificateService {
         }
     }
 
+    /**
+     * Read the certificate addressed by {@code certRef} ({@code C.AUT} / {@code C.ENC} / {@code C.QES}
+     * / {@code C.SIG}) and crypto algorithm ({@code RSA} / {@code ECC}) of an inserted card addressed
+     * by its gematik CardHandle (gemSpec_Kon ReadCardCertificate). Delegates to whichever
+     * {@link CryptoProvider} currently holds the card. READ BINARY on the certificate file is access
+     * condition ALWAYS, so no PIN is required.
+     *
+     * @return the DER-encoded certificate
+     */
+    public byte[] readCardCertificate(String cardHandle, String certRef, String crypt, String callerIdentity) {
+        long start = System.currentTimeMillis();
+        try {
+            byte[] certDer = providerForCard(cardHandle).readCardCertificate(cardHandle, certRef, crypt);
+            auditLogger.logSuccess(cardHandle, "READ_CERT", certRef, callerIdentity,
+                    System.currentTimeMillis() - start);
+            return certDer;
+        } catch (Exception e) {
+            auditLogger.logFailure(cardHandle, "READ_CERT", certRef, callerIdentity,
+                    System.currentTimeMillis() - start, e.getMessage());
+            throw new RuntimeException("readCardCertificate " + certRef + " failed: " + e.getMessage(), e);
+        }
+    }
+
     private CryptoProvider providerForCard(String cardHandle) {
         for (CryptoProvider provider : cryptoProviders) {
             if (provider.ownsCard(cardHandle)) {

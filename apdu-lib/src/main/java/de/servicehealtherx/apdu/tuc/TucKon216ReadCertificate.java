@@ -65,6 +65,9 @@ public final class TucKon216ReadCertificate {
                 case SMC_B -> ecc ? GematikISO7816.FID_EF_C_HCI_OSIG_E256 : GematikISO7816.FID_EF_C_HCI_OSIG_R2048;
                 default -> throw unsupported(cardType, certRef);
             };
+            // C.HP.ENC / C.HP.QES are HBA-only and addressed by SFI (see CardCertificateReader),
+            // not by a full file identifier through this FID resolver.
+            case C_ENC, C_QES -> throw unsupported(cardType, certRef);
         };
     }
 

@@ -115,6 +115,17 @@ public final class GematikISO7816 {
     public static final short FID_EF_C_HCI_OSIG_E256 = (short) 0xC007;  // Tab_SMC-B_ObjSys_120
     public static final short FID_EF_C_HCI_OSIG_R2048 = (short) 0xC000; // Tab_SMC-B_ObjSys_041
 
+    // ── HBA certificate short file identifiers (SFI) ──────────────────────────────────────────
+    // The HBA's certificate EFs are addressed by SFI (READ BINARY with P1 bit 8 set), the access
+    // path verified against the real gematik G2.1 HBA (reference impl ehba-cades-qes-sign,
+    // EHBACard.java). The first READ BINARY selects the EF by SFI; subsequent blocks read by offset.
+    /** MF / DF.ESIGN / EF.C.HP.AUT — authentication certificate. */
+    public static final int SFI_C_HP_AUT = 0x01;
+    /** MF / DF.ESIGN / EF.C.HP.ENC.E256 — encryption certificate. */
+    public static final int SFI_C_HP_ENC = 0x05;
+    /** MF / DF.QES / EF.C.HP.QES.E256 — qualified-signature certificate. */
+    public static final int SFI_C_HP_QES = 0x06;
+
     public static int pinTriesRemaining(int sw) {
         return sw & 0x0F;
     }
