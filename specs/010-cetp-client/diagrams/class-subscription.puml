@@ -1,0 +1,86 @@
+@startuml
+title CETP Client — Domain & Delivery Class Model
+
+enum EventType { Operation\nSecurity\nInfrastructure }
+enum EventSeverity { Info\nWarning\nError\nFatal }
+
+class KonnektorSystemEvent <<record>> {
+  +String topic
+  +EventType eventType
+  +EventSeverity severity
+  +Map<String,String> parameters
+}
+
+class CetpClient <<@ApplicationScoped>> {
+  +void onKonnektorEvent(@ObservesAsync KonnektorSystemEvent e)
+  -void deliver(KonnektorSystemEvent e, Subscription s)
+}
+
+interface EventDeliveryFilter {
+  +boolean keep(KonnektorSystemEvent e, Subscription s)
+}
+class TopicPrefixFilter
+class AccessAuthorizationFilter
+class XPathExpressionFilter
+EventDeliveryFilter <|.. TopicPrefixFilter
+EventDeliveryFilter <|.. AccessAuthorizationFilter
+EventDeliveryFilter <|.. XPathExpressionFilter
+
+class CetpEventSender {
+  -int timeoutMs = 2000
+  +CompletionStage<Void> send(String eventTo, byte[] xml)
+}
+class CetpFrameCodec {
+  +{static} ByteBuf encode(byte[] xmlUtf8)
+}
+class EventXmlWriter {
+  +byte[] toEventXml(KonnektorSystemEvent e, UUID subscriptionId)
+}
+class CetpTlsContextFactory {
+  +SslContext clientContext()
+  -KeyManagerFactory smkCsAkAutKmf
+  -TrustManagerFactory pkixTrust
+}
+
+class SubscriptionService <<@ApplicationScoped>> {
+  +SubscribeResult subscribe(...)
+  +void unsubscribe(UUID subscriptionId, String eventTo)
+  +List<Renewal> renew()
+  +List<SubscriptionView> getSubscriptions()
+  +void autoUnsubscribe(ClientEndpoint ep)
+  +List<String> clearOnBootup()
+  +void incrementFailures(ClientEndpoint ep)
+  +void resetFailures(ClientEndpoint ep)
+}
+
+class Subscription <<@Entity>> {
+  +UUID id
+  +UUID subscriptionId
+  +String topic
+  +String filter
+  +String mandantId
+  +String clientSystemId
+  +String workplaceId
+  +Instant terminationTime
+}
+class ClientEndpoint <<@Entity>> {
+  +UUID id
+  +String eventTo
+  +String host
+  +int port
+  +Instant retainedUntil
+  +int failureCount
+}
+
+CetpClient --> SubscriptionService
+CetpClient --> EventDeliveryFilter
+CetpClient --> CetpEventSender
+CetpClient --> EventXmlWriter
+CetpEventSender --> CetpFrameCodec
+CetpEventSender --> CetpTlsContextFactory
+SubscriptionService --> Subscription
+SubscriptionService --> ClientEndpoint
+Subscription "N" --> "1" ClientEndpoint : endpoint
+KonnektorSystemEvent --> EventType
+KonnektorSystemEvent --> EventSeverity
+@enduml

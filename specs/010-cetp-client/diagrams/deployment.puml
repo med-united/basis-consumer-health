@@ -1,0 +1,37 @@
+@startuml
+title CETP Client — Deployment / Network Topology
+
+node "Konnektor (Kubernetes pod)" as Kon {
+  artifact "konnektor-soap-server" as SOAP {
+    component "KonnektorEventService\n(Subscribe/Unsubscribe/Renew/Get)" as EvtSvc
+  }
+  artifact "cetp-client-lib" as CETPLIB {
+    component "CetpClient\n(@ObservesAsync)" as CC
+    component "SubscriptionService" as SS
+    component "CetpEventSender\n(Netty TCP/TLS)" as Sender
+  }
+  artifact "quarkus-sicct-extension" as SICCT {
+    component "SmkCSAKAut\n(C.AK.AUT, HSM/P12)" as Smk
+  }
+  database "Konnektor DB\n(CETP_SUBSCRIPTION,\nCETP_CLIENT_ENDPOINT)" as DB
+}
+
+node "gSMC-K / HSM" as HSM
+node "Client System\n(event sink)" as CS {
+  component "CETP server\ncetp://host:port" as Sink
+}
+
+EvtSvc --> SS : create/persist
+SS --> DB
+CC --> SS : read valid subs
+CC --> Sender : deliver
+Sender ..> Smk : client identity (mTLS)
+Smk ..> HSM : C.AK.AUT key (PKCS#11)
+Sender --> Sink : TCP/TLS\n"CETP"+len+Event XML\n(PKIX trust of server cert)
+
+note right of Sender
+  CETP1: TLS (mandatory) — mutual auth on request
+  CETP2: plain TCP
+  2 s per-attempt timeout
+end note
+@enduml

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.servicehealtherx</groupId>
+        <artifactId>basis-consumer-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>cetp-client-lib</artifactId>
+    <name>Basis Consumer :: CETP Client Library</name>
+    <description>CETP (Connector Event Transport Protocol) client: subscription persistence (JPA) and
+        asynchronous event delivery to client systems over TCP/mTLS, per gemSpec_Kon §4.1.6.</description>
+
+    <dependencies>
+        <!-- Service definitions: de.gematik.ws.conn.eventservice.v7 Event JAXB types -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>api-telematik</artifactId>
+        </dependency>
+
+        <!-- Quarkus CDI: @ObservesAsync / @ApplicationScoped -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+
+        <!-- JPA for Subscription / ClientEndpoint entities -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-orm-panache</artifactId>
+        </dependency>
+
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jdbc-h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                Run *IT integration tests (@QuarkusTest delivery / Auto-Unsubscribe / mTLS) under
+                failsafe, in a JVM separate from the surefire unit tests. This keeps the plain
+                JAXB-based unit tests away from the Quarkus test classloader.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

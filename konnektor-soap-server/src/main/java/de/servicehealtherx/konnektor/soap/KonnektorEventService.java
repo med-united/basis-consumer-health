@@ -24,6 +24,12 @@ import de.gematik.ws.conn.eventservice.v7.Unsubscribe;
 import de.gematik.ws.conn.eventservice.v7.UnsubscribeResponse;
 import de.gematik.ws.conn.eventservice.wsdl.v7_2.EventServicePortType;
 import de.gematik.ws.conn.eventservice.wsdl.v7_2.FaultMessage;
+import de.gematik.ws.conn.connectorcontext.v2.ContextType;
+import de.gematik.ws.conn.eventservice.v7.SubscriptionRenewal;
+import de.gematik.ws.conn.eventservice.v7.SubscriptionType;
+import de.servicehealtherx.cetp.subscription.SubscriptionService;
+import de.servicehealtherx.cetp.subscription.SubscriptionService.Renewal;
+import de.servicehealtherx.cetp.subscription.SubscriptionService.SubscriptionView;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -63,13 +69,27 @@ public class KonnektorEventService implements EventServicePortType {
     @Inject
     Instance<CryptoProvider> cryptoProviderInstances;
 
+    @Inject
+    SubscriptionService subscriptionService;
+
     @Override
     public SubscribeResponse subscribe(Subscribe parameter) throws FaultMessage {
         try {
+            ContextType context = parameter.getContext();
+            SubscriptionType subscription = parameter.getSubscription();
+            // checkArguments / saveSubscription (gemSpec_Kon TIP1-A_4608): persist via cetp-client-lib.
+            SubscriptionService.SubscribeResult result = subscriptionService.subscribe(
+                    context.getMandantId(), context.getClientSystemId(), context.getWorkplaceId(),
+                    subscription.getEventTo(), subscription.getTopic(), subscription.getFilter());
+
             SubscribeResponse response = new SubscribeResponse();
             response.setStatus(okStatus());
-            response.setSubscriptionID(UUID.randomUUID().toString());
+            response.setSubscriptionID(result.subscriptionId().toString());
+            response.setTerminationTime(toXmlDateTime(result.terminationTime()));
             return response;
+        } catch (IllegalArgumentException e) {
+            // Syntax error 4000 (invalid EventTo etc.)
+            throw new FaultMessage("Subscribe failed: " + e.getMessage(), buildError(e.getMessage()));
         } catch (Exception e) {
             throw new FaultMessage("Subscribe failed: " + e.getMessage(), buildError(e.getMessage()));
         }
@@ -92,7 +112,16 @@ public class KonnektorEventService implements EventServicePortType {
         try {
             GetSubscriptionResponse response = new GetSubscriptionResponse();
             response.setStatus(okStatus());
-            response.setSubscriptions(new GetSubscriptionResponse.Subscriptions());
+            GetSubscriptionResponse.Subscriptions subscriptions = new GetSubscriptionResponse.Subscriptions();
+            for (SubscriptionView view : subscriptionService.getSubscriptions()) {
+                SubscriptionType type = new SubscriptionType();
+                type.setSubscriptionID(view.subscriptionId().toString());
+                type.setEventTo(view.eventTo());
+                type.setTopic(view.topic());
+                type.setFilter(view.filter());
+                subscriptions.getSubscription().add(type);
+            }
+            response.setSubscriptions(subscriptions);
             return response;
         } catch (Exception e) {
             throw new FaultMessage("GetSubscription failed: " + e.getMessage(), buildError(e.getMessage()));
@@ -102,6 +131,11 @@ public class KonnektorEventService implements EventServicePortType {
     @Override
     public UnsubscribeResponse unsubscribe(Unsubscribe parameter) throws FaultMessage {
         try {
+            UUID subscriptionId = parameter.getSubscriptionID() != null && !parameter.getSubscriptionID().isBlank()
+                    ? UUID.fromString(parameter.getSubscriptionID())
+                    : null;
+            subscriptionService.unsubscribe(subscriptionId, parameter.getEventTo());
+
             UnsubscribeResponse response = new UnsubscribeResponse();
             response.setStatus(okStatus());
             return response;
@@ -138,7 +172,14 @@ public class KonnektorEventService implements EventServicePortType {
         try {
             RenewSubscriptionsResponse response = new RenewSubscriptionsResponse();
             response.setStatus(okStatus());
-            response.setSubscribeRenewals(new RenewSubscriptionsResponse.SubscribeRenewals());
+            RenewSubscriptionsResponse.SubscribeRenewals renewals = new RenewSubscriptionsResponse.SubscribeRenewals();
+            for (Renewal renewal : subscriptionService.renew()) {
+                SubscriptionRenewal sr = new SubscriptionRenewal();
+                sr.setSubscriptionID(renewal.subscriptionId().toString());
+                sr.setTerminationTime(toXmlDateTime(renewal.terminationTime()));
+                renewals.getSubscriptionRenewal().add(sr);
+            }
+            response.setSubscribeRenewals(renewals);
             return response;
         } catch (Exception e) {
             throw new FaultMessage("RenewSubscriptions failed: " + e.getMessage(), buildError(e.getMessage()));

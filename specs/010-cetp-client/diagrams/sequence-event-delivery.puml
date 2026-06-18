@@ -1,0 +1,41 @@
+@startuml
+title CETP Client — Event Delivery (TUC_KON_256)
+
+participant "Basis-Service" as BS
+participant "CDI" as CDI
+participant "CetpClient" as CC
+participant "SubscriptionService" as SS
+participant "EventDeliveryFilter\n(topic/access/xpath)" as F
+participant "EventXmlWriter" as XW
+participant "CetpEventSender" as SND
+participant "ClientEndpoint\n(event sink)" as SINK
+
+BS -> CDI : fireAsync(KonnektorSystemEvent)
+CDI -> CC : @ObservesAsync(event)
+CC -> SS : findValid(now)  // terminationTime > now
+SS --> CC : List<Subscription>
+
+loop for each subscription
+  CC -> F : keep(event, sub) [topic → access → xpath]
+  alt all filters pass
+    CC -> XW : toEventXml(event, sub.subscriptionId)
+    XW --> CC : UTF-8 Event XML
+    CC -> SND : send(sub.eventTo, xml)   // new conn, 2 s timeout
+    SND -> SINK : "CETP" + len(BE) + Event XML  (TCP/TLS)
+    alt delivered
+      SND --> CC : OK
+      CC -> SS : resetFailures(endpoint)
+    else connect/write/TLS failure or timeout
+      SND --> CC : FAIL
+      CC -> SS : incrementFailures(endpoint)
+      opt failureCount == EVT_MAX_TRY
+        CC -> SS : autoUnsubscribe(endpoint)  // cascade delete
+      end
+    end
+  else filtered out
+    note right of F : subscription skipped
+  end
+end
+
+note over SND, SINK : No application-level reply is expected (fire-and-forget).
+@enduml

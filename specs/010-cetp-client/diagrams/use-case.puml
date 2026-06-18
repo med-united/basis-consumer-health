@@ -1,0 +1,40 @@
+@startuml
+title CETP Client — Use Cases (gemSpec_Kon §4.1.6)
+
+left to right direction
+
+actor "Client System\n(Primary System / PVS)" as CS
+actor "Basis-Service /\nFachmodul" as BS
+actor "Administrator" as Admin
+
+rectangle "Konnektor :: Systeminformationsdienst (PUSH)" {
+  usecase "Subscribe to topic" as UC_Sub
+  usecase "Unsubscribe" as UC_Unsub
+  usecase "RenewSubscriptions" as UC_Renew
+  usecase "GetSubscription" as UC_Get
+  usecase "Receive event over CETP\n(event sink)" as UC_Recv
+  usecase "Raise system event\n(TUC_KON_256)" as UC_Raise
+  usecase "Deliver event to subscribers" as UC_Deliver
+  usecase "Auto-Unsubscribe\non EVT_MAX_TRY failures" as UC_Auto
+  usecase "Configure EVT_MAX_TRY /\nTLS mandatory / trust store" as UC_Cfg
+}
+
+CS --> UC_Sub
+CS --> UC_Unsub
+CS --> UC_Renew
+CS --> UC_Get
+CS --> UC_Recv
+BS --> UC_Raise
+Admin --> UC_Cfg
+
+UC_Raise ..> UC_Deliver : <<include>>
+UC_Deliver ..> UC_Recv : CETP (mTLS)
+UC_Deliver ..> UC_Auto : <<extend>>\n(delivery fails)
+UC_Sub ..> UC_Deliver : provides targets
+
+note bottom of UC_Deliver
+  TUC_KON_256: filter by topic prefix,
+  access authorisation (TUC_KON_000),
+  XPath; send "CETP"+len+Event XML.
+end note
+@enduml
