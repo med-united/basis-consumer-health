@@ -1,0 +1,30 @@
+@startuml
+title CETP Client — Subscribe / persistence (TIP1-A_4608)
+
+actor "Client System" as CS
+participant "KonnektorEventService\n(SOAP)" as EvtSvc
+participant "SubscriptionService" as SS
+participant "ClientEndpoint (JPA)" as EP
+participant "Subscription (JPA)" as SUB
+
+CS -> EvtSvc : Subscribe(Context, EventTo, Topic, Filter?)
+EvtSvc -> EvtSvc : checkArguments\n(cetp://host:port) else 4000
+EvtSvc -> EvtSvc : TUC_KON_000 access check
+alt access denied
+  EvtSvc --> CS : Status = error (no persist)
+else authorised
+  EvtSvc -> SS : subscribe(ctx, eventTo, topic, filter)
+  SS -> EP : findOrCreate(eventTo)
+  EP --> SS : endpoint
+  SS -> SUB : find by uniqueness key\n(endpoint, topic, mandant, clientSystem, workplace)
+  alt exists
+    SUB --> SS : existing (keep subscriptionId, refresh filter)
+  else new
+    SS -> SUB : persist(new subscriptionId)
+  end
+  SS -> SUB : terminationTime = now + 25h
+  SS -> EP : retainedUntil = max(retainedUntil, terminationTime)
+  SS --> EvtSvc : subscriptionId, terminationTime
+  EvtSvc --> CS : SubscribeResponse(Status OK, SubscriptionID)
+end
+@enduml

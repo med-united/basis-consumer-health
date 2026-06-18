@@ -1,0 +1,73 @@
+@startuml
+title CETP Client — Component / Module Dependencies
+
+package "konnektor-soap-server" {
+  [KonnektorEventService] as EvtSvc
+}
+
+package "cetp-client-lib" {
+  [CetpClient] as CC
+  [SubscriptionService] as SS
+  [KonnektorSystemEvent\n(CDI event record)] as Evt
+  package "filter" {
+    [EventDeliveryFilter] as IF
+    [TopicPrefixFilter] as F1
+    [AccessAuthorizationFilter] as F2
+    [XPathExpressionFilter] as F3
+  }
+  package "delivery" {
+    [CetpEventSender] as Sender
+    [CetpFrameCodec] as Codec
+    [EventXmlWriter] as XmlW
+  }
+  package "subscription (JPA)" {
+    [Subscription] as Sub
+    [ClientEndpoint] as Ep
+  }
+  package "tls" {
+    [CetpTlsContextFactory] as TlsF
+  }
+}
+
+package "konnektor-soap-server" {
+  [CetpClientIdentityProducer] as KidProd
+}
+package "quarkus-sicct-extension" {
+  [SmkCSAKAut] as Smk
+}
+package "api-telematik" {
+  [eventservice.v7 JAXB\n(Event)] as Jaxb
+}
+
+EvtSvc --> SS
+EvtSvc ..> Sub : persists via SS
+Evt ..> CC : @ObservesAsync
+CC --> SS : valid subscriptions
+CC --> IF
+IF <|.. F1
+IF <|.. F2
+IF <|.. F3
+CC --> Sender
+Sender --> Codec
+Sender --> XmlW
+Sender --> TlsF
+XmlW --> Jaxb
+TlsF ..> KidProd : @KonnektorClientIdentity\nKeyManagerFactory (CDI)
+KidProd --> Smk
+SS --> Sub
+SS --> Ep
+Sub --> Ep : @ManyToOne
+
+note bottom of TlsF
+  Standard JSSE SSLContext:
+  keyManager = @KonnektorClientIdentity KeyManagerFactory (from SmkCSAKAut),
+  trustManager = TrustManagerFactory("PKIX") over the client-system trust store.
+  Delivery uses JDK Socket / SSLSocket (one connection per delivery).
+end note
+
+note top of KidProd
+  konnektor-soap-server produces the @KonnektorClientIdentity
+  KeyManagerFactory from SmkCSAKAut, so cetp-client-lib stays
+  decoupled from quarkus-sicct-extension.
+end note
+@enduml

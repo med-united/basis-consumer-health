@@ -37,6 +37,11 @@
             <groupId>de.servicehealtherx</groupId>
             <artifactId>quarkus-sicct-extension</artifactId>
         </dependency>
+        <!-- CETP client: subscription persistence + event delivery (feature 010-cetp-client) -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>cetp-client-lib</artifactId>
+        </dependency>
 
         <!-- Quarkus application core -->
         <dependency>

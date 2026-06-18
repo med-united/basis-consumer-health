@@ -1,0 +1,25 @@
+@startuml
+title Subscription Lifecycle (gemSpec_Kon §4.1.6.5)
+
+[*] --> ACTIVE : Subscribe\n[args valid & access OK]\n/ terminationTime = now+25h
+
+ACTIVE --> ACTIVE : RenewSubscriptions\n[terminationTime > now]\n/ terminationTime = now+25h
+ACTIVE --> ACTIVE : delivery success\n/ endpoint.failureCount = 0
+
+ACTIVE --> EXPIRED : terminationTime < now
+EXPIRED --> [*] : reaped / excluded from delivery
+
+ACTIVE --> [*] : Unsubscribe\n(by subscriptionId or EventTo)
+
+ACTIVE --> AUTO_UNSUBSCRIBED : endpoint.failureCount\nreaches EVT_MAX_TRY
+AUTO_UNSUBSCRIBED --> [*] : cascade delete\n(endpoint + subscriptions)
+
+ACTIVE --> [*] : konnektor restart (bootup)\n[subscriptions cleared;\nendpoint URL retained until retainedUntil]
+
+note right of ACTIVE
+  Delivered to only when:
+  topic prefix matches (case-insensitive)
+  AND access authorised
+  AND XPath filter (if any) matches.
+end note
+@enduml
