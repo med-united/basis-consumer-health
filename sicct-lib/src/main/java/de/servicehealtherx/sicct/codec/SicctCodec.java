@@ -129,9 +129,33 @@ public class SicctCodec {
         envelope.setWSrcOrDesAddr(new SicctFuAddress(srcOrDesAddr));
         envelope.setWSeq(new SicctSequenceNumber(seq));
         envelope.setDwLength(new BerInteger(dwLength));
-        envelope.setAbCmd(decodeSicctPayload(payloadBytes));
+
+        // SICCT event notifications (bMessageType = 0x50) carry an EventNotification
+        // payload, not a Response-APDU. Decode them into the eventData CHOICE so the
+        // channel handler can process card-inserted / removed / keypad / keep-alive
+        // events (gemSpec_COS / SICCT 5.5). Everything else is a Response-APDU.
+        if (messageType == EVENT_MESSAGE_TYPE) {
+            envelope.setAbCmd(decodeEventPayload(payloadBytes));
+        } else {
+            envelope.setAbCmd(decodeSicctPayload(payloadBytes));
+        }
 
         return envelope;
+    }
+
+    /** bMessageType value for SICCT EVENT messages (0x50). */
+    private static final int EVENT_MESSAGE_TYPE = 0x50;
+
+    public static SicctPayload decodeEventPayload(byte[] payload) {
+        SicctPayload sicctPayload = new SicctPayload();
+        try (ByteArrayInputStream in = new ByteArrayInputStream(payload)) {
+            sicct.protocol._1._3._0.EventNotification eventNotification = new sicct.protocol._1._3._0.EventNotification();
+            eventNotification.decode(in);
+            sicctPayload.setEventData(eventNotification);
+        } catch (IOException e) {
+            LOG.warnf(e, "Failed to decode SICCT event notification payload");
+        }
+        return sicctPayload;
     }
 
     public static SicctPayload decodeSicctPayload(byte[] payload) {
