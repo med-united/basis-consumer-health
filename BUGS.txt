@@ -1,0 +1,2 @@
+- Not all certificates for an eHBA (C.ENC, C.QES, C.AUT) are returned only C.ENC
+- CETP Events are not thrown when entering a card
