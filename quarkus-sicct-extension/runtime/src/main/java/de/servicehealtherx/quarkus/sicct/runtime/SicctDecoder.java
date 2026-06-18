@@ -1,13 +1,11 @@
 package de.servicehealtherx.quarkus.sicct.runtime;
 
-import java.io.InputStream;
 import java.util.List;
 
 import org.jboss.logging.Logger;
 
 import de.servicehealtherx.sicct.codec.SicctCodec;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
@@ -24,24 +22,32 @@ public class SicctDecoder extends ByteToMessageDecoder {
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
 
-        byte[] bytes = new byte[in.readableBytes()];
-        in.readBytes(bytes);
-        LOG.debugf("Received SICCT message: %s", bytesToHex(bytes));
-        in.resetReaderIndex();
-
-        SicctEnvelope decodedEnvelope = SicctCodec.decode(in);
-        if (decodedEnvelope != null) {
-            out.add(decodedEnvelope);
+        if (LOG.isDebugEnabled()) {
+            // Non-destructive hex dump of the bytes still in the cumulation buffer.
+            LOG.debugf("Received SICCT message: %s", ByteBufUtil.hexDump(in));
         }
 
-    }
-
-    private String bytesToHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02X", b));
+        // SicctCodec.decode consumes one complete SICCT frame from the buffer and returns null when
+        // the frame is not yet fully available (after partially consuming its header). Mark the
+        // reader index so an incomplete frame can be rewound and retried once more bytes arrive.
+        // ByteToMessageDecoder calls this method again for any trailing bytes, so multiple frames
+        // cumulated into a single read are each decoded in turn.
+        in.markReaderIndex();
+        SicctEnvelope decodedEnvelope;
+        try {
+            decodedEnvelope = SicctCodec.decode(in);
+        } catch (Exception e) {
+            in.resetReaderIndex();
+            throw e;
         }
-        return sb.toString();
+
+        if (decodedEnvelope == null) {
+            // Not enough bytes for a complete frame yet — rewind and wait for more data.
+            in.resetReaderIndex();
+            return;
+        }
+
+        out.add(decodedEnvelope);
     }
 
 }
