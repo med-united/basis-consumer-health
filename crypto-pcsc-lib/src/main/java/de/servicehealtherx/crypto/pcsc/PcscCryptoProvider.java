@@ -3,6 +3,7 @@ package de.servicehealtherx.crypto.pcsc;
 import java.util.List;
 import java.util.Map;
 
+import de.servicehealtherx.apdu.card.CardCertificateReadService;
 import de.servicehealtherx.apdu.card.CardLifecycleListener;
 import de.servicehealtherx.apdu.card.CardListProvider;
 import de.servicehealtherx.apdu.card.CardObjectFactory;
@@ -11,6 +12,7 @@ import de.servicehealtherx.crypto.CryptoProvider;
 import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.KeyStoreAvailability;
 import de.servicehealtherx.crypto.KeyStoreDescriptor;
+import de.servicehealtherx.crypto.SourceType;
 import de.servicehealtherx.crypto.model.CryptoOperationRequest;
 import de.servicehealtherx.crypto.model.CryptoOperationResult;
 import jakarta.annotation.PostConstruct;
@@ -35,6 +37,9 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
     private final CmCardList cmCardList = new CmCardList();
     private final PcscReaderRegistry readerRegistry;
 
+    /** Card-backed certificate read (gemSpec_Kon ReadCardCertificate / TUC_KON_216). */
+    private final CardCertificateReadService certReadService;
+
     private java.util.concurrent.ScheduledExecutorService scheduler;
 
     public PcscCryptoProvider() {
@@ -44,6 +49,7 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
                 CardLifecycleListener.NO_OP, // runtime layer (US3/Phase 6) wires CDI eventing
                 PcscReaderRegistry.defaultTypeResolver(),
                 PcscReaderRegistry.defaultTerminalSource());
+        this.certReadService = new CardCertificateReadService(cmCardList, readerRegistry::portFor);
     }
 
     /** This provider's own CM_CARD_LIST (FR-062); aggregated by the card service for GetCards. */
@@ -101,13 +107,34 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
     }
 
     @Override
+    public java.security.cert.X509Certificate readCertificate(KeyAlias alias, String certRef, String crypt) {
+        return certReadService.readCertificate(cardHandle(alias), certRef, crypt);
+    }
+
+    @Override
     public List<KeyStoreDescriptor> listKeyStores() {
         return List.of();
     }
 
     @Override
     public KeyStoreAvailability getAvailability(KeyAlias alias) {
-        return KeyStoreAvailability.UNAVAILABLE;
+        if (alias.sourceType() != SourceType.PCSC) {
+            return KeyStoreAvailability.UNAVAILABLE;
+        }
+        return certReadService.hasCard(cardHandle(alias))
+                ? KeyStoreAvailability.AVAILABLE
+                : KeyStoreAvailability.UNAVAILABLE;
+    }
+
+    /**
+     * The {@code cardHandle} carried in a PC/SC alias: everything after the {@code pcsc/} prefix
+     * (see the SOAP layer's {@code toKeyAlias}). UUID card handles survive the alias sanitization
+     * intact, so this round-trips the handle stored in CM_CARD_LIST.
+     */
+    private static String cardHandle(KeyAlias alias) {
+        String value = alias.value();
+        int slash = value.indexOf('/');
+        return slash >= 0 ? value.substring(slash + 1) : value;
     }
 
     @Override

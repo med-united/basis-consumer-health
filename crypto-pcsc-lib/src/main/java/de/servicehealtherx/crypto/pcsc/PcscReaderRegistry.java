@@ -101,6 +101,12 @@ public final class PcscReaderRegistry {
         return active.size();
     }
 
+    /** Resolve the live {@link de.servicehealtherx.apdu.card.transport.CardReaderPort} for a terminal id. */
+    public java.util.Optional<de.servicehealtherx.apdu.card.transport.CardReaderPort> portFor(UUID ctid) {
+        ActiveReader reader = active.get(ctid);
+        return java.util.Optional.ofNullable(reader).map(ActiveReader::port);
+    }
+
     private ActiveReader register(PcscTerminal terminal) {
         PcscCardReaderPort port = new PcscCardReaderPort(terminal);
         CardPresenceCoordinator coordinator =

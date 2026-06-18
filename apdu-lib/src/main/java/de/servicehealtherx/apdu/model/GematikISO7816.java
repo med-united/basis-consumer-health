@@ -104,6 +104,11 @@ public final class GematikISO7816 {
     public static final short FID_EF_C_HCI_AUT_E256 = (short) 0xC506;  // Tab_SMC-B_ObjSys_122
     public static final short FID_EF_C_HCI_AUT_R2048 = (short) 0xC500; // Tab_SMC-B_ObjSys_042
 
+    // SMC-B C.HCI.OSIG (organisation signature) certificate files inside DF.ESIGN
+    // (gemSpec_SMC-B_ObjSys_G2_1 §5.4.2.1 / §5.4.2.7).
+    public static final short FID_EF_C_HCI_OSIG_E256 = (short) 0xC007;  // Tab_SMC-B_ObjSys_120
+    public static final short FID_EF_C_HCI_OSIG_R2048 = (short) 0xC000; // Tab_SMC-B_ObjSys_041
+
     public static int pinTriesRemaining(int sw) {
         return sw & 0x0F;
     }

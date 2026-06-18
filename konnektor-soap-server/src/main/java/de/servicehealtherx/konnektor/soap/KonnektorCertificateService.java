@@ -77,7 +77,12 @@ public class KonnektorCertificateService implements CertificateServicePortType {
             VerifyCertificateResponse.VerificationStatus verStatus = new VerifyCertificateResponse.VerificationStatus();
             verStatus.setVerificationResult(toVerificationResultType(result.result()));
             response.setVerificationStatus(verStatus);
-            response.setRoleList(new VerifyCertificateResponse.RoleList());
+
+            VerifyCertificateResponse.RoleList roleList = new VerifyCertificateResponse.RoleList();
+            if (result.roles() != null) {
+                roleList.getRole().addAll(result.roles());
+            }
+            response.setRoleList(roleList);
 
             return response;
         } catch (Exception e) {

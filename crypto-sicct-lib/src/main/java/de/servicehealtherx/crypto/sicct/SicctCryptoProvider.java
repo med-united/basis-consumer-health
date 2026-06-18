@@ -3,12 +3,15 @@ package de.servicehealtherx.crypto.sicct;
 import java.util.List;
 import java.util.Map;
 
+import de.servicehealtherx.apdu.card.CardCertificateReadService;
 import de.servicehealtherx.apdu.card.CardListProvider;
 import de.servicehealtherx.apdu.card.CmCardList;
+import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
 import de.servicehealtherx.crypto.CryptoProvider;
 import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.KeyStoreAvailability;
 import de.servicehealtherx.crypto.KeyStoreDescriptor;
+import de.servicehealtherx.crypto.SourceType;
 import de.servicehealtherx.crypto.model.CryptoOperationRequest;
 import de.servicehealtherx.crypto.model.CryptoOperationResult;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -28,9 +31,24 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
 
     private final CmCardList cmCardList = new CmCardList();
 
+    /**
+     * Resolves the live {@link de.servicehealtherx.apdu.card.transport.CardReaderPort} for a SICCT
+     * terminal. The SICCT runtime ({@code quarkus-sicct-extension}) binds this once it owns the
+     * terminals; until then it knows no ports and card-backed reads report the card as unavailable.
+     */
+    private volatile CardReaderPortResolver portResolver = CardReaderPortResolver.NONE;
+
+    private final CardCertificateReadService certReadService =
+            new CardCertificateReadService(cmCardList, ctid -> portResolver.portFor(ctid));
+
     @Override
     public CmCardList cmCardList() {
         return cmCardList;
+    }
+
+    /** Bind the terminal-port resolver (called by the SICCT runtime once terminals are owned). */
+    public void bindPortResolver(CardReaderPortResolver portResolver) {
+        this.portResolver = portResolver != null ? portResolver : CardReaderPortResolver.NONE;
     }
 
     @Override
@@ -54,13 +72,34 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
     }
 
     @Override
+    public java.security.cert.X509Certificate readCertificate(KeyAlias alias, String certRef, String crypt) {
+        return certReadService.readCertificate(cardHandle(alias), certRef, crypt);
+    }
+
+    @Override
     public List<KeyStoreDescriptor> listKeyStores() {
         return List.of();
     }
 
     @Override
     public KeyStoreAvailability getAvailability(KeyAlias alias) {
-        return KeyStoreAvailability.UNAVAILABLE;
+        if (alias.sourceType() != SourceType.SICCT) {
+            return KeyStoreAvailability.UNAVAILABLE;
+        }
+        return certReadService.hasCard(cardHandle(alias))
+                ? KeyStoreAvailability.AVAILABLE
+                : KeyStoreAvailability.UNAVAILABLE;
+    }
+
+    /**
+     * The {@code cardHandle} carried in a SICCT alias: everything after the {@code sicct/} prefix
+     * (see the SOAP layer's {@code toKeyAlias}). UUID card handles survive the alias sanitization
+     * intact, so this round-trips the handle stored in CM_CARD_LIST.
+     */
+    private static String cardHandle(KeyAlias alias) {
+        String value = alias.value();
+        int slash = value.indexOf('/');
+        return slash >= 0 ? value.substring(slash + 1) : value;
     }
 
     @Override
