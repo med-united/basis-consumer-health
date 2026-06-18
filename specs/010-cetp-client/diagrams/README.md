@@ -18,16 +18,16 @@ Proxy image link format:
 
 ### Rendered previews
 
-**Use Case** — ![use-case](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/010-cetp-client/specs/010-cetp-client/diagrams/use-case.puml)
+**Use Case** — ![use-case](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/develop/specs/010-cetp-client/diagrams/use-case.puml)
 
-**Deployment** — ![deployment](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/010-cetp-client/specs/010-cetp-client/diagrams/deployment.puml)
+**Deployment** — ![deployment](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/develop/specs/010-cetp-client/diagrams/deployment.puml)
 
-**Component** — ![component](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/010-cetp-client/specs/010-cetp-client/diagrams/component.puml)
+**Component** — ![component](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/develop/specs/010-cetp-client/diagrams/component.puml)
 
-**Sequence — Event Delivery** — ![sequence-event-delivery](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/010-cetp-client/specs/010-cetp-client/diagrams/sequence-event-delivery.puml)
+**Sequence — Event Delivery** — ![sequence-event-delivery](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/develop/specs/010-cetp-client/diagrams/sequence-event-delivery.puml)
 
-**Sequence — Subscribe** — ![sequence-subscribe](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/010-cetp-client/specs/010-cetp-client/diagrams/sequence-subscribe.puml)
+**Sequence — Subscribe** — ![sequence-subscribe](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/develop/specs/010-cetp-client/diagrams/sequence-subscribe.puml)
 
-**State — Subscription** — ![state-subscription](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/010-cetp-client/specs/010-cetp-client/diagrams/state-subscription.puml)
+**State — Subscription** — ![state-subscription](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/develop/specs/010-cetp-client/diagrams/state-subscription.puml)
 
-**Class** — ![class-subscription](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/010-cetp-client/specs/010-cetp-client/diagrams/class-subscription.puml)
+**Class** — ![class-subscription](https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/med-united/basis-consumer-health/develop/specs/010-cetp-client/diagrams/class-subscription.puml)
