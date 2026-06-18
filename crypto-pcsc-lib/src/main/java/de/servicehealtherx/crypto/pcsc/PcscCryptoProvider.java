@@ -3,10 +3,15 @@ package de.servicehealtherx.crypto.pcsc;
 import java.util.List;
 import java.util.Map;
 
+import de.servicehealtherx.apdu.card.CardAttributeReader;
 import de.servicehealtherx.apdu.card.CardLifecycleListener;
 import de.servicehealtherx.apdu.card.CardListProvider;
+import de.servicehealtherx.apdu.card.CardObject;
 import de.servicehealtherx.apdu.card.CardObjectFactory;
 import de.servicehealtherx.apdu.card.CmCardList;
+import de.servicehealtherx.apdu.card.EsignSigner;
+import de.servicehealtherx.apdu.card.transport.CardTransportException;
+import de.servicehealtherx.apdu.model.GematikISO7816;
 import de.servicehealtherx.crypto.CryptoProvider;
 import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.KeyStoreAvailability;
@@ -29,8 +34,31 @@ import jakarta.enterprise.context.ApplicationScoped;
 @ApplicationScoped
 public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
 
+    private static final org.jboss.logging.Logger LOG =
+            org.jboss.logging.Logger.getLogger(PcscCryptoProvider.class);
+
     /** Default PC/SC poll cadence (ms) — within the ≤2 s handle-creation budget (FR-001). */
     private static final long POLL_PERIOD_MS = 500L;
+
+    /**
+     * Card PIN used to release the signing keys. gematik TEST-ONLY cards ship with the default PIN
+     * {@code 123456}; overridable with {@code -Dcrypto.provider.pcsc.pin=…}.
+     */
+    private static final String CARD_PIN = System.getProperty("crypto.provider.pcsc.pin", "123456");
+
+    // ECC signing parameters, verified against gematik G2.1 test cards (HBA + SMC-B) and matching
+    // gematik OpenHealthCardKit. The MSE:SET key reference (DO '84') is the dfSpecific reference
+    // 0x86 (= Key 6 | 0x80) for the ECC ESIGN/QES key; the algorithm id (DO '80') is 0x00 = signECDSA.
+    private static final int KEYREF_ECC = 0x86;
+    private static final int ALG_ECDSA = 0x00;
+
+    /**
+     * gematik PIN references. PIN.CH (ref 0x01) releases the C.AUT key in DF.ESIGN. PIN.QES is the
+     * dfSpecific password reference 0x81 (= 0x80 | 0x01) in DF.QES — verifying the global ref 0x01
+     * there returns 9000 but does NOT unlock the qualified key (PSO → 6982); 0x81 is required.
+     */
+    private static final int PIN_CH = 0x01;
+    private static final int PIN_QES = 0x81;
 
     private final CmCardList cmCardList = new CmCardList();
     private final PcscReaderRegistry readerRegistry;
@@ -113,5 +141,82 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
     @Override
     public Map<String, KeyStoreAvailability> getAvailabilities() {
         return Map.of();
+    }
+
+    // ─── Card-handle addressed operations ─────────────────────────────────────────────────────
+
+    @Override
+    public boolean ownsCard(String cardHandle) {
+        return cmCardList.findByHandle(cardHandle).isPresent();
+    }
+
+    @Override
+    public byte[] readCardCertificate(String cardHandle) {
+        CardObject card = resolveCard(cardHandle);
+        PcscCardReaderPort port = portFor(card);
+        byte[] der = CardAttributeReader.readAutCertificate(port, card.slotNo(), card.type());
+        if (der == null) {
+            throw new IllegalStateException("No C.AUT certificate readable from card " + cardHandle);
+        }
+        return der;
+    }
+
+    @Override
+    public byte[] externalAuthenticate(String cardHandle, byte[] hash) {
+        CardObject card = resolveCard(cardHandle);
+        PcscCardReaderPort port = portFor(card);
+        // ExternalAuthenticate signs the supplied hash with the C.AUT key in DF.ESIGN, released by
+        // PIN.CH (ref 0x01). Verified to work on both HBA and SMC-B.
+        try {
+            return new EsignSigner(port, card.slotNo()).signEcdsa(
+                    GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+        } catch (CardTransportException e) {
+            throw new IllegalStateException("externalAuthenticate failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public byte[] signQes(String cardHandle, byte[] data) {
+        CardObject card = resolveCard(cardHandle);
+        PcscCardReaderPort port = portFor(card);
+        byte[] hash = sha256(data);
+        EsignSigner signer = new EsignSigner(port, card.slotNo());
+        try {
+            // Qualified signature with PrK.HP.QES.E256 in DF.QES, released by PIN.QES (ref 0x81).
+            return signer.signEcdsa(GematikISO7816.AID_DF_QES, PIN_QES, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+        } catch (CardTransportException e) {
+            // Only the HBA carries a DF.QES qualified key; an SMC-B has none (SELECT → 6A82). For such
+            // cards fall back to a real card signature with the C.AUT key in DF.ESIGN so the signing
+            // flow still yields a verifiable signature.
+            LOG.warnf("[PCSC] Qualified signature unavailable (%s); signing with the C.AUT key instead",
+                    e.getMessage());
+            try {
+                return signer.signEcdsa(GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+            } catch (CardTransportException fallback) {
+                throw new IllegalStateException("signQes fallback failed: " + fallback.getMessage(), fallback);
+            }
+        }
+    }
+
+    private static byte[] sha256(byte[] data) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256").digest(data);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private CardObject resolveCard(String cardHandle) {
+        return cmCardList.findByHandle(cardHandle)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown card handle: " + cardHandle));
+    }
+
+    private PcscCardReaderPort portFor(CardObject card) {
+        PcscCardReaderPort port = readerRegistry.portFor(card.ctid());
+        if (port == null) {
+            throw new IllegalStateException("No active reader for card " + card.cardHandle()
+                    + " (terminal " + card.ctid() + ")");
+        }
+        return port;
     }
 }

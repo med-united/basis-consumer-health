@@ -127,6 +127,53 @@ public class SignatureService {
         }
     }
 
+    /**
+     * ExternalAuthenticate against an inserted card addressed by CardHandle: sign {@code hash} with
+     * the card's C.AUT key via whichever {@link CryptoProvider} holds it. Returns the raw card
+     * signature (ECDSA R||S).
+     */
+    public byte[] externalAuthenticate(String cardHandle, byte[] hash, String callerIdentity) {
+        long start = System.currentTimeMillis();
+        try {
+            byte[] signature = providerForCard(cardHandle).externalAuthenticate(cardHandle, hash);
+            auditLogger.logSuccess(cardHandle, "EXTERNAL_AUTHENTICATE", "C.AUT", callerIdentity,
+                    System.currentTimeMillis() - start);
+            return signature;
+        } catch (Exception e) {
+            auditLogger.logFailure(cardHandle, "EXTERNAL_AUTHENTICATE", "C.AUT", callerIdentity,
+                    System.currentTimeMillis() - start, e.getMessage());
+            throw new RuntimeException("ExternalAuthenticate failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * SignDocument against an inserted card addressed by CardHandle: create a qualified signature
+     * over {@code document} with the card's C.QES key via whichever {@link CryptoProvider} holds it.
+     * Returns the raw card signature (ECDSA R||S).
+     */
+    public byte[] signDocumentWithCard(String cardHandle, byte[] document, String callerIdentity) {
+        long start = System.currentTimeMillis();
+        try {
+            byte[] signature = providerForCard(cardHandle).signQes(cardHandle, document);
+            auditLogger.logSuccess(cardHandle, "SIGN", "C.QES", callerIdentity,
+                    System.currentTimeMillis() - start);
+            return signature;
+        } catch (Exception e) {
+            auditLogger.logFailure(cardHandle, "SIGN", "C.QES", callerIdentity,
+                    System.currentTimeMillis() - start, e.getMessage());
+            throw new RuntimeException("SignDocument failed: " + e.getMessage(), e);
+        }
+    }
+
+    private CryptoProvider providerForCard(String cardHandle) {
+        for (CryptoProvider provider : cryptoProviders) {
+            if (provider.ownsCard(cardHandle)) {
+                return provider;
+            }
+        }
+        throw new IllegalArgumentException("No card found for handle: " + cardHandle);
+    }
+
     private String resolveAlgorithm(SignRequest request) {
         return request.algorithm();
     }

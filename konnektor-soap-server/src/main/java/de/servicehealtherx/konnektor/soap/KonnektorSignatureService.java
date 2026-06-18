@@ -20,7 +20,6 @@ import de.gematik.ws.conn.signatureservice.v7.VerifyDocument;
 import de.gematik.ws.conn.signatureservice.v7.VerifyDocumentResponse;
 import de.gematik.ws.conn.signatureservice.wsdl.v7_5.FaultMessage;
 import de.gematik.ws.conn.signatureservice.wsdl.v7_5.SignatureServicePortType;
-import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.services.SignatureService;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.inject.Inject;
@@ -42,17 +41,13 @@ public class KonnektorSignatureService implements SignatureServicePortType {
     @Override
     public SignDocumentResponse signDocument(SignDocument parameter) throws FaultMessage {
         try {
-            KeyAlias alias = toKeyAlias(parameter.getCardHandle());
-            boolean eccPreferred = "ECC".equals(parameter.getCrypt());
+            String cardHandle = parameter.getCardHandle();
             SignDocumentResponse response = new SignDocumentResponse();
 
             for (SignRequest req : parameter.getSignRequest()) {
                 byte[] docBytes = extractDocumentBytes(req.getDocument());
-                SignatureService.SignRequest internalReq = new SignatureService.SignRequest(
-                        alias, SignatureService.SignatureFormat.CADES, docBytes,
-                        "SHA256withECDSA", "konnektor-soap", false, eccPreferred);
-
-                SignatureService.SignResult result = signatureService.signDocument(internalReq);
+                byte[] signature = signatureService.signDocumentWithCard(
+                        cardHandle, docBytes, "konnektor-soap");
 
                 SignResponse signResponse = new SignResponse();
                 signResponse.setStatus(okStatus());
@@ -61,7 +56,7 @@ public class KonnektorSignatureService implements SignatureServicePortType {
                 SignResponse.OptionalOutputs outputs = new SignResponse.OptionalOutputs();
                 DocumentType signedDoc = new DocumentType();
                 Base64Data base64Data = new Base64Data();
-                base64Data.setValue(result.signedDocument());
+                base64Data.setValue(signature);
                 signedDoc.setBase64Data(base64Data);
                 outputs.setDocumentWithSignature(signedDoc);
                 signResponse.setOptionalOutputs(outputs);

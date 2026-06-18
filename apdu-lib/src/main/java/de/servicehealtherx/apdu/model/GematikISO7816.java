@@ -91,6 +91,12 @@ public final class GematikISO7816 {
             (byte) 0xA0, 0x00, 0x00, 0x01, 0x67, 0x45, 0x53, 0x49, 0x47, 0x4E
     };
 
+    // AID — DF.QES qualified-signature application on the HBA (gemSpec_HBA_ObjSys_G2_1, EF.DIR DO
+    // '4F' = 'D27600006601'); holds PrK.HP.QES and is protected by PIN.QES.
+    public static final byte[] AID_DF_QES = new byte[]{
+            (byte) 0xD2, 0x76, 0x00, 0x00, 0x66, 0x01
+    };
+
     // eGK C.CH.AUT certificate files inside DF.ESIGN (gemSpec_eGK_ObjSys_G2_1 §5.5.1 / §5.5.9).
     // The ECC certificate is preferred over the RSA certificate when present (TUC_KON_001 §2c).
     public static final short FID_EF_C_CH_AUT_E256 = (short) 0xC504;  // Tab_eGK_ObjSys_200

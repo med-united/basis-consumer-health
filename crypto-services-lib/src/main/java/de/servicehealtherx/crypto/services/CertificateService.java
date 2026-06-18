@@ -62,6 +62,34 @@ public class CertificateService {
         }
     }
 
+    /**
+     * Read the C.AUT certificate of an inserted card addressed by its gematik CardHandle, delegating
+     * to whichever {@link CryptoProvider} currently holds that card (PC/SC or SICCT). READ BINARY on
+     * the certificate file is access condition ALWAYS, so no PIN is required.
+     */
+    public byte[] readCardCertificate(String cardHandle, String callerIdentity) {
+        long start = System.currentTimeMillis();
+        try {
+            byte[] certDer = providerForCard(cardHandle).readCardCertificate(cardHandle);
+            auditLogger.logSuccess(cardHandle, "READ_CERT", "C.AUT", callerIdentity,
+                    System.currentTimeMillis() - start);
+            return certDer;
+        } catch (Exception e) {
+            auditLogger.logFailure(cardHandle, "READ_CERT", "C.AUT", callerIdentity,
+                    System.currentTimeMillis() - start, e.getMessage());
+            throw new RuntimeException("readCardCertificate failed: " + e.getMessage(), e);
+        }
+    }
+
+    private CryptoProvider providerForCard(String cardHandle) {
+        for (CryptoProvider provider : cryptoProviders) {
+            if (provider.ownsCard(cardHandle)) {
+                return provider;
+            }
+        }
+        throw new IllegalArgumentException("No card found for handle: " + cardHandle);
+    }
+
     public VerifyCertResult verifyCertificate(X509Certificate certificate, String callerIdentity) {
         long start = System.currentTimeMillis();
         try {

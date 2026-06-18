@@ -5,7 +5,6 @@ import de.gematik.ws.conn.authsignatureservice.wsdl.v7_4.FaultMessage;
 import de.gematik.ws.conn.signatureservice.v7.BinaryDocumentType;
 import de.gematik.ws.conn.signatureservice.v7.ExternalAuthenticate;
 import de.gematik.ws.conn.signatureservice.v7.ExternalAuthenticateResponse;
-import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.services.SignatureService;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -27,16 +26,10 @@ public class KonnektorAuthSignatureService implements AuthSignatureServicePortTy
     @Override
     public ExternalAuthenticateResponse externalAuthenticate(ExternalAuthenticate parameter) throws FaultMessage {
         try {
-            KeyAlias alias = toKeyAlias(parameter.getCardHandle());
             byte[] hashBytes = extractBinaryBytes(parameter.getBinaryString());
-            String signatureType = parameter.getOptionalInputs() != null
-                    ? parameter.getOptionalInputs().getSignatureType()
-                    : null;
 
-            SignatureService.SignHashRequest req = new SignatureService.SignHashRequest(
-                    alias, signatureType, hashBytes, "konnektor-soap");
-
-            byte[] signature = signatureService.externalAuthenticate(req);
+            byte[] signature = signatureService.externalAuthenticate(
+                    parameter.getCardHandle(), hashBytes, "konnektor-soap");
 
             ExternalAuthenticateResponse response = new ExternalAuthenticateResponse();
             response.setStatus(okStatus());

@@ -11,7 +11,6 @@ import de.gematik.ws.conn.certificateservice.wsdl.v6_0.CertificateServicePortTyp
 import de.gematik.ws.conn.certificateservice.wsdl.v6_0.FaultMessage;
 import de.gematik.ws.conn.certificateservicecommon.v2.CertRefEnum;
 import de.gematik.ws.conn.certificateservicecommon.v2.X509DataInfoListType;
-import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.services.CertificateService;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.inject.Inject;
@@ -46,15 +45,8 @@ public class KonnektorCertificateService implements CertificateServicePortType {
                             ? parameter.getCertRefList().getCertRef().get(0)
                             : CertRefEnum.C_AUT;
 
-            KeyAlias alias = toKeyAlias(parameter.getCardHandle());
-            CertificateService.CertRef certRef = toCertRef(firstRef);
-            CertificateService.CryptAlgorithm crypt = toCryptAlgorithm(
-                    parameter.getCrypt() != null ? parameter.getCrypt().value() : null);
-
-            CertificateService.ReadCertRequest req = new CertificateService.ReadCertRequest(
-                    alias, certRef, crypt, "konnektor-soap");
-
-            byte[] certDer = certificateService.readCertificate(req);
+            byte[] certDer = certificateService.readCardCertificate(
+                    parameter.getCardHandle(), "konnektor-soap");
 
             ReadCardCertificateResponse response = new ReadCardCertificateResponse();
             response.setStatus(okStatus());
@@ -91,21 +83,6 @@ public class KonnektorCertificateService implements CertificateServicePortType {
             case "INVALID" -> VerificationResultType.INVALID;
             default -> VerificationResultType.INCONCLUSIVE;
         };
-    }
-
-    private static CertificateService.CertRef toCertRef(CertRefEnum ref) {
-        if (ref == null)
-            return CertificateService.CertRef.C_AUT;
-        return switch (ref.value()) {
-            case "C.OSIG" -> CertificateService.CertRef.C_OSIG;
-            default -> CertificateService.CertRef.C_AUT;
-        };
-    }
-
-    private static CertificateService.CryptAlgorithm toCryptAlgorithm(String crypt) {
-        if ("ECC".equalsIgnoreCase(crypt))
-            return CertificateService.CryptAlgorithm.ECC;
-        return CertificateService.CryptAlgorithm.RSA;
     }
 
     private static X509DataInfoListType buildX509DataInfoList(byte[] certDer, CertRefEnum certRef) {

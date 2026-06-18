@@ -21,4 +21,29 @@ public interface CryptoProvider {
     KeyStoreAvailability getAvailability(KeyAlias alias);
 
     Map<String, KeyStoreAvailability> getAvailabilities();
+
+    // ─── Card-handle addressed operations (smart-card providers) ──────────────────────────────
+    // gematik addresses inserted cards by opaque CardHandle (GetCards), not by KeyAlias. These
+    // default to "not mine / unsupported" so software providers (P12) need not implement them; the
+    // PC/SC and SICCT providers override them to drive the inserted card by handle.
+
+    /** Whether this provider currently holds the card identified by {@code cardHandle}. */
+    default boolean ownsCard(String cardHandle) {
+        return false;
+    }
+
+    /** Read the DER-encoded C.AUT certificate of the card (no PIN). */
+    default byte[] readCardCertificate(String cardHandle) {
+        throw new UnsupportedOperationException("readCardCertificate not supported by " + getClass().getSimpleName());
+    }
+
+    /** Sign {@code hash} with the card's C.AUT key (ExternalAuthenticate); returns the raw signature. */
+    default byte[] externalAuthenticate(String cardHandle, byte[] hash) {
+        throw new UnsupportedOperationException("externalAuthenticate not supported by " + getClass().getSimpleName());
+    }
+
+    /** Create a qualified signature over {@code data} with the card's C.QES key (SignDocument). */
+    default byte[] signQes(String cardHandle, byte[] data) {
+        throw new UnsupportedOperationException("signQes not supported by " + getClass().getSimpleName());
+    }
 }

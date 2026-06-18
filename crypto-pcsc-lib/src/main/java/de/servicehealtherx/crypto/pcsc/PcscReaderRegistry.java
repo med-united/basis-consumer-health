@@ -101,6 +101,12 @@ public final class PcscReaderRegistry {
         return active.size();
     }
 
+    /** The {@link PcscCardReaderPort} for a terminal id, or {@code null} if no such reader is active. */
+    public PcscCardReaderPort portFor(UUID ctid) {
+        ActiveReader reader = active.get(ctid);
+        return reader == null ? null : reader.port();
+    }
+
     private ActiveReader register(PcscTerminal terminal) {
         PcscCardReaderPort port = new PcscCardReaderPort(terminal);
         CardPresenceCoordinator coordinator =

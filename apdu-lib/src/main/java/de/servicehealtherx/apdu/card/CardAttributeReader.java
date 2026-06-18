@@ -171,6 +171,15 @@ public class CardAttributeReader {
     }
 
     /**
+     * Read the DER-encoded C.AUT certificate (C.CH.AUT / C.HP.AUT / C.HCI.AUT) for the card of the
+     * given {@code type} from DF.ESIGN; ECC preferred, RSA fallback. READ BINARY on these files is
+     * access condition ALWAYS, so no PIN is required. Returns {@code null} if none could be read.
+     */
+    public static byte[] readAutCertificate(CardReaderPort port, int slotNo, CardType type) {
+        return readerFor(type).readAutCertificate(port, slotNo);
+    }
+
+    /**
      * Read ICCSN + card version from the card and, for an eGK, the AUT certificate from DF.ESIGN
      * (cardholder name, expiry, KVNR). The cert is acquired through the per-type subclass reader
      * ({@link #readerFor(CardType)}), so passing {@code type=HBA}/{@code SMC_B} now reads their

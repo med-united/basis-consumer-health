@@ -61,6 +61,7 @@ class EPrescriptionSoapFlowTest {
     private static final String NS_EVENT = "http://ws.gematik.de/conn/EventService/v7.2";
     private static final String NS_CERT = "http://ws.gematik.de/conn/CertificateService/v6.0";
     private static final String NS_SIG = "http://ws.gematik.de/conn/SignatureService/v7.5";
+    private static final String NS_SIG_7_4 = "http://ws.gematik.de/conn/SignatureService/v7.4";
     private static final String NS_CTX = "http://ws.gematik.de/conn/ConnectorContext/v2.0";
     private static final String NS_CCOMMON = "http://ws.gematik.de/conn/ConnectorCommon/v5.0";
     private static final String NS_DSS = "urn:oasis:names:tc:dss:1.0:core:schema";
@@ -69,7 +70,7 @@ class EPrescriptionSoapFlowTest {
     private static final String ACTION_GET_CARDS = NS_EVENT + "#GetCards";
     private static final String ACTION_READ_CERT = NS_CERT + "#ReadCardCertificate";
     private static final String ACTION_EXTERNAL_AUTH =
-            "http://ws.gematik.de/conn/SignatureService/v7.4#ExternalAuthenticate";
+            NS_SIG_7_4 + "#ExternalAuthenticate";
     private static final String ACTION_GET_JOB_NUMBER = NS_SIG + "#GetJobNumber";
     private static final String ACTION_SIGN_DOCUMENT = NS_SIG + "#SignDocument";
 
@@ -115,9 +116,15 @@ class EPrescriptionSoapFlowTest {
         assertOkSoap(resp, "GetCardsResponse");
 
         String forced = System.getProperty("systemtest.card.handle");
+        // An e-prescription is signed by the practitioner's Heilberufsausweis (HBA), so pick the
+        // HBA card handle when several cards are inserted (an eGK and SMC-B may also be present);
+        // fall back to the first card handle if no HBA is found.
         cardHandle = forced != null && !forced.isBlank()
                 ? forced.trim()
-                : firstMatch(resp.body(), "CardHandle");
+                : cardHandleForType(resp.body(), "HBA");
+        if (cardHandle == null || cardHandle.isBlank()) {
+            cardHandle = firstMatch(resp.body(), "CardHandle");
+        }
 
         assumeTrue(cardHandle != null && !cardHandle.isBlank(),
                 "GetCards returned no card handle (no card inserted?) — skipping the signing flow. "
@@ -233,15 +240,18 @@ class EPrescriptionSoapFlowTest {
     }
 
     private static String soapExternalAuthenticate(String cardHandle, byte[] hash) {
+        // The AuthSignatureService (v7.4) binds the ExternalAuthenticate wrapper element to the
+        // SignatureService v7.4 namespace, while its BinaryString child keeps the v7.5 namespace of
+        // the shared SignatureService/v7 JAXB types (@WebParam targetNamespace vs the type's schema).
         return envelope("""
-                    <sig:ExternalAuthenticate xmlns:sig="%s">
+                    <sig74:ExternalAuthenticate xmlns:sig74="%s" xmlns:sig="%s">
                       <cc:CardHandle>%s</cc:CardHandle>
                       %s
                       <sig:BinaryString>
                         <dss:Base64Data MimeType="application/octet-stream">%s</dss:Base64Data>
                       </sig:BinaryString>
-                    </sig:ExternalAuthenticate>
-                """.formatted(NS_SIG, xml(cardHandle), CONTEXT, base64(hash)));
+                    </sig74:ExternalAuthenticate>
+                """.formatted(NS_SIG_7_4, NS_SIG, xml(cardHandle), CONTEXT, base64(hash)));
     }
 
     private static String soapGetJobNumber() {
@@ -256,7 +266,7 @@ class EPrescriptionSoapFlowTest {
         return envelope("""
                     <sig:SignDocument xmlns:sig="%s">
                       <cc:CardHandle>%s</cc:CardHandle>
-                      <sig:Crypt>RSA</sig:Crypt>
+                      <sig:Crypt>ECC</sig:Crypt>
                       %s
                       <sig:TvMode>NONE</sig:TvMode>
                       <sig:JobNumber>%s</sig:JobNumber>
@@ -295,6 +305,25 @@ class EPrescriptionSoapFlowTest {
                 "expected HTTP 200 but got " + resp.statusCode() + ": " + resp.body());
         assertFalse(resp.body().contains("Fault") && resp.body().contains("faultstring"),
                 "SOAP Fault returned: " + resp.body());
+    }
+
+    /**
+     * The {@code CardHandle} of the first {@code <Card>} block whose {@code CardType} equals
+     * {@code cardType} (e.g. {@code HBA}), or {@code null} if none is present. Splits the response
+     * into per-card blocks so the handle and type of the same card are matched together.
+     */
+    private static String cardHandleForType(String xml, String cardType) {
+        Matcher cards = Pattern.compile(
+                        "<(?:[\\w.-]+:)?Card>(.*?)</(?:[\\w.-]+:)?Card>", Pattern.DOTALL)
+                .matcher(xml);
+        while (cards.find()) {
+            String card = cards.group(1);
+            String type = firstMatch(card, "CardType");
+            if (cardType.equalsIgnoreCase(type)) {
+                return firstMatch(card, "CardHandle");
+            }
+        }
+        return null;
     }
 
     /** First text content of an element with the given local name, ignoring any namespace prefix. */
