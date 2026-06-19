@@ -279,6 +279,35 @@
           ]
         }
       ]
+    },
+    {
+      "id": "vsd",
+      "title": "VSD Service",
+      "icon": "sap-icon://patient",
+      "endpoint": "/ws/conn/VSDService",
+      "namespace": "http://ws.gematik.de/conn/vsds/VSDService/v5.2",
+      "listOperationId": null,
+      "operations": [
+        {
+          "id": "readVSD",
+          "title": "Read VSD",
+          "soapAction": "http://ws.gematik.de/conn/vsds/VSDService/v6.0#ReadVSD",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "CCOM": "http://ws.gematik.de/conn/ConnectorCommon/v5.0", "VSD": "http://ws.gematik.de/conn/vsds/VSDService/v5.2" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><VSD:ReadVSD xmlns:VSD=\"http://ws.gematik.de/conn/vsds/VSDService/v5.2\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\" xmlns:CCOM=\"http://ws.gematik.de/conn/ConnectorCommon/v5.0\"><VSD:EhcHandle></VSD:EhcHandle><VSD:HpcHandle></VSD:HpcHandle><VSD:PerformOnlineCheck>false</VSD:PerformOnlineCheck><VSD:ReadOnlineReceipt>false</VSD:ReadOnlineReceipt><CCTX:Context><CCOM:MandantId>{{context.mandantId}}</CCOM:MandantId><CCOM:ClientSystemId>{{context.clientSystemId}}</CCOM:ClientSystemId><CCOM:WorkplaceId>{{context.workplaceId}}</CCOM:WorkplaceId><CCOM:UserId>{{context.userId}}</CCOM:UserId></CCTX:Context></VSD:ReadVSD></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "eGK Card Handle", "path": "/soap:Envelope/soap:Body/VSD:ReadVSD/VSD:EhcHandle", "type": "text", "required": true, "sensitive": false },
+            { "label": "HBA Card Handle", "path": "/soap:Envelope/soap:Body/VSD:ReadVSD/VSD:HpcHandle", "type": "text", "required": false, "sensitive": false },
+            { "label": "Perform Online Check", "path": "/soap:Envelope/soap:Body/VSD:ReadVSD/VSD:PerformOnlineCheck", "type": "enum", "required": true, "sensitive": false, "enumValues": ["false", "true"] },
+            { "label": "Read Online Receipt", "path": "/soap:Envelope/soap:Body/VSD:ReadVSD/VSD:ReadOnlineReceipt", "type": "enum", "required": true, "sensitive": false, "enumValues": ["false", "true"] },
+            { "label": "Mandant ID", "path": "/soap:Envelope/soap:Body/VSD:ReadVSD/CCTX:Context/CCOM:MandantId", "type": "text", "required": true, "sensitive": false },
+            { "label": "Client System ID", "path": "/soap:Envelope/soap:Body/VSD:ReadVSD/CCTX:Context/CCOM:ClientSystemId", "type": "text", "required": true, "sensitive": false },
+            { "label": "Workplace ID", "path": "/soap:Envelope/soap:Body/VSD:ReadVSD/CCTX:Context/CCOM:WorkplaceId", "type": "text", "required": true, "sensitive": false },
+            { "label": "User ID", "path": "/soap:Envelope/soap:Body/VSD:ReadVSD/CCTX:Context/CCOM:UserId", "type": "text", "required": false, "sensitive": false }
+          ]
+        }
+      ]
     }
   ]
 }

@@ -2,6 +2,7 @@ package de.servicehealtherx.crypto;
 
 import de.servicehealtherx.crypto.model.CryptoOperationRequest;
 import de.servicehealtherx.crypto.model.CryptoOperationResult;
+import de.servicehealtherx.crypto.model.PinVerificationResult;
 
 import java.security.cert.X509Certificate;
 import java.util.List;
@@ -68,5 +69,15 @@ public interface CryptoProvider {
     /** Create a qualified signature over {@code data} with the card's C.QES key (SignDocument). */
     default byte[] signQes(String cardHandle, byte[] data) {
         throw new UnsupportedOperationException("signQes not supported by " + getClass().getSimpleName());
+    }
+
+    /**
+     * VERIFY the {@code pinType} PIN (e.g. {@code PIN.SMC} on an SMC-B, {@code PIN.CH} on an HBA) of
+     * the inserted card identified by {@code cardHandle} (gemSpec_Kon VerifyPin / TUC_KON_012). The
+     * provider sources the PIN secret itself (no PIN pad in a software konnektor), so callers pass
+     * only the PIN type, never the secret. Returns the card's verification outcome.
+     */
+    default PinVerificationResult verifyPin(String cardHandle, String pinType) {
+        throw new UnsupportedOperationException("verifyPin not supported by " + getClass().getSimpleName());
     }
 }

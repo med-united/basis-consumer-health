@@ -165,6 +165,27 @@ public class SignatureService {
         }
     }
 
+    /**
+     * VerifyPin against an inserted card addressed by CardHandle: VERIFY the {@code pinType} PIN
+     * (e.g. {@code PIN.SMC} on an SMC-B) via whichever {@link CryptoProvider} holds it
+     * (gemSpec_Kon VerifyPin / TUC_KON_012). Returns the card's verification outcome.
+     */
+    public de.servicehealtherx.crypto.model.PinVerificationResult verifyPin(
+            String cardHandle, String pinType, String callerIdentity) {
+        long start = System.currentTimeMillis();
+        try {
+            de.servicehealtherx.crypto.model.PinVerificationResult result =
+                    providerForCard(cardHandle).verifyPin(cardHandle, pinType);
+            auditLogger.logSuccess(cardHandle, "VERIFY_PIN", pinType, callerIdentity,
+                    System.currentTimeMillis() - start);
+            return result;
+        } catch (Exception e) {
+            auditLogger.logFailure(cardHandle, "VERIFY_PIN", pinType, callerIdentity,
+                    System.currentTimeMillis() - start, e.getMessage());
+            throw new RuntimeException("VerifyPin failed: " + e.getMessage(), e);
+        }
+    }
+
     private CryptoProvider providerForCard(String cardHandle) {
         for (CryptoProvider provider : cryptoProviders) {
             if (provider.ownsCard(cardHandle)) {

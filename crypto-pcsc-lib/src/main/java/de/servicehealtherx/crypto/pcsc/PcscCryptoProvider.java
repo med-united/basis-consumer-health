@@ -9,6 +9,7 @@ import de.servicehealtherx.apdu.card.CardLifecycleListener;
 import de.servicehealtherx.apdu.card.CardListProvider;
 import de.servicehealtherx.apdu.card.CardObject;
 import de.servicehealtherx.apdu.card.CardObjectFactory;
+import de.servicehealtherx.apdu.card.CardPinVerifier;
 import de.servicehealtherx.apdu.card.CmCardList;
 import de.servicehealtherx.apdu.card.EsignSigner;
 import de.servicehealtherx.apdu.card.transport.CardTransportException;
@@ -61,6 +62,13 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
      */
     private static final int PIN_CH = 0x01;
     private static final int PIN_QES = 0x81;
+
+    /**
+     * PIN.SMC (ref 0x01) is the SMC-B's global card-holder PIN; verifying it releases the card's
+     * protected objects (e.g. the C.AUT key in DF.ESIGN). On an HBA the equivalent global PIN is
+     * PIN.CH — also ref 0x01 — so both names map here.
+     */
+    private static final int PIN_SMC = 0x01;
 
     private final CmCardList cmCardList = new CmCardList();
     private PcscReaderRegistry readerRegistry;
@@ -244,6 +252,44 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
                 throw new IllegalStateException("signQes fallback failed: " + fallback.getMessage(), fallback);
             }
         }
+    }
+
+    @Override
+    public de.servicehealtherx.crypto.model.PinVerificationResult verifyPin(String cardHandle, String pinType) {
+        CardObject card = resolveCard(cardHandle);
+        PcscCardReaderPort port = portFor(card);
+        int pinRef = pinReferenceFor(pinType);
+        try {
+            CardPinVerifier.Result result = new CardPinVerifier(port, card.slotNo()).verify(pinRef, CARD_PIN);
+            return switch (result.outcome()) {
+                case VERIFIED -> de.servicehealtherx.crypto.model.PinVerificationResult.verified();
+                case WRONG -> de.servicehealtherx.crypto.model.PinVerificationResult.wrong(result.triesRemaining());
+                case BLOCKED -> new de.servicehealtherx.crypto.model.PinVerificationResult(
+                        de.servicehealtherx.crypto.model.PinVerificationResult.Status.BLOCKED, -1);
+                case TRANSPORT_PIN -> new de.servicehealtherx.crypto.model.PinVerificationResult(
+                        de.servicehealtherx.crypto.model.PinVerificationResult.Status.TRANSPORT_PIN, -1);
+                case ERROR -> {
+                    LOG.warnf("[PCSC] VERIFY %s on card %s returned SW=%04X", pinType, cardHandle, result.sw());
+                    yield new de.servicehealtherx.crypto.model.PinVerificationResult(
+                            de.servicehealtherx.crypto.model.PinVerificationResult.Status.ERROR, -1);
+                }
+            };
+        } catch (CardTransportException e) {
+            throw new IllegalStateException("verifyPin failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** Map a gematik PIN type ({@code PIN.SMC} / {@code PIN.CH} / {@code PIN.QES}) to its reference. */
+    private static int pinReferenceFor(String pinType) {
+        if (pinType == null) {
+            throw new IllegalArgumentException("pinType must not be null");
+        }
+        return switch (pinType) {
+            case "PIN.SMC" -> PIN_SMC;
+            case "PIN.CH" -> PIN_CH;
+            case "PIN.QES" -> PIN_QES;
+            default -> throw new IllegalArgumentException("Unsupported pinType: " + pinType);
+        };
     }
 
     private static byte[] sha256(byte[] data) {

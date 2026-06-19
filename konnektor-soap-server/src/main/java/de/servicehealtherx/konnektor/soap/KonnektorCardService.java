@@ -15,10 +15,14 @@ import de.gematik.ws.conn.cardservice.wsdl.v8_1.CardServicePortType;
 import de.gematik.ws.conn.cardservice.wsdl.v8_1.FaultMessage;
 import de.gematik.ws.conn.cardservicecommon.v2.PinResponseType;
 import de.gematik.ws.conn.cardservicecommon.v2.PinResultEnum;
+import de.servicehealtherx.crypto.model.PinVerificationResult;
+import de.servicehealtherx.crypto.services.SignatureService;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
+
+import java.math.BigInteger;
 
 @CXFEndpoint(value = "/conn/CardService")
 @WebService(portName = "CardServicePort", serviceName = "CardService", targetNamespace = "http://ws.gematik.de/conn/CardService/WSDL/v8.1", endpointInterface = "de.gematik.ws.conn.cardservice.wsdl.v8_1.CardServicePortType")
@@ -26,6 +30,9 @@ public class KonnektorCardService implements CardServicePortType {
 
     @Inject
     SicctTerminalManager sicctTerminalManager;
+
+    @Inject
+    SignatureService signatureService;
 
     @Override
     public PinResponseType changePin(ChangePin parameter) throws FaultMessage {
@@ -42,13 +49,29 @@ public class KonnektorCardService implements CardServicePortType {
     @Override
     public PinResponseType verifyPin(VerifyPin parameter) throws FaultMessage {
         try {
+            PinVerificationResult result = signatureService.verifyPin(
+                    parameter.getCardHandle(), parameter.getPinTyp(), "konnektor-soap");
+
             PinResponseType response = new PinResponseType();
             response.setStatus(okStatus());
-            response.setPinResult(PinResultEnum.OK);
+            response.setPinResult(toPinResult(result.status()));
+            if (result.triesRemaining() >= 0) {
+                response.setLeftTries(BigInteger.valueOf(result.triesRemaining()));
+            }
             return response;
         } catch (Exception e) {
             throw new FaultMessage("VerifyPin failed: " + e.getMessage(), buildError(e.getMessage()));
         }
+    }
+
+    private static PinResultEnum toPinResult(PinVerificationResult.Status status) {
+        return switch (status) {
+            case VERIFIED -> PinResultEnum.OK;
+            case WRONG -> PinResultEnum.REJECTED;
+            case BLOCKED -> PinResultEnum.NOWBLOCKED;
+            case TRANSPORT_PIN -> PinResultEnum.TRANSPORT_PIN;
+            case ERROR -> PinResultEnum.ERROR;
+        };
     }
 
     @Override
