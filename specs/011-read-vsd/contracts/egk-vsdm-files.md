@@ -15,9 +15,9 @@ SELECT by AID (`INS A4`, P1 `04`).
 | EF | FID | SFID | Size (oct) | READ access | Returned as | Afo (Card-G2-A_) |
 |---|---|---|---|---|---|---|
 | `EF.StatusVD` | `D00C` | 12 | 25 | **ALWAYS** | parsed → `VsdStatus` | `_2401-01` |
-| `EF.PD` | `D001` | 1 | 850 | **ALWAYS** | `PersoenlicheVersichertendaten` (raw) | `_2398-01` |
-| `EF.VD` | `D002` | 2 | 1250 | **ALWAYS** | `AllgemeineVersicherungsdaten` (raw, VD offsets) | `_2403-01` |
-| `EF.GVD` | `D003` | 3 | 600 | **requires C2C** (AUT_VSD) | `GeschuetzteVersichertendaten` (raw) | `_2396-01` |
+| `EF.PD` | `D001` | 1 | 850 | **ALWAYS** | `PersoenlicheVersichertendaten` (gzip, 2-byte length prefix) | `_2398-01` |
+| `EF.VD` | `D002` | 2 | 1250 | **ALWAYS** | `AllgemeineVersicherungsdaten` (gzip, sliced by VD offsets) | `_2403-01` |
+| `EF.GVD` | `D003` | 3 | 600 | **requires C2C** (AUT_VSD) | `GeschuetzteVersichertendaten` (gzip, 2-byte length prefix) | `_2396-01` |
 
 ### EF.GVD read access rule (eGK ObjSys p. 73 — verbatim intent)
 
@@ -48,8 +48,15 @@ plain (unwrapped) READ because their READ rule is ALWAYS.
 - **PD / VD / StatusVD**: plain READ BINARY. VD honours the VD start/end offsets so the
   transitional GVD copy embedded in EF.VD is never read (FR-020, VSDM-A_2784).
 - **GVD**: same loop but each command/response wrapped in the C2C SM context.
-- PD / VD / GVD payloads are returned **byte-for-byte** (gzip-compressed on card) —
-  not decompressed, not parsed (FR-005).
+- The eGK does **not** store bare gzip in EF.PD/EF.VD/EF.GVD — each file carries object-system
+  framing that `EgkFileReader` returns byte-for-byte but `ReadVsdService` (`VsdmContainer`) must
+  strip before the response, otherwise the PVS gunzip fails (`Not in GZIP format`):
+  - **EF.PD / EF.GVD**: `[2-byte big-endian length L][gzip(XML), L bytes]` → drop the 2-byte prefix.
+  - **EF.VD**: `[2-byte start AVD][2-byte end AVD][2-byte start GVD][2-byte end GVD][data]` →
+    `AllgemeineVersicherungsdaten = bytes[startAVD, endAVD)` (the transitional GVD copy is dropped,
+    VSDM-A_2784).
+- The gzip streams themselves are **not** decompressed or parsed (FR-005); only the card framing
+  is removed.
 
 ## EF.StatusVD → `VsdStatus` conversion (Tab_FM_VSDM_21, VSDM-A_2708 / A_3063)
 

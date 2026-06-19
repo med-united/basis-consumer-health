@@ -182,8 +182,11 @@ public final class ReadVsdService {
             throw new VsdmReadException(VsdmErrorCode.VSD_INCONSISTENT, "EF.StatusVD reports open transactions");
         }
 
-        byte[] pd = readContainer(egkPort, slot, EgkVsdmFile.EF_PD);
-        byte[] vd = readContainer(egkPort, slot, EgkVsdmFile.EF_VD);
+        // The eGK stores PD/VD/GVD with object-system framing (length prefix / offset table), not as
+        // bare gzip. De-frame here so the ReadVSDResponse carries gunzip-ready streams — otherwise the
+        // PVS gunzip fails with "Not in GZIP format" on the leading header bytes.
+        byte[] pd = VsdmContainer.personalData(readContainer(egkPort, slot, EgkVsdmFile.EF_PD));
+        byte[] vd = VsdmContainer.generalData(readContainer(egkPort, slot, EgkVsdmFile.EF_VD));
 
         Optional<byte[]> gvd = Optional.empty();
         Optional<ApduSecureChannel> channel;
@@ -194,7 +197,8 @@ public final class ReadVsdService {
         }
         if (channel.isPresent()) {
             try {
-                gvd = Optional.of(fileReader.read(egkPort, slot, EgkVsdmFile.EF_GVD.fileIdentifier(), channel.get()));
+                gvd = Optional.of(VsdmContainer.protectedData(
+                        fileReader.read(egkPort, slot, EgkVsdmFile.EF_GVD.fileIdentifier(), channel.get())));
             } catch (ApduExecutionException e) {
                 throw new VsdmReadException(VsdmErrorCode.VSD_READ_FAILED, "reading EF.GVD failed");
             }

@@ -6,11 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.zip.GZIPOutputStream;
 
 import org.junit.jupiter.api.Test;
 
@@ -36,9 +41,47 @@ class ReadVsdServiceTest {
             0x00, 0x70, 0x03, 0x00, 0x01,
             0x00, 0x30, 0x00, 0x00, 0x04
     };
-    private static final byte[] PD = "PERSONAL".getBytes();
-    private static final byte[] VD = "GENERAL".getBytes();
+    // Deliverable gzip payloads (what the ReadVSDResponse must carry) and their on-card EF framing
+    // (gemSpec_eGK_ObjSys_G2_1 §5.4): EF.PD/EF.GVD = 2-byte length prefix + gzip; EF.VD = 8-byte
+    // start/end offset table + gzip. ReadVsdService must de-frame these back to the bare gzip stream.
+    private static final byte[] PD_PAYLOAD = gzip("PERSONAL");
+    private static final byte[] VD_PAYLOAD = gzip("GENERAL");
+    private static final byte[] PD_FILE = lengthPrefixed(PD_PAYLOAD);
+    private static final byte[] VD_FILE = vdFramed(VD_PAYLOAD);
     private final UUID ctid = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+    /** A minimal gzip stream (starts with the 1f 8b magic) so de-framing can be validated. */
+    private static byte[] gzip(String content) {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (GZIPOutputStream gz = new GZIPOutputStream(bos)) {
+            gz.write(content.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return bos.toByteArray();
+    }
+
+    /** EF.PD / EF.GVD framing: 2-byte big-endian length prefix + gzip. */
+    private static byte[] lengthPrefixed(byte[] gz) {
+        byte[] out = new byte[gz.length + 2];
+        out[0] = (byte) (gz.length >>> 8);
+        out[1] = (byte) gz.length;
+        System.arraycopy(gz, 0, out, 2, gz.length);
+        return out;
+    }
+
+    /** EF.VD framing: 8-byte offset header [startAVD][endAVD][startGVD][endGVD] + data (empty GVD). */
+    private static byte[] vdFramed(byte[] avdGz) {
+        int start = 8;
+        int end = start + avdGz.length;
+        byte[] out = new byte[end];
+        out[0] = (byte) (start >>> 8); out[1] = (byte) start;   // start AVD
+        out[2] = (byte) (end >>> 8);   out[3] = (byte) end;     // end AVD
+        out[4] = (byte) (end >>> 8);   out[5] = (byte) end;     // start GVD (transitional copy, empty)
+        out[6] = (byte) (end >>> 8);   out[7] = (byte) end;     // end GVD
+        System.arraycopy(avdGz, 0, out, 8, avdGz.length);
+        return out;
+    }
 
     private List<byte[]> mandatoryReadScript() {
         List<byte[]> r = new ArrayList<>();
@@ -46,9 +89,9 @@ class ReadVsdServiceTest {
         r.add(ScriptedCardReaderPort.ok());                       // SELECT EF.StatusVD
         r.add(ScriptedCardReaderPort.resp(STATUS_VD, 0x9000));    // READ EF.StatusVD
         r.add(ScriptedCardReaderPort.ok());                       // SELECT EF.PD
-        r.add(ScriptedCardReaderPort.resp(PD, 0x9000));           // READ EF.PD
+        r.add(ScriptedCardReaderPort.resp(PD_FILE, 0x9000));      // READ EF.PD
         r.add(ScriptedCardReaderPort.ok());                       // SELECT EF.VD
-        r.add(ScriptedCardReaderPort.resp(VD, 0x9000));           // READ EF.VD
+        r.add(ScriptedCardReaderPort.resp(VD_FILE, 0x9000));      // READ EF.VD
         return r;
     }
 
@@ -75,8 +118,8 @@ class ReadVsdServiceTest {
 
         VsdReadResult result = service.read(validRequest());
 
-        assertArrayEquals(PD, result.personalData());
-        assertArrayEquals(VD, result.generalData());
+        assertArrayEquals(PD_PAYLOAD, result.personalData(), "EF.PD length prefix must be stripped");
+        assertArrayEquals(VD_PAYLOAD, result.generalData(), "EF.VD AVD must be sliced by its offsets");
         assertEquals("0", result.status().status());
         assertEquals("7.3.1", result.status().version());
         assertTrue(result.protectedData().isEmpty(), "GVD omitted when C2C did not authorise it (FR-021)");
@@ -137,26 +180,25 @@ class ReadVsdServiceTest {
 
     @Test
     void test_VSDM_A_2574_returns_gvd_and_writes_audit_when_authorised() {
-        byte[] gvd = "PROTECTED".getBytes();
+        byte[] gvdPayload = gzip("PROTECTED");
         List<byte[]> script = mandatoryReadScript();
-        script.add(ScriptedCardReaderPort.ok());                 // SELECT EF.GVD
-        script.add(ScriptedCardReaderPort.resp(gvd, 0x9000));    // READ EF.GVD
-        script.add(ScriptedCardReaderPort.ok());                 // APPEND RECORD (audit)
+        script.add(ScriptedCardReaderPort.ok());                                  // SELECT EF.GVD
+        script.add(ScriptedCardReaderPort.resp(lengthPrefixed(gvdPayload), 0x9000)); // READ EF.GVD
+        script.add(ScriptedCardReaderPort.ok());                                  // APPEND RECORD (audit)
         var port = new ScriptedCardReaderPort(ctid, script);
         var service = new ReadVsdService(cardListWithEgkAndSmcb(), resolverFor(port), AUTHORISES_GVD, 30_000);
 
         VsdReadResult result = service.read(validRequest());
         assertTrue(result.protectedData().isPresent());
-        assertArrayEquals(gvd, result.protectedData().get());
+        assertArrayEquals(gvdPayload, result.protectedData().get(), "EF.GVD length prefix must be stripped");
     }
 
     @Test
     void test_VSDM_A_2654_aborts_when_audit_write_fails() {
-        byte[] gvd = "PROTECTED".getBytes();
         List<byte[]> script = mandatoryReadScript();
-        script.add(ScriptedCardReaderPort.ok());                 // SELECT EF.GVD
-        script.add(ScriptedCardReaderPort.resp(gvd, 0x9000));    // READ EF.GVD
-        script.add(ScriptedCardReaderPort.resp(null, 0x6A82));   // APPEND RECORD fails
+        script.add(ScriptedCardReaderPort.ok());                                       // SELECT EF.GVD
+        script.add(ScriptedCardReaderPort.resp(lengthPrefixed(gzip("PROTECTED")), 0x9000)); // READ EF.GVD
+        script.add(ScriptedCardReaderPort.resp(null, 0x6A82));                         // APPEND RECORD fails
         var port = new ScriptedCardReaderPort(ctid, script);
         var service = new ReadVsdService(cardListWithEgkAndSmcb(), resolverFor(port), AUTHORISES_GVD, 30_000);
 
