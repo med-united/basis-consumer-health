@@ -1,4 +1,4 @@
-package de.servicehealtherx.apdu.vsdm;
+package de.servicehealtherx.konnektor.vsdm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

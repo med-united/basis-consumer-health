@@ -14,10 +14,8 @@ import org.junit.jupiter.api.Test;
 import de.servicehealtherx.apdu.card.ApduSecureChannel;
 import de.servicehealtherx.apdu.card.CardObject;
 import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
+import de.servicehealtherx.apdu.card.transport.ScriptedCardReaderPort;
 import de.servicehealtherx.apdu.model.CardType;
-import de.servicehealtherx.apdu.vsdm.FakeCardReaderPort;
-import de.servicehealtherx.apdu.vsdm.VsdmErrorCode;
-import de.servicehealtherx.apdu.vsdm.VsdmReadException;
 
 /**
  * Structural test of the host-side C2C APDU sequencing. The on-card crypto is not exercised; the
@@ -45,7 +43,7 @@ class ElcCardToCardAuthenticatorTest {
 
     private final SessionKeyDerivation fixedKeys = r -> new byte[][]{new byte[16], new byte[16], new byte[16]};
 
-    private CardReaderPortResolver resolver(FakeCardReaderPort port) {
+    private CardReaderPortResolver resolver(ScriptedCardReaderPort port) {
         return id -> id.equals(ctid) ? Optional.of(port) : Optional.empty();
     }
 
@@ -60,16 +58,16 @@ class ElcCardToCardAuthenticatorTest {
     @Test
     void test_VSDM_A_2572_runs_handshake_and_returns_sm_channel() throws Exception {
         byte[] cvc = minimalCvc();
-        var port = new FakeCardReaderPort(ctid, List.of(
-                FakeCardReaderPort.ok(),                    // PIN status
-                FakeCardReaderPort.ok(),                    // SELECT hpc leaf CVC
-                FakeCardReaderPort.resp(cvc, 0x9000),       // READ hpc leaf CVC
-                FakeCardReaderPort.ok(),                    // SELECT hpc CA CVC
-                FakeCardReaderPort.resp(cvc, 0x9000),       // READ hpc CA CVC
-                FakeCardReaderPort.ok(),                    // PSO VERIFY CERTIFICATE
-                FakeCardReaderPort.ok(),                    // MSE SET
-                FakeCardReaderPort.resp(new byte[]{0x7C, 0x02, (byte) 0x85, 0x00}, 0x9000), // GA step 1
-                FakeCardReaderPort.resp(new byte[]{0x7C, 0x02, (byte) 0x85, 0x00}, 0x9000)  // GA step 2
+        var port = new ScriptedCardReaderPort(ctid, List.of(
+                ScriptedCardReaderPort.ok(),                    // PIN status
+                ScriptedCardReaderPort.ok(),                    // SELECT hpc leaf CVC
+                ScriptedCardReaderPort.resp(cvc, 0x9000),       // READ hpc leaf CVC
+                ScriptedCardReaderPort.ok(),                    // SELECT hpc CA CVC
+                ScriptedCardReaderPort.resp(cvc, 0x9000),       // READ hpc CA CVC
+                ScriptedCardReaderPort.ok(),                    // PSO VERIFY CERTIFICATE
+                ScriptedCardReaderPort.ok(),                    // MSE SET
+                ScriptedCardReaderPort.resp(new byte[]{0x7C, 0x02, (byte) 0x85, 0x00}, 0x9000), // GA step 1
+                ScriptedCardReaderPort.resp(new byte[]{0x7C, 0x02, (byte) 0x85, 0x00}, 0x9000)  // GA step 2
         ));
         var auth = new ElcCardToCardAuthenticator(fixedKeys);
 
@@ -79,11 +77,11 @@ class ElcCardToCardAuthenticatorTest {
 
     @Test
     void test_VSDM_A_2572_aborts_3041_when_smcb_pin_not_enabled() {
-        var port = new FakeCardReaderPort(ctid, List.of(
-                FakeCardReaderPort.resp(null, 0x6982)));    // PIN status: security not satisfied
+        var port = new ScriptedCardReaderPort(ctid, List.of(
+                ScriptedCardReaderPort.resp(null, 0x6982)));    // PIN status: security not satisfied
         var auth = new ElcCardToCardAuthenticator(fixedKeys);
-        VsdmReadException ex = assertThrows(VsdmReadException.class,
+        CardToCardAuthException ex = assertThrows(CardToCardAuthException.class,
                 () -> auth.authenticate(resolver(port), egk(), smcb()));
-        assertEquals(VsdmErrorCode.SMB_NOT_ENABLED, ex.errorCode());
+        assertEquals(CardToCardAuthException.Reason.SMB_SECURITY_STATE_INSUFFICIENT, ex.reason());
     }
 }

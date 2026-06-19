@@ -1,4 +1,4 @@
-package de.servicehealtherx.apdu.vsdm;
+package de.servicehealtherx.konnektor.vsdm;
 
 /**
  * Signals that a local ReadVSD must abort. Carries the gematik error code

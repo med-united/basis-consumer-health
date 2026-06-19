@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import de.servicehealtherx.apdu.card.CmCardList;
 import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
-import de.servicehealtherx.apdu.vsdm.ReadVsdService;
+import de.servicehealtherx.konnektor.vsdm.ReadVsdService;
 import jakarta.enterprise.inject.Instance;
 
 class VsdServiceProducerTest {

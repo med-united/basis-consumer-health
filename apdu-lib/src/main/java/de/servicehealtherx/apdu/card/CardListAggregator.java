@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 
 import de.servicehealtherx.crypto.CryptoProvider;
+import jakarta.enterprise.inject.Instance;
 
 /**
  * Produces the unified, transport-spanning card view by aggregating across
@@ -84,5 +85,22 @@ public final class CardListAggregator {
 
     public void addCryptoProvider(CryptoProvider cryptoProvider) {
         sources.add(new CryptoProviderCardListAdapter(cryptoProvider));
+    }
+
+    public static List<CardObject> getAllCardObjects(Instance<CryptoProvider> cryptoProviderInstances) {
+        // Unified, transport-spanning view: aggregate every provider's own CM_CARD_LIST
+        // (PC/SC + SICCT), de-duplicated by cardHandle (feature 002-card-handle,
+        // FR-062/FR-064).
+        CardListAggregator aggregator = new CardListAggregator();
+        for (CryptoProvider cryptoProvider : cryptoProviderInstances) {
+            if (cryptoProvider instanceof CardListProvider clp) {
+                aggregator.addSource(clp.cmCardList());
+            } else {
+                // Non-PC/SC providers (e.g. SICCT) can still contribute via a custom adapter.
+                aggregator.addCryptoProvider(cryptoProvider);
+            }
+        }
+        List<CardObject> allCardObjects = aggregator.findAll();
+        return allCardObjects;
     }
 }

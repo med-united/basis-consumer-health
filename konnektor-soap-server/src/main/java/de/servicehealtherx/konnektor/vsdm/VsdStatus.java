@@ -1,4 +1,4 @@
-package de.servicehealtherx.apdu.vsdm;
+package de.servicehealtherx.konnektor.vsdm;
 
 import java.time.OffsetDateTime;
 

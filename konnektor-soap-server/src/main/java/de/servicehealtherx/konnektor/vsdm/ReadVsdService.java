@@ -1,4 +1,4 @@
-package de.servicehealtherx.apdu.vsdm;
+package de.servicehealtherx.konnektor.vsdm;
 
 import java.util.Optional;
 import java.util.Set;
@@ -10,6 +10,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import de.servicehealtherx.apdu.c2c.CardToCardAuthException;
 import de.servicehealtherx.apdu.c2c.CardToCardAuthenticator;
 import de.servicehealtherx.apdu.card.ApduExecutionException;
 import de.servicehealtherx.apdu.card.ApduSecureChannel;
@@ -25,16 +26,26 @@ import de.servicehealtherx.apdu.model.CardType;
 import de.servicehealtherx.apdu.model.GematikISO7816;
 
 /**
- * Orchestrates the local ReadVSD use case (gemSpec_FM_VSDM §3.2.1) against the inserted cards: no
- * UFS/VSDD/CMS, no Prüfungsnachweis. Resolves the card handles, validates the context, reserves the
- * eGK exclusively, checks eGK usability, reads the AlwaysRead containers (PD/VD/StatusVD), performs
- * the card-to-card authentication for the protected data (GVD), and returns a {@link VsdReadResult}.
+ * Orchestrates the local ReadVSD use case (gemSpec_FM_VSDM §3.2.1) against the
+ * inserted cards: no
+ * UFS/VSDD/CMS, no Prüfungsnachweis. Resolves the card handles, validates the
+ * context, reserves the
+ * eGK exclusively, checks eGK usability, reads the AlwaysRead containers
+ * (PD/VD/StatusVD), performs
+ * the card-to-card authentication for the protected data (GVD), and returns a
+ * {@link VsdReadResult}.
  *
- * <p>Stateless w.r.t. insured data (FR-028): nothing is persisted; the result holds only in-memory
- * byte arrays for the duration of the call. The whole operation is bounded by a hard timeout
- * (FR-027) and a second call for an already-reserved eGK fails fast with a card-busy fault (FR-029).
+ * <p>
+ * Stateless w.r.t. insured data (FR-028): nothing is persisted; the result
+ * holds only in-memory
+ * byte arrays for the duration of the call. The whole operation is bounded by a
+ * hard timeout
+ * (FR-027) and a second call for an already-reserved eGK fails fast with a
+ * card-busy fault (FR-029).
  *
- * <p>Plain (non-CDI) class — {@code apdu-lib} has no Quarkus dependency; the SOAP module produces it
+ * <p>
+ * Plain (non-CDI) class — {@code apdu-lib} has no Quarkus dependency; the SOAP
+ * module produces it
  * as a bean.
  */
 public final class ReadVsdService {
@@ -47,7 +58,10 @@ public final class ReadVsdService {
     private final EgkAuditWriter auditWriter = new EgkAuditWriter();
     private final long timeoutMillis;
 
-    /** eGK handles currently held by an in-flight read — exclusive reservation (FR-029). */
+    /**
+     * eGK handles currently held by an in-flight read — exclusive reservation
+     * (FR-029).
+     */
     private final Set<String> reservedEgkHandles = ConcurrentHashMap.newKeySet();
     private final ExecutorService timeoutExecutor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "read-vsd");
@@ -56,7 +70,7 @@ public final class ReadVsdService {
     });
 
     public ReadVsdService(CmCardList cardList, CardReaderPortResolver portResolver,
-                          CardToCardAuthenticator authenticator, long timeoutMillis) {
+            CardToCardAuthenticator authenticator, long timeoutMillis) {
         this.cardList = cardList;
         this.portResolver = portResolver;
         this.authenticator = authenticator;
@@ -66,7 +80,8 @@ public final class ReadVsdService {
     /**
      * Execute the local ReadVSD.
      *
-     * @throws VsdmReadException with the appropriate {@link VsdmErrorCode} on any abort
+     * @throws VsdmReadException with the appropriate {@link VsdmErrorCode} on any
+     *                           abort
      */
     public VsdReadResult read(ReadVsdRequest request) {
         validate(request);
@@ -139,7 +154,7 @@ public final class ReadVsdService {
 
         VsdStatus status;
         try {
-            status = statusConverter.convert(fileReader.read(egkPort, slot, EgkVsdmFile.EF_STATUS_VD));
+            status = statusConverter.convert(fileReader.read(egkPort, slot, EgkVsdmFile.EF_STATUS_VD.fileIdentifier()));
         } catch (ApduExecutionException e) {
             throw new VsdmReadException(VsdmErrorCode.VSD_READ_FAILED, "reading EF.StatusVD failed");
         }
@@ -151,15 +166,22 @@ public final class ReadVsdService {
         byte[] vd = readContainer(egkPort, slot, EgkVsdmFile.EF_VD);
 
         Optional<byte[]> gvd = Optional.empty();
-        Optional<ApduSecureChannel> channel = authenticator.authenticate(portResolver, egk, hpc);
+        Optional<ApduSecureChannel> channel;
+        try {
+            channel = authenticator.authenticate(portResolver, egk, hpc);
+        } catch (CardToCardAuthException e) {
+            throw new VsdmReadException(mapC2cFailure(e.reason()), e.detail());
+        }
         if (channel.isPresent()) {
             try {
-                gvd = Optional.of(fileReader.read(egkPort, slot, EgkVsdmFile.EF_GVD, channel.get()));
+                gvd = Optional.of(fileReader.read(egkPort, slot, EgkVsdmFile.EF_GVD.fileIdentifier(), channel.get()));
             } catch (ApduExecutionException e) {
                 throw new VsdmReadException(VsdmErrorCode.VSD_READ_FAILED, "reading EF.GVD failed");
             }
-            // FR-023 / VSDM-A_2654: write the data-access audit (incl. "read protected VSD") once
-            // the eGK is AUT_VSD-unlocked (TUC_KON_006); a write failure aborts and returns no VSD.
+            // FR-023 / VSDM-A_2654: write the data-access audit (incl. "read protected
+            // VSD") once
+            // the eGK is AUT_VSD-unlocked (TUC_KON_006); a write failure aborts and returns
+            // no VSD.
             auditWriter.writeReadProtectedVsd(egkPort, slot, hpc, channel.get());
         }
 
@@ -168,16 +190,28 @@ public final class ReadVsdService {
 
     private byte[] readContainer(CardReaderPort port, int slot, EgkVsdmFile file) throws CardTransportException {
         try {
-            return fileReader.read(port, slot, file);
+            return fileReader.read(port, slot, file.fileIdentifier());
         } catch (ApduExecutionException e) {
             throw new VsdmReadException(VsdmErrorCode.VSD_READ_FAILED, "reading " + file + " failed");
         }
     }
 
+    /** Map a card-to-card authentication failure to the corresponding gematik VSDM error code. */
+    private static int mapC2cFailure(CardToCardAuthException.Reason reason) {
+        return switch (reason) {
+            case SMB_SECURITY_STATE_INSUFFICIENT -> VsdmErrorCode.SMB_NOT_ENABLED;
+            case HBA_SECURITY_STATE_INSUFFICIENT -> VsdmErrorCode.HBA_NOT_ENABLED;
+            case EGK_READER_UNAVAILABLE, HPC_READER_UNAVAILABLE, CVC_READ_FAILED -> VsdmErrorCode.VSD_READ_FAILED;
+        };
+    }
+
     /**
-     * eGK usability/validity gate (FR-015, TUC_KON_018). Uses the certificate status that
-     * TUC_KON_037 maintains on the {@link CardObject}: an online-revoked AUT certificate maps to OM
-     * 106 and an offline-invalid one to OM 107. The blocked-health-application case (OM 114) is
+     * eGK usability/validity gate (FR-015, TUC_KON_018). Uses the certificate
+     * status that
+     * TUC_KON_037 maintains on the {@link CardObject}: an online-revoked AUT
+     * certificate maps to OM
+     * 106 and an offline-invalid one to OM 107. The blocked-health-application case
+     * (OM 114) is
      * detected at SELECT DF.HCA ({@link #mapSelectHcaFailure}).
      */
     private static void checkEgkValidity(CardObject egk) {
@@ -189,11 +223,14 @@ public final class ReadVsdService {
         }
     }
 
-    /** A failed SELECT DF.HCA usually means the health application is blocked/absent (OM 114). */
+    /**
+     * A failed SELECT DF.HCA usually means the health application is blocked/absent
+     * (OM 114).
+     */
     private static int mapSelectHcaFailure(int sw) {
         return switch (sw) {
             case GematikISO7816.SW_OBJECT_NOT_FOUND, 0x6285, 0x6999, GematikISO7816.SW_COMMAND_NOT_ALLOWED ->
-                    VsdmErrorCode.HCA_BLOCKED;
+                VsdmErrorCode.HCA_BLOCKED;
             default -> VsdmErrorCode.VSD_READ_FAILED;
         };
     }

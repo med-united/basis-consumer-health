@@ -1,4 +1,4 @@
-package de.servicehealtherx.apdu.vsdm;
+package de.servicehealtherx.konnektor.vsdm;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,6 +22,7 @@ import de.servicehealtherx.apdu.card.CmCardList;
 import de.servicehealtherx.apdu.card.OcspResult;
 import de.servicehealtherx.apdu.card.transport.CardReaderPort;
 import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
+import de.servicehealtherx.apdu.card.transport.ScriptedCardReaderPort;
 import de.servicehealtherx.apdu.model.CardType;
 
 class ReadVsdServiceTest {
@@ -35,13 +36,13 @@ class ReadVsdServiceTest {
 
     private List<byte[]> mandatoryReadScript() {
         List<byte[]> r = new ArrayList<>();
-        r.add(FakeCardReaderPort.ok());                       // SELECT DF.HCA
-        r.add(FakeCardReaderPort.ok());                       // SELECT EF.StatusVD
-        r.add(FakeCardReaderPort.resp(STATUS_VD, 0x9000));    // READ EF.StatusVD
-        r.add(FakeCardReaderPort.ok());                       // SELECT EF.PD
-        r.add(FakeCardReaderPort.resp(PD, 0x9000));           // READ EF.PD
-        r.add(FakeCardReaderPort.ok());                       // SELECT EF.VD
-        r.add(FakeCardReaderPort.resp(VD, 0x9000));           // READ EF.VD
+        r.add(ScriptedCardReaderPort.ok());                       // SELECT DF.HCA
+        r.add(ScriptedCardReaderPort.ok());                       // SELECT EF.StatusVD
+        r.add(ScriptedCardReaderPort.resp(STATUS_VD, 0x9000));    // READ EF.StatusVD
+        r.add(ScriptedCardReaderPort.ok());                       // SELECT EF.PD
+        r.add(ScriptedCardReaderPort.resp(PD, 0x9000));           // READ EF.PD
+        r.add(ScriptedCardReaderPort.ok());                       // SELECT EF.VD
+        r.add(ScriptedCardReaderPort.resp(VD, 0x9000));           // READ EF.VD
         return r;
     }
 
@@ -62,7 +63,7 @@ class ReadVsdServiceTest {
 
     @Test
     void test_VSDM_A_2567_returns_pd_vd_and_status_and_omits_gvd_when_not_authorised() {
-        var port = new FakeCardReaderPort(ctid, mandatoryReadScript());
+        var port = new ScriptedCardReaderPort(ctid, mandatoryReadScript());
         var service = new ReadVsdService(cardListWithEgkAndSmcb(), resolverFor(port),
                 CardToCardAuthenticator.NONE, 30_000);
 
@@ -78,7 +79,7 @@ class ReadVsdServiceTest {
     @Test
     void test_FR_007_rejects_perform_online_check() {
         var service = new ReadVsdService(cardListWithEgkAndSmcb(),
-                resolverFor(new FakeCardReaderPort(ctid, List.of())), CardToCardAuthenticator.NONE, 30_000);
+                resolverFor(new ScriptedCardReaderPort(ctid, List.of())), CardToCardAuthenticator.NONE, 30_000);
         var req = new ReadVsdRequest("egk", "smcb", true, false, "m1", "c1", "w1", null);
         VsdmReadException ex = assertThrows(VsdmReadException.class, () -> service.read(req));
         assertEquals(VsdmErrorCode.ONLINE_CHECK_NOT_SUPPORTED, ex.errorCode());
@@ -87,7 +88,7 @@ class ReadVsdServiceTest {
     @Test
     void test_FR_008_rejects_read_online_receipt() {
         var service = new ReadVsdService(cardListWithEgkAndSmcb(),
-                resolverFor(new FakeCardReaderPort(ctid, List.of())), CardToCardAuthenticator.NONE, 30_000);
+                resolverFor(new ScriptedCardReaderPort(ctid, List.of())), CardToCardAuthenticator.NONE, 30_000);
         var req = new ReadVsdRequest("egk", "smcb", false, true, "m1", "c1", "w1", null);
         VsdmReadException ex = assertThrows(VsdmReadException.class, () -> service.read(req));
         assertEquals(VsdmErrorCode.RECEIPT_NOT_SUPPORTED, ex.errorCode());
@@ -96,12 +97,12 @@ class ReadVsdServiceTest {
     @Test
     void test_VSDM_A_2660_aborts_3001_on_inconsistent_status() {
         List<byte[]> script = new ArrayList<>();
-        script.add(FakeCardReaderPort.ok());                       // SELECT DF.HCA
-        script.add(FakeCardReaderPort.ok());                       // SELECT EF.StatusVD
+        script.add(ScriptedCardReaderPort.ok());                       // SELECT DF.HCA
+        script.add(ScriptedCardReaderPort.ok());                       // SELECT EF.StatusVD
         byte[] inconsistent = STATUS_VD.clone();
         inconsistent[1] = 0x01;
-        script.add(FakeCardReaderPort.resp(inconsistent, 0x9000)); // READ EF.StatusVD
-        var port = new FakeCardReaderPort(ctid, script);
+        script.add(ScriptedCardReaderPort.resp(inconsistent, 0x9000)); // READ EF.StatusVD
+        var port = new ScriptedCardReaderPort(ctid, script);
         var service = new ReadVsdService(cardListWithEgkAndSmcb(), resolverFor(port),
                 CardToCardAuthenticator.NONE, 30_000);
         VsdmReadException ex = assertThrows(VsdmReadException.class, () -> service.read(validRequest()));
@@ -110,7 +111,7 @@ class ReadVsdServiceTest {
 
     @Test
     void test_FR_027_aborts_on_timeout() {
-        var port = new FakeCardReaderPort(ctid, mandatoryReadScript());
+        var port = new ScriptedCardReaderPort(ctid, mandatoryReadScript());
         port.onBeforeTransmit(() -> {
             try {
                 Thread.sleep(300);
@@ -132,10 +133,10 @@ class ReadVsdServiceTest {
     void test_VSDM_A_2574_returns_gvd_and_writes_audit_when_authorised() {
         byte[] gvd = "PROTECTED".getBytes();
         List<byte[]> script = mandatoryReadScript();
-        script.add(FakeCardReaderPort.ok());                 // SELECT EF.GVD
-        script.add(FakeCardReaderPort.resp(gvd, 0x9000));    // READ EF.GVD
-        script.add(FakeCardReaderPort.ok());                 // APPEND RECORD (audit)
-        var port = new FakeCardReaderPort(ctid, script);
+        script.add(ScriptedCardReaderPort.ok());                 // SELECT EF.GVD
+        script.add(ScriptedCardReaderPort.resp(gvd, 0x9000));    // READ EF.GVD
+        script.add(ScriptedCardReaderPort.ok());                 // APPEND RECORD (audit)
+        var port = new ScriptedCardReaderPort(ctid, script);
         var service = new ReadVsdService(cardListWithEgkAndSmcb(), resolverFor(port), AUTHORISES_GVD, 30_000);
 
         VsdReadResult result = service.read(validRequest());
@@ -147,10 +148,10 @@ class ReadVsdServiceTest {
     void test_VSDM_A_2654_aborts_when_audit_write_fails() {
         byte[] gvd = "PROTECTED".getBytes();
         List<byte[]> script = mandatoryReadScript();
-        script.add(FakeCardReaderPort.ok());                 // SELECT EF.GVD
-        script.add(FakeCardReaderPort.resp(gvd, 0x9000));    // READ EF.GVD
-        script.add(FakeCardReaderPort.resp(null, 0x6A82));   // APPEND RECORD fails
-        var port = new FakeCardReaderPort(ctid, script);
+        script.add(ScriptedCardReaderPort.ok());                 // SELECT EF.GVD
+        script.add(ScriptedCardReaderPort.resp(gvd, 0x9000));    // READ EF.GVD
+        script.add(ScriptedCardReaderPort.resp(null, 0x6A82));   // APPEND RECORD fails
+        var port = new ScriptedCardReaderPort(ctid, script);
         var service = new ReadVsdService(cardListWithEgkAndSmcb(), resolverFor(port), AUTHORISES_GVD, 30_000);
 
         VsdmReadException ex = assertThrows(VsdmReadException.class, () -> service.read(validRequest()));
@@ -164,7 +165,7 @@ class ReadVsdServiceTest {
         egk.setCertOcspResponse(OcspResult.REVOKED);
         list.add(egk);
         list.add(CardObject.builder().cardHandle("smcb").ctid(ctid).slotNo(2).type(CardType.SMC_B).build());
-        var service = new ReadVsdService(list, resolverFor(new FakeCardReaderPort(ctid, List.of())),
+        var service = new ReadVsdService(list, resolverFor(new ScriptedCardReaderPort(ctid, List.of())),
                 CardToCardAuthenticator.NONE, 30_000);
         VsdmReadException ex = assertThrows(VsdmReadException.class, () -> service.read(validRequest()));
         assertEquals(VsdmErrorCode.EGK_CERT_REVOKED, ex.errorCode());
@@ -177,14 +178,14 @@ class ReadVsdServiceTest {
         egk.setCertStatus(CertStatus.INVALID);
         list.add(egk);
         list.add(CardObject.builder().cardHandle("smcb").ctid(ctid).slotNo(2).type(CardType.SMC_B).build());
-        var service = new ReadVsdService(list, resolverFor(new FakeCardReaderPort(ctid, List.of())),
+        var service = new ReadVsdService(list, resolverFor(new ScriptedCardReaderPort(ctid, List.of())),
                 CardToCardAuthenticator.NONE, 30_000);
         VsdmReadException ex = assertThrows(VsdmReadException.class, () -> service.read(validRequest()));
         assertEquals(VsdmErrorCode.EGK_CERT_INVALID, ex.errorCode());
     }
 
     private ReadVsdService serviceWithNoCardAccess(CmCardList list) {
-        return new ReadVsdService(list, resolverFor(new FakeCardReaderPort(ctid, List.of())),
+        return new ReadVsdService(list, resolverFor(new ScriptedCardReaderPort(ctid, List.of())),
                 CardToCardAuthenticator.NONE, 30_000);
     }
 
@@ -228,7 +229,7 @@ class ReadVsdServiceTest {
     void test_FR_029_second_concurrent_read_of_same_egk_fails_fast() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        var port = new FakeCardReaderPort(ctid, mandatoryReadScript());
+        var port = new ScriptedCardReaderPort(ctid, mandatoryReadScript());
         port.onBeforeTransmit(() -> {
             entered.countDown();
             try {

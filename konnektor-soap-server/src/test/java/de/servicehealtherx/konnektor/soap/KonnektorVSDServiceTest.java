@@ -18,11 +18,11 @@ import de.gematik.ws.conn.connectorcontext.v2.ContextType;
 import de.gematik.ws.conn.vsds.vsdservice.v5.ReadVSD;
 import de.gematik.ws.conn.vsds.vsdservice.v5.ReadVSDResponse;
 import de.gematik.ws.conn.vsds.vsdservice.v5_2.FaultMessage;
-import de.servicehealtherx.apdu.vsdm.ReadVsdService;
-import de.servicehealtherx.apdu.vsdm.VsdReadResult;
-import de.servicehealtherx.apdu.vsdm.VsdStatus;
-import de.servicehealtherx.apdu.vsdm.VsdmErrorCode;
-import de.servicehealtherx.apdu.vsdm.VsdmReadException;
+import de.servicehealtherx.konnektor.vsdm.ReadVsdService;
+import de.servicehealtherx.konnektor.vsdm.VsdReadResult;
+import de.servicehealtherx.konnektor.vsdm.VsdStatus;
+import de.servicehealtherx.konnektor.vsdm.VsdmErrorCode;
+import de.servicehealtherx.konnektor.vsdm.VsdmReadException;
 
 class KonnektorVSDServiceTest {
 

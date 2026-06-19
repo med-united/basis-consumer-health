@@ -1,4 +1,4 @@
-package de.servicehealtherx.apdu.vsdm;
+package de.servicehealtherx.konnektor.vsdm;
 
 /**
  * Normalised local-ReadVSD request (the SOAP {@code ReadVSD} mapped to internal fields).

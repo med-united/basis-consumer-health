@@ -63,12 +63,6 @@
             <artifactId>quarkus-cxf</artifactId>
         </dependency>
 
-        <!-- JAX-RS — serves the connector.sds Dienstverzeichnisdienst (gemSpec_Kon 4.1.3) -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-rest</artifactId>
-        </dependency>
-
         <!-- JPA + H2 -->
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -88,6 +82,14 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- apdu-lib test doubles (ScriptedCardReaderPort) reused by the VSDM tests. -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>apdu-lib</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
             <scope>test</scope>
         </dependency>
     </dependencies>

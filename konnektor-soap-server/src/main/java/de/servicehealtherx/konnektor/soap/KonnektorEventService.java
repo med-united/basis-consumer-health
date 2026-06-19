@@ -56,6 +56,7 @@ import java.time.ZoneId;
 import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static de.servicehealtherx.konnektor.soap.KonnektorServiceHelper.*;
 
@@ -77,7 +78,8 @@ public class KonnektorEventService implements EventServicePortType {
         try {
             ContextType context = parameter.getContext();
             SubscriptionType subscription = parameter.getSubscription();
-            // checkArguments / saveSubscription (gemSpec_Kon TIP1-A_4608): persist via cetp-client-lib.
+            // checkArguments / saveSubscription (gemSpec_Kon TIP1-A_4608): persist via
+            // cetp-client-lib.
             SubscriptionService.SubscribeResult result = subscriptionService.subscribe(
                     context.getMandantId(), context.getClientSystemId(), context.getWorkplaceId(),
                     subscription.getEventTo(), subscription.getTopic(), subscription.getFilter());
@@ -192,26 +194,22 @@ public class KonnektorEventService implements EventServicePortType {
             GetCardsResponse response = new GetCardsResponse();
             response.setCards(new Cards());
 
-            // Unified, transport-spanning view: aggregate every provider's own CM_CARD_LIST
-            // (PC/SC + SICCT), de-duplicated by cardHandle (feature 002-card-handle,
-            // FR-062/FR-064).
-            CardListAggregator aggregator = new CardListAggregator();
-            for (CryptoProvider cryptoProvider : cryptoProviderInstances) {
-                if (cryptoProvider instanceof CardListProvider clp) {
-                    aggregator.addSource(clp.cmCardList());
-                } else {
-                    // Non-PC/SC providers (e.g. SICCT) can still contribute via a custom adapter.
-                    aggregator.addCryptoProvider(cryptoProvider);
-                }
-            }
-            aggregator.findAll()
-                    .forEach(card -> response.getCards().getCard().add(toCardInfoType(card)));
+            List<CardInfoType> cards = getAllCards();
+
+            response.getCards().getCard().addAll(cards);
 
             response.setStatus(okStatus());
             return response;
         } catch (Exception e) {
             throw new FaultMessage("GetCards failed: " + e.getMessage(), buildError(e.getMessage()));
         }
+    }
+
+    private List<CardInfoType> getAllCards() {
+        List<CardObject> allCardObjects = CardListAggregator.getAllCardObjects(cryptoProviderInstances);
+        List<CardInfoType> cards = allCardObjects.stream().map(this::toCardInfoType)
+                .collect(Collectors.toList());
+        return cards;
     }
 
     /**
@@ -250,8 +248,10 @@ public class KonnektorEventService implements EventServicePortType {
     }
 
     /**
-     * Map the eight CARDVERSION sub-fields to the gematik {@code CardVersion} structure. Returns
-     * {@code null} when no sub-field is readable so the optional element is simply omitted rather
+     * Map the eight CARDVERSION sub-fields to the gematik {@code CardVersion}
+     * structure. Returns
+     * {@code null} when no sub-field is readable so the optional element is simply
+     * omitted rather
      * than emitted with its required COSVersion/ObjectSystemVersion missing.
      */
     private static CardInfoType.CardVersion toCardVersion(CardVersionInfo v) {
@@ -283,8 +283,10 @@ public class KonnektorEventService implements EventServicePortType {
     }
 
     /**
-     * Parse a dotted-decimal version string (as produced by CardAttributeReader, e.g. "3.0.0")
-     * into Major/Minor/Revision. Missing components default to 0; non-numeric input yields
+     * Parse a dotted-decimal version string (as produced by CardAttributeReader,
+     * e.g. "3.0.0")
+     * into Major/Minor/Revision. Missing components default to 0; non-numeric input
+     * yields
      * {@code null} so the field is omitted.
      */
     private static VersionInfoType toVersionInfo(String dotted) {

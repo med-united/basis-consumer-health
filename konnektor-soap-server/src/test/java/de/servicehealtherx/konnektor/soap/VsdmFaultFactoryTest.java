@@ -12,8 +12,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import de.gematik.ws.conn.vsds.vsdservice.v5_2.FaultMessage;
 import de.gematik.ws.tel.error.v2.Error;
-import de.servicehealtherx.apdu.vsdm.VsdmErrorCode;
-import de.servicehealtherx.apdu.vsdm.VsdmReadException;
+import de.servicehealtherx.konnektor.vsdm.VsdmErrorCode;
+import de.servicehealtherx.konnektor.vsdm.VsdmReadException;
 
 class VsdmFaultFactoryTest {
 

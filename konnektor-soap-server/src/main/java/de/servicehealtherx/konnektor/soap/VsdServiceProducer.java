@@ -5,7 +5,7 @@ import de.servicehealtherx.apdu.c2c.ElcCardToCardAuthenticator;
 import de.servicehealtherx.apdu.c2c.SessionKeyDerivation;
 import de.servicehealtherx.apdu.card.CmCardList;
 import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
-import de.servicehealtherx.apdu.vsdm.ReadVsdService;
+import de.servicehealtherx.konnektor.vsdm.ReadVsdService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;

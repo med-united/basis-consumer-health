@@ -1,4 +1,4 @@
-package de.servicehealtherx.apdu.vsdm;
+package de.servicehealtherx.konnektor.vsdm;
 
 /**
  * gematik error codes used by the local ReadVSD flow. The 30xx codes are VSDM Fachmodul codes

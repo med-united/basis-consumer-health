@@ -1,4 +1,4 @@
-package de.servicehealtherx.apdu.vsdm;
+package de.servicehealtherx.apdu.card.transport;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -8,22 +8,18 @@ import java.util.UUID;
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
 
-import de.servicehealtherx.apdu.card.transport.CardReaderPort;
-import de.servicehealtherx.apdu.card.transport.CardTransportException;
-import de.servicehealtherx.apdu.card.transport.ReaderCapabilities;
-
 /**
  * Test double for {@link CardReaderPort} that replays a scripted list of responses in transmit
  * order, ignoring the command content. Deterministic — no hardware. An optional pre-transmit gate
  * supports timeout/concurrency tests.
  */
-public final class FakeCardReaderPort implements CardReaderPort {
+public final class ScriptedCardReaderPort implements CardReaderPort {
 
     private final UUID ctid;
     private final Deque<ResponseAPDU> scripted = new ArrayDeque<>();
     private Runnable beforeTransmit = () -> {};
 
-    public FakeCardReaderPort(UUID ctid, List<byte[]> responses) {
+    public ScriptedCardReaderPort(UUID ctid, List<byte[]> responses) {
         this.ctid = ctid;
         for (byte[] r : responses) {
             scripted.add(new ResponseAPDU(r));
