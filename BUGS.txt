@@ -1,3 +1,25 @@
-- [FIXED] Card Handle for an eHBA does not show the card holder name
+- Card Handle for an eHBA does not show the card holder name
 - [FIXED] Not all certificates for an eHBA (C.ENC, C.QES, C.AUT) are returned only C.ENC
 - [FIXED] CETP Events are not thrown when entering a card
+- VSDService return error even when eGK is available
+
+<soap:Fault>
+         <faultcode>soap:Server</faultcode>
+         <faultstring>ReadVSD failed (rejected)</faultstring>
+         <detail>
+            <ns4:Error xmlns:ns8="http://ws.gematik.de/consumer/ConsumerCommon/v2.0" xmlns:ns7="urn:oasis:names:tc:dss:1.0:core:schema" xmlns:ns6="http://www.w3.org/2000/09/xmldsig#" xmlns:ns5="urn:oasis:names:tc:SAML:1.0:assertion" xmlns:ns4="http://ws.gematik.de/tel/error/v2.0" xmlns:ns3="http://ws.gematik.de/conn/ConnectorContext/v2.0" xmlns:ns2="http://ws.gematik.de/conn/ConnectorCommon/v5.0" xmlns="http://ws.gematik.de/conn/vsds/VSDService/v5.2">
+               <ns4:MessageID>VSDM</ns4:MessageID>
+               <ns4:Timestamp>2026-06-19T03:50:19.916+02:00</ns4:Timestamp>
+               <ns4:Trace>
+                  <ns4:EventID>VSDM</ns4:EventID>
+                  <ns4:Instance>konnektor-soap-server</ns4:Instance>
+                  <ns4:LogReference/>
+                  <ns4:CompType>FM_VSDM</ns4:CompType>
+                  <ns4:Code>4001</ns4:Code>
+                  <ns4:Severity>Fatal</ns4:Severity>
+                  <ns4:ErrorType>Technical</ns4:ErrorType>
+                  <ns4:ErrorText>Ungueltige Anfrage (unknown EhcHandle)</ns4:ErrorText>
+               </ns4:Trace>
+            </ns4:Error>
+         </detail>
+      </soap:Fault>
