@@ -1,0 +1,65 @@
+@startuml class-catalog
+title Class — service catalog & request model (client-side)
+
+class Service {
+  +id : string
+  +title : string
+  +icon : string
+  +endpoint : string
+  +namespace : string
+  +listOperationId : string?
+}
+class Operation {
+  +id : string
+  +title : string
+  +soapAction : string
+  +envelopeTemplate : string
+  +isRead : boolean
+  +mutatesEntity : boolean
+}
+class Field {
+  +label : string
+  +path : string
+  +type : enum
+  +required : boolean
+  +sensitive : boolean
+  +enumValues : string[]?
+}
+class RowMapping {
+  +rowsPath : string
+  +columns : Column[]
+}
+class InvocationContext {
+  +mandantId : string
+  +clientSystemId : string
+  +workplaceId : string
+  +userId : string?
+}
+class RequestEnvelope {
+  +operationId : string
+  +document : XMLModel
+  +isValid : boolean
+  +viewMode : enum(form|raw)
+  +serialize() : string
+  +setFromRaw(text) : boolean
+  +isEnvelopeValid() : boolean
+}
+class ServiceResponse {
+  +httpStatus : int
+  +rawXml : string
+  +fault : Fault?
+}
+class Fault {
+  +code : string
+  +message : string
+  +detail : string
+}
+
+Service "1" o-- "many" Operation
+Operation "1" o-- "many" Field
+Operation "0..1" o-- "1" RowMapping
+RequestEnvelope ..> Operation : built from template
+RequestEnvelope ..> InvocationContext : prefilled
+RequestEnvelope ..> ServiceResponse : submit ->
+ServiceResponse "1" o-- "0..1" Fault
+@enduml

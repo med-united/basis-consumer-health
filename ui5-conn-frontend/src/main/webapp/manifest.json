@@ -1,0 +1,66 @@
+{
+  "_version": "1.59.0",
+  "sap.app": {
+    "id": "de.servicehealtherx.connui",
+    "type": "application",
+    "title": "{i18n>appTitle}",
+    "description": "{i18n>appDescription}",
+    "applicationVersion": { "version": "1.0.0" },
+    "i18n": "i18n/i18n.properties"
+  },
+  "sap.ui": {
+    "technology": "UI5",
+    "deviceTypes": { "desktop": true, "tablet": true, "phone": true }
+  },
+  "sap.ui5": {
+    "rootView": {
+      "viewName": "de.servicehealtherx.connui.view.App",
+      "type": "XML",
+      "id": "app",
+      "async": true
+    },
+    "dependencies": {
+      "minUI5Version": "1.120.0",
+      "libs": {
+        "sap.ui.core": {},
+        "sap.m": {},
+        "sap.f": {},
+        "sap.ui.layout": {},
+        "sap.ui.codeeditor": {}
+      }
+    },
+    "models": {
+      "i18n": {
+        "type": "sap.ui.model.resource.ResourceModel",
+        "settings": { "bundleName": "de.servicehealtherx.connui.i18n.i18n" }
+      }
+    },
+    "routing": {
+      "config": {
+        "routerClass": "sap.m.routing.Router",
+        "viewType": "XML",
+        "viewPath": "de.servicehealtherx.connui.view",
+        "controlId": "app",
+        "controlAggregation": "pages",
+        "transition": "slide",
+        "async": true
+      },
+      "routes": [
+        {
+          "name": "home",
+          "pattern": "",
+          "target": "home"
+        },
+        {
+          "name": "serviceClient",
+          "pattern": "service/{serviceId}",
+          "target": "serviceClient"
+        }
+      ],
+      "targets": {
+        "home": { "viewName": "Home" },
+        "serviceClient": { "viewName": "ServiceClient" }
+      }
+    }
+  }
+}

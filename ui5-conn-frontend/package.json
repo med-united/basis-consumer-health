@@ -1,0 +1,21 @@
+{
+  "name": "ui5-conn-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenUI5 SPA for calling konnektor SOAP services same-origin",
+  "scripts": {
+    "build": "ui5 build self-contained --clean-dest --dest target/classes/META-INF/resources/conn-ui",
+    "start": "ui5 serve --open conn-ui/index.html",
+    "test": "karma start --single-run",
+    "test:watch": "karma start"
+  },
+  "devDependencies": {
+    "@ui5/cli": "^3.11.0",
+    "karma": "^6.4.0",
+    "karma-chrome-launcher": "^3.2.0",
+    "karma-coverage": "^2.2.0",
+    "karma-qunit": "^4.2.1",
+    "karma-ui5": "^3.0.0",
+    "qunit": "^2.20.0"
+  }
+}

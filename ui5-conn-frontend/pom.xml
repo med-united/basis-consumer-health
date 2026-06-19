@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.servicehealtherx</groupId>
+        <artifactId>basis-consumer-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>ui5-conn-frontend</artifactId>
+    <name>Basis Consumer :: UI5 Konnektor SOAP Frontend</name>
+    <description>Responsive OpenUI5 SPA that calls the konnektor SOAP services same-origin; served as static resources from META-INF/resources/conn-ui and a small config endpoint (feature 011-ui5-conn-frontend)</description>
+
+    <properties>
+        <!-- Build-time only: Node provisioned locally by frontend-maven-plugin (no Node at runtime). -->
+        <node.version>v20.18.0</node.version>
+        <npm.version>10.8.2</npm.version>
+        <frontend-maven-plugin.version>1.15.1</frontend-maven-plugin.version>
+        <!-- Skip the JS toolchain when offline / building only the Java config endpoint: -Dui5.build.skip=true -->
+        <ui5.build.skip>false</ui5.build.skip>
+        <!-- Karma (QUnit/OPA5) JS tests: enabled in CI with -Dui5.test.skip=false once the
+             karma-ui5 test-starter path mapping is finalized. Skipped by default so the
+             reactor build (and dependents like quarkus-server) is not blocked. -->
+        <ui5.test.skip>true</ui5.test.skip>
+    </properties>
+
+    <dependencies>
+        <!-- Config endpoint: GET /conn-ui/config.json (default invocation context) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>${frontend-maven-plugin.version}</version>
+                <configuration>
+                    <skip>${ui5.build.skip}</skip>
+                    <installDirectory>target</installDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install-node-and-npm</id>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                        <phase>generate-resources</phase>
+                        <configuration>
+                            <nodeVersion>${node.version}</nodeVersion>
+                            <npmVersion>${npm.version}</npmVersion>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm-install</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <phase>generate-resources</phase>
+                        <configuration>
+                            <arguments>install</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>ui5-test</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <phase>test</phase>
+                        <configuration>
+                            <!-- Needs the JS toolchain (node) AND the test gate enabled. -->
+                            <arguments>test</arguments>
+                            <skip>${ui5.test.skip}</skip>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>ui5-build</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <phase>prepare-package</phase>
+                        <configuration>
+                            <!-- runs "ui5 build self-contained" into target/classes/META-INF/resources/conn-ui -->
+                            <arguments>run build</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

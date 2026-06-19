@@ -1,0 +1,43 @@
+@startuml component
+title Component — ui5-conn-frontend SPA + config endpoint
+
+package "ui5-conn-frontend (SPA)" {
+  [Component.js] as Comp
+  [Home.controller] as Home
+  [ServiceClient.controller] as SvcCtrl
+  [OperationDialog.controller] as DlgCtrl
+  [ServiceCatalog (model)] as Catalog
+  [SoapEnvelope (model)] as Envelope
+  [SoapClient (service)] as SoapClient
+  [ConfigService (service)] as CfgSvc
+  [catalog.json] as CatalogJson
+}
+
+package "ui5-conn-frontend (Java)" {
+  [ConnUiConfigResource] as CfgRes
+}
+
+[OpenUI5 runtime\n(XMLModel, FlexibleColumnLayout,\nTileContainer, CodeEditor)] as UI5
+
+Comp --> Home
+Comp --> CfgSvc
+Home --> Catalog
+Home --> SvcCtrl
+SvcCtrl --> Catalog
+SvcCtrl --> DlgCtrl
+SvcCtrl --> SoapClient
+DlgCtrl --> Envelope
+DlgCtrl --> SoapClient
+Catalog --> CatalogJson
+CfgSvc ..> CfgRes : GET /conn-ui/config.json
+SoapClient ..> [/ws/conn/<Service>] : POST text/xml
+Envelope ..> UI5 : XMLModel two-way bind
+Home ..> UI5
+SvcCtrl ..> UI5
+DlgCtrl ..> UI5
+
+note bottom of Catalog
+  Generic controllers driven by data:
+  a new service = catalog entry (SC-003)
+end note
+@enduml

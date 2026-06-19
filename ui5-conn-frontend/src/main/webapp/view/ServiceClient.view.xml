@@ -1,0 +1,40 @@
+<mvc:View
+    controllerName="de.servicehealtherx.connui.controller.ServiceClient"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns="sap.m"
+    xmlns:f="sap.f"
+    height="100%">
+    <f:FlexibleColumnLayout id="fcl" layout="TwoColumnsBeginExpanded">
+        <f:beginColumnPages>
+            <Page id="masterPage" title="{client>/service/title}" showNavButton="true" navButtonPress=".onNavBack">
+                <List
+                    id="entityList"
+                    headerText="{i18n>masterListTitle}"
+                    items="{entities>/rows}"
+                    noDataText="{= ${client>/hasList} ? ${i18n>emptyListText} : ${i18n>noListOperation} }"
+                    busy="{entities>/busy}">
+                    <StandardListItem title="{entities>title}" description="{entities>description}" type="Inactive"/>
+                </List>
+            </Page>
+        </f:beginColumnPages>
+        <f:midColumnPages>
+            <Page id="detailPage" title="{i18n>actionsTitle}">
+                <VBox class="sapUiContentPadding">
+                    <MessageStrip
+                        visible="{= !${client>/hasList} }"
+                        text="{i18n>noListOperation}"
+                        type="Information"
+                        showIcon="true"
+                        class="sapUiSmallMarginBottom"/>
+                    <FlexBox wrap="Wrap" items="{client>/operations}">
+                        <Button
+                            text="{client>title}"
+                            press=".onActionPress"
+                            type="Emphasized"
+                            class="sapUiTinyMargin"/>
+                    </FlexBox>
+                </VBox>
+            </Page>
+        </f:midColumnPages>
+    </f:FlexibleColumnLayout>
+</mvc:View>

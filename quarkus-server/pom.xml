@@ -53,6 +53,11 @@
             <groupId>de.servicehealtherx</groupId>
             <artifactId>konnektor-soap-server</artifactId>
         </dependency>
+        <!-- UI5 SOAP frontend: serves the konnektor client SPA same-origin (feature 011-ui5-conn-frontend) -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>ui5-conn-frontend</artifactId>
+        </dependency>
 
         <!-- Quarkus application core -->
         <dependency>
