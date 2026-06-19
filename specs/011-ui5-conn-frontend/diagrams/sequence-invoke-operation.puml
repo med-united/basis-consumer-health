@@ -1,0 +1,43 @@
+@startuml sequence-invoke-operation
+title Sequence — invoke a SOAP operation
+
+actor User
+participant "ServiceClient\n.controller" as SC
+participant "OperationDialog\n.controller" as DC
+participant "SoapEnvelope\n(XMLModel)" as Env
+participant "SoapClient" as Cli
+participant "/ws/conn/<Service>" as EP
+
+User -> SC : press action button
+SC -> DC : open dialog(operation)
+DC -> Env : build envelope(template + context defaults)
+Env --> DC : XMLModel (full envelope)
+DC --> User : show form (pre-filled)
+
+User -> DC : fill fields, Submit
+DC -> Env : isEnvelopeValid()
+alt invalid
+  Env --> DC : false(reason)
+  DC --> User : block + message (data kept)
+else valid
+  Env --> DC : true + serialized envelope
+  DC -> Cli : post(endpoint, soapAction, xml)
+  Cli -> EP : POST text/xml + SOAPAction
+  alt HTTP 200
+    EP --> Cli : <Response/>
+    Cli --> DC : parsed response
+    DC --> User : show result (+ raw inspectable)
+    opt mutatesEntity
+      DC -> SC : refresh list
+      SC -> Cli : post(listOperation)
+      Cli -> EP : POST (read op)
+      EP --> Cli : entities
+      Cli --> SC : rows -> master list
+    end
+  else HTTP 500 soap:Fault
+    EP --> Cli : <soap:Fault/>
+    Cli --> DC : {code, message, detail}
+    DC --> User : show fault (data preserved)
+  end
+end
+@enduml

@@ -1,0 +1,32 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core"
+    xmlns:editor="sap.ui.codeeditor">
+    <Dialog id="opDialog" title="{dlg>/title}" contentWidth="42rem" stretchOnPhone="true">
+        <subHeader>
+            <Toolbar>
+                <SegmentedButton id="viewToggle" selectedKey="form" selectionChange=".onToggleView">
+                    <items>
+                        <SegmentedButtonItem key="form" text="{i18n>viewForm}"/>
+                        <SegmentedButtonItem key="raw" text="{i18n>viewRaw}"/>
+                    </items>
+                </SegmentedButton>
+            </Toolbar>
+        </subHeader>
+        <content>
+            <VBox id="formContainer" class="sapUiContentPadding"/>
+            <editor:CodeEditor id="rawEditor" type="xml" height="22rem" visible="false"/>
+            <VBox id="responseArea" class="sapUiContentPadding" visible="false">
+                <MessageStrip id="faultStrip" type="Error" showIcon="true" visible="false" class="sapUiSmallMarginBottom"/>
+                <Title id="responseTitle" text="{i18n>responseTitle}" level="H4"/>
+                <editor:CodeEditor id="responseEditor" type="xml" height="14rem" editable="false"/>
+            </VBox>
+        </content>
+        <beginButton>
+            <Button id="submitButton" text="{i18n>dialogSubmit}" type="Emphasized" press=".onSubmit"/>
+        </beginButton>
+        <endButton>
+            <Button text="{i18n>dialogCancel}" press=".onCancel"/>
+        </endButton>
+    </Dialog>
+</core:FragmentDefinition>

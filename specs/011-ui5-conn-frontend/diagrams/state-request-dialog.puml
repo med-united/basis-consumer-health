@@ -1,0 +1,27 @@
+@startuml state-request-dialog
+title State — operation request dialog
+
+[*] --> Form : open action\n(build envelope + context)
+Form --> Raw : toggle (valid)
+Raw --> Form : toggle (well-formed)
+Form --> Invalid : required/type error
+Raw --> Invalid : malformed XML
+Invalid --> Form : fix (form)
+Invalid --> Raw : fix (raw)
+Form --> Submitting : Submit (valid)
+Raw --> Submitting : Submit (valid)
+Submitting --> ShowResult : HTTP 200
+Submitting --> ShowFault : HTTP 500 soap:Fault
+Submitting --> Error : network/timeout
+ShowResult --> Form : new edit
+ShowFault --> Form : edit (data preserved)
+Error --> Form : retry (data preserved)
+ShowResult --> [*] : close
+ShowFault --> [*] : close
+
+note right of Invalid
+  Submission and raw->form toggle
+  pass through one validity gate
+  (FR-013, SC-007)
+end note
+@enduml

@@ -1,0 +1,34 @@
+@startuml use-case
+left to right direction
+skinparam actorStyle awesome
+title UI5 Konnektor SOAP Frontend — Use Cases
+
+actor "Technician / Integrator" as User
+
+rectangle "ui5-conn-frontend" {
+  usecase "Browse services (tiles)" as UC1
+  usecase "Open service client" as UC2
+  usecase "List service main entity" as UC3
+  usecase "Invoke operation via dialog" as UC4
+  usecase "Edit request (form view)" as UC5
+  usecase "Edit request (raw XML view)" as UC6
+  usecase "Toggle form <-> raw XML" as UC7
+  usecase "Inspect response / SOAP fault" as UC8
+}
+
+User --> UC1
+User --> UC2
+UC2 ..> UC3 : <<include>>
+User --> UC4
+UC4 ..> UC5 : <<include>>
+UC4 ..> UC8 : <<include>>
+UC5 <--> UC7
+UC6 <--> UC7
+UC7 ..> UC6 : <<extend>>
+UC4 ..> UC3 : <<extend>>\n(refresh on mutation)
+
+note bottom of UC4
+  Operations call konnektor SOAP
+  services same-origin (/ws/conn/*)
+end note
+@enduml

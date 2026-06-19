@@ -1,0 +1,28 @@
+@startuml deployment
+title Deployment — same-origin co-hosting
+
+node "Browser" {
+  artifact "OpenUI5 SPA\n(self-contained bundle)" as SPA
+}
+
+node "quarkus-server (JVM, k8s pod)" {
+  component "Static resources\nMETA-INF/resources/conn-ui" as Static
+  component "ConnUiConfigResource\nGET /conn-ui/config.json" as Cfg
+  component "konnektor-soap-server\nCXF /ws/conn/*" as CXF
+}
+
+node "Konnektor / TI" {
+  component "Konnektor SOAP backend\n(TLS / mTLS, cards)" as Konn
+}
+
+SPA --> Static : GET /conn-ui/ (HTML, JS)
+SPA --> Cfg : GET /conn-ui/config.json
+SPA --> CXF : POST /ws/conn/<Service>\ntext/xml + SOAPAction\n(same origin, no CORS)
+CXF --> Konn : SOAP over TLS/mTLS\n(secrets server-side)
+
+note right of SPA
+  Same origin as /ws/conn/*
+  => no CORS, no browser-held
+  TLS credentials (Principle V)
+end note
+@enduml

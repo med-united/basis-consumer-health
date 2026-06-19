@@ -1,0 +1,30 @@
+@startuml sequence-xml-toggle
+title Sequence — toggle form <-> raw XML (single source of truth)
+
+actor User
+participant "OperationDialog\n.controller" as DC
+participant "SoapEnvelope\n(XMLModel)" as Env
+participant "CodeEditor\n(raw view)" as RAW
+
+== form -> raw ==
+User -> DC : edit form field
+DC -> Env : update node (two-way bind)
+User -> DC : toggle to Raw
+DC -> Env : serializeToString()
+Env --> DC : envelope text
+DC -> RAW : set value(text)
+RAW --> User : raw envelope reflects edit
+
+== raw -> form ==
+User -> RAW : edit XML text
+User -> DC : toggle to Form
+DC -> Env : DOMParser.parse(text)
+alt parsererror
+  Env --> DC : invalid
+  DC --> User : stay in Raw + message (no data loss)
+else well-formed
+  Env -> Env : setData(parsed)
+  Env --> DC : ok
+  DC --> User : form reflects raw edit (SC-004)
+end
+@enduml

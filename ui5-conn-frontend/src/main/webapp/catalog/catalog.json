@@ -1,0 +1,279 @@
+{
+  "_comment": "Static service catalog. Adding a service = an entry here (no code change). Envelope element namespaces follow gematik conn conventions and should be reconciled against the api-telematik WSDLs (branch ebk_6.0.3) during integration.",
+  "namespacesCommon": {
+    "soap": "http://schemas.xmlsoap.org/soap/envelope/",
+    "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0"
+  },
+  "services": [
+    {
+      "id": "card",
+      "title": "Card Service",
+      "icon": "sap-icon://it-system",
+      "endpoint": "/ws/conn/CardService",
+      "namespace": "http://ws.gematik.de/conn/CardService/WSDL/v8.1",
+      "listOperationId": null,
+      "operations": [
+        {
+          "id": "getPinStatus",
+          "title": "Get PIN Status",
+          "soapAction": "http://ws.gematik.de/conn/CardService/v8.1#GetPinStatus",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "CARD": "http://ws.gematik.de/conn/CardService/v8.1" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><CARD:GetPinStatus xmlns:CARD=\"http://ws.gematik.de/conn/CardService/v8.1\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><CARD:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></CARD:Context><CARD:CardHandle></CARD:CardHandle><CARD:PinTyp>PIN.CH</CARD:PinTyp></CARD:GetPinStatus></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Mandant ID", "path": "/soap:Envelope/soap:Body/CARD:GetPinStatus/CARD:Context/CCTX:MandantId", "type": "text", "required": true, "sensitive": false },
+            { "label": "Client System ID", "path": "/soap:Envelope/soap:Body/CARD:GetPinStatus/CARD:Context/CCTX:ClientSystemId", "type": "text", "required": true, "sensitive": false },
+            { "label": "Workplace ID", "path": "/soap:Envelope/soap:Body/CARD:GetPinStatus/CARD:Context/CCTX:WorkplaceId", "type": "text", "required": true, "sensitive": false },
+            { "label": "Card Handle", "path": "/soap:Envelope/soap:Body/CARD:GetPinStatus/CARD:CardHandle", "type": "text", "required": true, "sensitive": false },
+            { "label": "PIN Type", "path": "/soap:Envelope/soap:Body/CARD:GetPinStatus/CARD:PinTyp", "type": "enum", "required": true, "sensitive": false, "enumValues": ["PIN.CH", "PIN.SMC", "PIN.QES"] }
+          ]
+        },
+        {
+          "id": "verifyPin",
+          "title": "Verify PIN",
+          "soapAction": "http://ws.gematik.de/conn/CardService/v8.1#VerifyPin",
+          "isRead": false,
+          "mutatesEntity": true,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "CARD": "http://ws.gematik.de/conn/CardService/v8.1" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><CARD:VerifyPin xmlns:CARD=\"http://ws.gematik.de/conn/CardService/v8.1\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><CARD:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></CARD:Context><CARD:CardHandle></CARD:CardHandle><CARD:PinTyp>PIN.CH</CARD:PinTyp></CARD:VerifyPin></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Card Handle", "path": "/soap:Envelope/soap:Body/CARD:VerifyPin/CARD:CardHandle", "type": "text", "required": true, "sensitive": false },
+            { "label": "PIN Type", "path": "/soap:Envelope/soap:Body/CARD:VerifyPin/CARD:PinTyp", "type": "enum", "required": true, "sensitive": false, "enumValues": ["PIN.CH", "PIN.SMC", "PIN.QES"] }
+          ]
+        },
+        {
+          "id": "changePin",
+          "title": "Change PIN",
+          "soapAction": "http://ws.gematik.de/conn/CardService/v8.1#ChangePin",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "CARD": "http://ws.gematik.de/conn/CardService/v8.1" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><CARD:ChangePin xmlns:CARD=\"http://ws.gematik.de/conn/CardService/v8.1\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><CARD:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></CARD:Context><CARD:CardHandle></CARD:CardHandle><CARD:PinTyp>PIN.CH</CARD:PinTyp></CARD:ChangePin></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Card Handle", "path": "/soap:Envelope/soap:Body/CARD:ChangePin/CARD:CardHandle", "type": "text", "required": true, "sensitive": false },
+            { "label": "PIN Type", "path": "/soap:Envelope/soap:Body/CARD:ChangePin/CARD:PinTyp", "type": "enum", "required": true, "sensitive": false, "enumValues": ["PIN.CH", "PIN.SMC", "PIN.QES"] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "event",
+      "title": "Event Service",
+      "icon": "sap-icon://bell",
+      "endpoint": "/ws/conn/EventService",
+      "namespace": "http://ws.gematik.de/conn/EventService/WSDL/v7.2",
+      "listOperationId": "getCards",
+      "operations": [
+        {
+          "id": "getCards",
+          "title": "Get Cards",
+          "soapAction": "http://ws.gematik.de/conn/EventService/v7.2#GetCards",
+          "isRead": true,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "EVT": "http://ws.gematik.de/conn/EventService/v7.2", "CCOM": "http://ws.gematik.de/conn/ConnectorCommon/v5.0" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><EVT:GetCards xmlns:EVT=\"http://ws.gematik.de/conn/EventService/v7.2\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><EVT:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></EVT:Context></EVT:GetCards></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Mandant ID", "path": "/soap:Envelope/soap:Body/EVT:GetCards/EVT:Context/CCTX:MandantId", "type": "text", "required": true, "sensitive": false },
+            { "label": "Client System ID", "path": "/soap:Envelope/soap:Body/EVT:GetCards/EVT:Context/CCTX:ClientSystemId", "type": "text", "required": true, "sensitive": false },
+            { "label": "Workplace ID", "path": "/soap:Envelope/soap:Body/EVT:GetCards/EVT:Context/CCTX:WorkplaceId", "type": "text", "required": true, "sensitive": false }
+          ],
+          "rowMapping": {
+            "rowsLocalName": "Card",
+            "columns": [
+              { "label": "ICCSN", "localName": "Iccsn" },
+              { "label": "Type", "localName": "CardType" },
+              { "label": "Card Handle", "localName": "CardHandle" },
+              { "label": "Holder", "localName": "CardHolderName" }
+            ]
+          }
+        },
+        {
+          "id": "getCardTerminals",
+          "title": "Get Card Terminals",
+          "soapAction": "http://ws.gematik.de/conn/EventService/v7.2#GetCardTerminals",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "EVT": "http://ws.gematik.de/conn/EventService/v7.2" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><EVT:GetCardTerminals xmlns:EVT=\"http://ws.gematik.de/conn/EventService/v7.2\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><EVT:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></EVT:Context></EVT:GetCardTerminals></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Mandant ID", "path": "/soap:Envelope/soap:Body/EVT:GetCardTerminals/EVT:Context/CCTX:MandantId", "type": "text", "required": true, "sensitive": false }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cardTerminal",
+      "title": "Card Terminal Service",
+      "icon": "sap-icon://sys-monitor",
+      "endpoint": "/ws/conn/CardTerminalService",
+      "namespace": "http://ws.gematik.de/conn/CardTerminalService/WSDL/v1.1",
+      "listOperationId": null,
+      "operations": [
+        {
+          "id": "requestCard",
+          "title": "Request Card",
+          "soapAction": "http://ws.gematik.de/conn/CardTerminalService/v1.1#RequestCard",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "CT": "http://ws.gematik.de/conn/CardTerminalService/v1.1" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><CT:RequestCard xmlns:CT=\"http://ws.gematik.de/conn/CardTerminalService/v1.1\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><CT:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></CT:Context><CT:Slot><CT:CtId></CT:CtId><CT:SlotId>1</CT:SlotId></CT:Slot></CT:RequestCard></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Card Terminal ID", "path": "/soap:Envelope/soap:Body/CT:RequestCard/CT:Slot/CT:CtId", "type": "text", "required": true, "sensitive": false },
+            { "label": "Slot ID", "path": "/soap:Envelope/soap:Body/CT:RequestCard/CT:Slot/CT:SlotId", "type": "number", "required": true, "sensitive": false }
+          ]
+        },
+        {
+          "id": "ejectCard",
+          "title": "Eject Card",
+          "soapAction": "http://ws.gematik.de/conn/CardTerminalService/v1.1#EjectCard",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "CT": "http://ws.gematik.de/conn/CardTerminalService/v1.1" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><CT:EjectCard xmlns:CT=\"http://ws.gematik.de/conn/CardTerminalService/v1.1\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><CT:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></CT:Context><CT:CardHandle></CT:CardHandle><CT:Slot><CT:CtId></CT:CtId><CT:SlotId>1</CT:SlotId></CT:Slot></CT:EjectCard></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Card Handle", "path": "/soap:Envelope/soap:Body/CT:EjectCard/CT:CardHandle", "type": "text", "required": false, "sensitive": false },
+            { "label": "Card Terminal ID", "path": "/soap:Envelope/soap:Body/CT:EjectCard/CT:Slot/CT:CtId", "type": "text", "required": true, "sensitive": false },
+            { "label": "Slot ID", "path": "/soap:Envelope/soap:Body/CT:EjectCard/CT:Slot/CT:SlotId", "type": "number", "required": true, "sensitive": false }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "certificate",
+      "title": "Certificate Service",
+      "icon": "sap-icon://locked",
+      "endpoint": "/ws/conn/CertificateService",
+      "namespace": "http://ws.gematik.de/conn/CertificateService/WSDL/v6.0",
+      "listOperationId": "readCardCertificate",
+      "operations": [
+        {
+          "id": "readCardCertificate",
+          "title": "Read Card Certificate",
+          "soapAction": "http://ws.gematik.de/conn/CertificateService/v6.0#ReadCardCertificate",
+          "isRead": true,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "CRT": "http://ws.gematik.de/conn/CertificateService/v6.0" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><CRT:ReadCardCertificate xmlns:CRT=\"http://ws.gematik.de/conn/CertificateService/v6.0\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><CRT:CardHandle></CRT:CardHandle><CRT:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></CRT:Context><CRT:CertRefList><CRT:CertRef>C.AUT</CRT:CertRef></CRT:CertRefList></CRT:ReadCardCertificate></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Card Handle", "path": "/soap:Envelope/soap:Body/CRT:ReadCardCertificate/CRT:CardHandle", "type": "text", "required": true, "sensitive": false },
+            { "label": "Cert Reference", "path": "/soap:Envelope/soap:Body/CRT:ReadCardCertificate/CRT:CertRefList/CRT:CertRef", "type": "enum", "required": true, "sensitive": false, "enumValues": ["C.AUT", "C.ENC", "C.SIG", "C.QES"] }
+          ],
+          "rowMapping": {
+            "rowsLocalName": "X509DataInfo",
+            "columns": [
+              { "label": "Cert Ref", "localName": "CertRef" },
+              { "label": "Subject", "localName": "X509SubjectName" },
+              { "label": "Serial", "localName": "X509SerialNumber" }
+            ]
+          }
+        },
+        {
+          "id": "checkCertificateExpiration",
+          "title": "Check Certificate Expiration",
+          "soapAction": "http://ws.gematik.de/conn/CertificateService/v6.0#CheckCertificateExpiration",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "CRT": "http://ws.gematik.de/conn/CertificateService/v6.0" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><CRT:CheckCertificateExpiration xmlns:CRT=\"http://ws.gematik.de/conn/CertificateService/v6.0\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><CRT:CardHandle></CRT:CardHandle><CRT:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></CRT:Context></CRT:CheckCertificateExpiration></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Card Handle", "path": "/soap:Envelope/soap:Body/CRT:CheckCertificateExpiration/CRT:CardHandle", "type": "text", "required": true, "sensitive": false }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "encryption",
+      "title": "Encryption Service",
+      "icon": "sap-icon://key",
+      "endpoint": "/ws/conn/EncryptionService",
+      "namespace": "http://ws.gematik.de/conn/EncryptionService/WSDL/v6.1",
+      "listOperationId": null,
+      "operations": [
+        {
+          "id": "encryptDocument",
+          "title": "Encrypt Document",
+          "soapAction": "http://ws.gematik.de/conn/EncryptionService/v6.1#EncryptDocument",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "ENC": "http://ws.gematik.de/conn/EncryptionService/v6.1" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><ENC:EncryptDocument xmlns:ENC=\"http://ws.gematik.de/conn/EncryptionService/v6.1\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><ENC:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></ENC:Context><ENC:Document><ENC:Base64Data></ENC:Base64Data></ENC:Document></ENC:EncryptDocument></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Document (Base64)", "path": "/soap:Envelope/soap:Body/ENC:EncryptDocument/ENC:Document/ENC:Base64Data", "type": "base64", "required": true, "sensitive": true }
+          ]
+        },
+        {
+          "id": "decryptDocument",
+          "title": "Decrypt Document",
+          "soapAction": "http://ws.gematik.de/conn/EncryptionService/v6.1#DecryptDocument",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "ENC": "http://ws.gematik.de/conn/EncryptionService/v6.1" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><ENC:DecryptDocument xmlns:ENC=\"http://ws.gematik.de/conn/EncryptionService/v6.1\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><ENC:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></ENC:Context><ENC:Document><ENC:Base64Data></ENC:Base64Data></ENC:Document></ENC:DecryptDocument></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Encrypted Document (Base64)", "path": "/soap:Envelope/soap:Body/ENC:DecryptDocument/ENC:Document/ENC:Base64Data", "type": "base64", "required": true, "sensitive": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "signature",
+      "title": "Signature Service",
+      "icon": "sap-icon://signature",
+      "endpoint": "/ws/conn/SignatureService",
+      "namespace": "http://ws.gematik.de/conn/SignatureService/WSDL/v7.5",
+      "listOperationId": null,
+      "operations": [
+        {
+          "id": "getJobNumber",
+          "title": "Get Job Number",
+          "soapAction": "http://ws.gematik.de/conn/SignatureService/v7.5#GetJobNumber",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "SIG": "http://ws.gematik.de/conn/SignatureService/v7.5" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><SIG:GetJobNumber xmlns:SIG=\"http://ws.gematik.de/conn/SignatureService/v7.5\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><SIG:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></SIG:Context></SIG:GetJobNumber></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Mandant ID", "path": "/soap:Envelope/soap:Body/SIG:GetJobNumber/SIG:Context/CCTX:MandantId", "type": "text", "required": true, "sensitive": false }
+          ]
+        },
+        {
+          "id": "signDocument",
+          "title": "Sign Document",
+          "soapAction": "http://ws.gematik.de/conn/SignatureService/v7.5#SignDocument",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "SIG": "http://ws.gematik.de/conn/SignatureService/v7.5" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><SIG:SignDocument xmlns:SIG=\"http://ws.gematik.de/conn/SignatureService/v7.5\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><SIG:CardHandle></SIG:CardHandle><SIG:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></SIG:Context><SIG:JobNumber></SIG:JobNumber><SIG:Document><SIG:Base64Data></SIG:Base64Data></SIG:Document></SIG:SignDocument></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Card Handle", "path": "/soap:Envelope/soap:Body/SIG:SignDocument/SIG:CardHandle", "type": "text", "required": true, "sensitive": false },
+            { "label": "Job Number", "path": "/soap:Envelope/soap:Body/SIG:SignDocument/SIG:JobNumber", "type": "text", "required": true, "sensitive": false },
+            { "label": "Document (Base64)", "path": "/soap:Envelope/soap:Body/SIG:SignDocument/SIG:Document/SIG:Base64Data", "type": "base64", "required": true, "sensitive": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "authSignature",
+      "title": "Auth Signature Service",
+      "icon": "sap-icon://shield",
+      "endpoint": "/ws/conn/AuthSignatureService",
+      "namespace": "http://ws.gematik.de/conn/AuthSignatureService/WSDL/v7.4",
+      "listOperationId": null,
+      "operations": [
+        {
+          "id": "externalAuthenticate",
+          "title": "External Authenticate",
+          "soapAction": "http://ws.gematik.de/conn/AuthSignatureService/v7.4#ExternalAuthenticate",
+          "isRead": false,
+          "mutatesEntity": false,
+          "namespaces": { "soap": "http://schemas.xmlsoap.org/soap/envelope/", "CCTX": "http://ws.gematik.de/conn/ConnectorContext/v2.0", "AUTH": "http://ws.gematik.de/conn/AuthSignatureService/v7.4" },
+          "envelopeTemplate": "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header/><soap:Body><AUTH:ExternalAuthenticate xmlns:AUTH=\"http://ws.gematik.de/conn/AuthSignatureService/v7.4\" xmlns:CCTX=\"http://ws.gematik.de/conn/ConnectorContext/v2.0\"><AUTH:CardHandle></AUTH:CardHandle><AUTH:Context><CCTX:MandantId>{{context.mandantId}}</CCTX:MandantId><CCTX:ClientSystemId>{{context.clientSystemId}}</CCTX:ClientSystemId><CCTX:WorkplaceId>{{context.workplaceId}}</CCTX:WorkplaceId></AUTH:Context><AUTH:BinaryString><AUTH:Base64Data></AUTH:Base64Data></AUTH:BinaryString></AUTH:ExternalAuthenticate></soap:Body></soap:Envelope>",
+          "fields": [
+            { "label": "Card Handle", "path": "/soap:Envelope/soap:Body/AUTH:ExternalAuthenticate/AUTH:CardHandle", "type": "text", "required": true, "sensitive": false },
+            { "label": "Data to Sign (Base64)", "path": "/soap:Envelope/soap:Body/AUTH:ExternalAuthenticate/AUTH:BinaryString/AUTH:Base64Data", "type": "base64", "required": true, "sensitive": false }
+          ]
+        }
+      ]
+    }
+  ]
+}

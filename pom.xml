@@ -29,6 +29,7 @@
         <module>quarkus-server</module>
         <module>openkim</module>
 	<module>system-tests</module>
+        <module>ui5-conn-frontend</module>
     </modules>
 
     <properties>
@@ -147,6 +148,11 @@
             <dependency>
                 <groupId>de.servicehealtherx</groupId>
                 <artifactId>consumer-soap-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.servicehealtherx</groupId>
+                <artifactId>ui5-conn-frontend</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

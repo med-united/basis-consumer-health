@@ -1,0 +1,35 @@
+<mvc:View
+    controllerName="de.servicehealtherx.connui.controller.Home"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns="sap.m"
+    height="100%">
+    <Page id="homePage" title="{i18n>homeTitle}" class="sapUiResponsiveContentPadding">
+        <content>
+            <MessageStrip
+                text="{i18n>homeIntro}"
+                showIcon="true"
+                class="sapUiSmallMargin"/>
+            <f:GridContainer
+                xmlns:f="sap.f"
+                snapToRow="true"
+                items="{catalog>/services}">
+                <f:layout>
+                    <f:GridContainerSettings rowSize="6rem" columnSize="11rem" gap="1rem"/>
+                </f:layout>
+                <GenericTile
+                    header="{catalog>title}"
+                    subheader="{catalog>endpoint}"
+                    press=".onServicePress"
+                    class="sapUiTinyMarginBegin sapUiTinyMarginTop">
+                    <tileContent>
+                        <TileContent>
+                            <content>
+                                <ImageContent src="{catalog>icon}"/>
+                            </content>
+                        </TileContent>
+                    </tileContent>
+                </GenericTile>
+            </f:GridContainer>
+        </content>
+    </Page>
+</mvc:View>

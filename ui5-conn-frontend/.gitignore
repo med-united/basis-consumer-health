@@ -1,0 +1,10 @@
+# Build-time Node toolchain (provisioned by frontend-maven-plugin)
+node/
+node_modules/
+package-lock.json
+
+# UI5 build output / Maven
+dist/
+target/
+*.log
+.ui5/
