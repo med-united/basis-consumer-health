@@ -63,6 +63,12 @@
             <artifactId>quarkus-cxf</artifactId>
         </dependency>
 
+        <!-- JAX-RS — serves the connector.sds Dienstverzeichnisdienst (gemSpec_Kon 4.1.3) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest</artifactId>
+        </dependency>
+
         <!-- JPA + H2 -->
         <dependency>
             <groupId>io.quarkus</groupId>
