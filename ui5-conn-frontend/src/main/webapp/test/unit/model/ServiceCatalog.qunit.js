@@ -41,4 +41,14 @@ sap.ui.define([
             cat.validate({ services: [svc({ operations: [{ id: "x", isRead: false }], listOperationId: "x" })] });
         }, /must reference a read operation/);
     });
+
+    QUnit.module("ServiceCatalog._denormalizeEndpoints");
+
+    QUnit.test("copies_service_endpoint_onto_each_operation", function (assert) {
+        var cat = new ServiceCatalog();
+        var data = { services: [svc({ operations: [{ id: "a" }, { id: "b" }] })] };
+        cat._denormalizeEndpoints(data);
+        assert.equal(data.services[0].operations[0].endpoint, "/ws/conn/CardService");
+        assert.equal(data.services[0].operations[1].endpoint, "/ws/conn/CardService");
+    });
 });

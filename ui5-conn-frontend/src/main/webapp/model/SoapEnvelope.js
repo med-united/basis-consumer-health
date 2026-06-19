@@ -49,9 +49,43 @@ sap.ui.define([
             .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     };
 
-    /** @returns {string} the current envelope serialized to XML text (for the raw view). */
+    /** @returns {string} the current envelope serialized to XML text (compact — used on the wire). */
     SoapEnvelope.prototype.serialize = function () {
         return this._model.getXML();
+    };
+
+    /**
+     * @returns {string} the current envelope pretty-printed for display in the raw CodeEditor.
+     * Display-only: the compact serialize() is what gets sent, so no indentation whitespace
+     * leaks onto the wire as text nodes.
+     */
+    SoapEnvelope.prototype.serializeFormatted = function () {
+        return SoapEnvelope.formatXml(this.serialize());
+    };
+
+    /**
+     * Pretty-print a well-formed XML string with two-space indentation. Reflows by inserting
+     * breaks between adjacent tags, then indents per nesting depth; elements with inline text
+     * (e.g. <CCTX:MandantId>m1</CCTX:MandantId>) stay on one line. Malformed input is returned
+     * unchanged so the editor never blanks out an in-progress edit.
+     */
+    SoapEnvelope.formatXml = function (sXml) {
+        if (!sXml || !sXml.trim()) {
+            return sXml;
+        }
+        var withBreaks = sXml.replace(/>\s*</g, ">\n<");
+        var pad = 0;
+        return withBreaks.split("\n").map(function (sLine) {
+            var line = sLine.trim();
+            if (!line) { return null; }
+            var isClosing = /^<\//.test(line);
+            var isSelfContained = /^<[^!?][^>]*>.*<\/[^>]+>$/.test(line);   // <a>text</a> on one line
+            var isOpening = /^<[^!?/][^>]*[^/]>$/.test(line) && !isSelfContained;
+            if (isClosing && pad > 0) { pad -= 1; }
+            var sIndent = new Array(pad + 1).join("  ");
+            if (isOpening) { pad += 1; }
+            return sIndent + line;
+        }).filter(function (s) { return s !== null; }).join("\n");
     };
 
     /**

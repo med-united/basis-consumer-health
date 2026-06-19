@@ -4,8 +4,8 @@
   "private": true,
   "description": "OpenUI5 SPA for calling konnektor SOAP services same-origin",
   "scripts": {
-    "build": "ui5 build self-contained --clean-dest --dest target/classes/META-INF/resources/conn-ui",
-    "start": "ui5 serve --open conn-ui/index.html",
+    "build": "ui5 build self-contained --all --clean-dest --dest target/classes/META-INF/resources/conn-ui && node scripts/generate-version-json.js",
+    "start": "ui5 serve --open index.html",
     "test": "karma start --single-run",
     "test:watch": "karma start"
   },

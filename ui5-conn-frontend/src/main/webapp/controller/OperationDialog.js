@@ -62,30 +62,49 @@ sap.ui.define([
             return Fragment.byId(this._view.getId() + "--opDlg", sId);
         },
 
+        /**
+         * Convert a catalog field's full XPath into a path the XMLModel can resolve.
+         *
+         * Catalog paths are authoritative, human-readable XPaths that include the document
+         * root (e.g. "/soap:Envelope/soap:Body/..."). UI5's XMLModel resolves absolute paths
+         * RELATIVE to the document element, so the leading root segment must be stripped —
+         * otherwise it looks for a "soap:Envelope" child inside "soap:Envelope" and finds
+         * nothing, so reads return "" and writes silently fail (typed values vanish).
+         */
+        _modelPath: function (sFullPath) {
+            var oDoc = this._envelope.getModel().getData();
+            var sRoot = oDoc && oDoc.documentElement && oDoc.documentElement.nodeName;
+            if (sRoot && sFullPath.indexOf("/" + sRoot + "/") === 0) {
+                return sFullPath.substring(("/" + sRoot).length);
+            }
+            return sFullPath;
+        },
+
         /** Build form controls from the operation field map, each bound to the envelope XMLModel. */
         _buildForm: function () {
             var oBox = this._byId("formContainer");
             oBox.destroyItems();
             (this._operation.fields || []).forEach(function (field) {
+                var sPath = this._modelPath(field.path);
                 oBox.addItem(new Label({ text: field.label, required: !!field.required })
                     .addStyleClass("sapUiTinyMarginTop"));
                 var oControl;
                 if (field.type === "enum") {
                     oControl = new Select({
-                        selectedKey: "{env>" + field.path + "}",
+                        selectedKey: "{env>" + sPath + "}",
                         items: (field.enumValues || []).map(function (v) {
                             return new Item({ key: v, text: v });
                         })
                     });
                 } else {
                     oControl = new Input({
-                        value: "{env>" + field.path + "}",
+                        value: "{env>" + sPath + "}",
                         type: field.sensitive ? "Password" : "Text"
                     });
                 }
                 oControl.setWidth("100%");
                 oBox.addItem(oControl);
-            });
+            }.bind(this));
         },
 
         _resetViews: function () {
@@ -102,7 +121,7 @@ sap.ui.define([
             var oRaw = this._byId("rawEditor");
             var oForm = this._byId("formContainer");
             if (sKey === "raw") {
-                oRaw.setValue(this._envelope.serialize());
+                oRaw.setValue(this._envelope.serializeFormatted());
                 oRaw.setVisible(true);
                 oForm.setVisible(false);
             } else {
@@ -149,9 +168,9 @@ sap.ui.define([
             var oModel = this._envelope.getModel();
             return (this._operation.fields || []).every(function (field) {
                 if (!field.required) { return true; }
-                var v = oModel.getProperty(field.path);
+                var v = oModel.getProperty(this._modelPath(field.path));
                 return v != null && String(v).trim() !== "";
-            });
+            }.bind(this));
         },
 
         /** Render success response or SOAP fault (output-encoded; raw always inspectable). */
@@ -168,7 +187,7 @@ sap.ui.define([
                 oFault.setVisible(false);
             }
             // CodeEditor renders text content (no HTML injection) — safe for konnektor-returned data.
-            this._byId("responseEditor").setValue(oResult.rawXml || "");
+            this._byId("responseEditor").setValue(SoapEnvelope.formatXml(oResult.rawXml || ""));
         },
 
         onCancel: function () {

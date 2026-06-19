@@ -54,4 +54,29 @@ sap.ui.define([
         assert.notOk(SoapEnvelope.checkWellFormed("<a><b></a>").valid, "invalid xml");
         assert.notOk(SoapEnvelope.checkWellFormed("   ").valid, "empty is invalid");
     });
+
+    QUnit.test("formatXml_indents_by_nesting_depth", function (assert) {
+        var pretty = SoapEnvelope.formatXml(
+            "<soap:Envelope><soap:Body><CARD:Context>" +
+            "<CCTX:MandantId>m1</CCTX:MandantId></CARD:Context></soap:Body></soap:Envelope>");
+        var lines = pretty.split("\n");
+        assert.strictEqual(lines[0], "<soap:Envelope>", "root at column 0");
+        assert.strictEqual(lines[1], "  <soap:Body>", "body indented one level");
+        assert.strictEqual(lines[2], "    <CARD:Context>", "context indented two levels");
+        assert.strictEqual(lines[3], "      <CCTX:MandantId>m1</CCTX:MandantId>",
+            "leaf with inline text stays on one line, indented three levels");
+        assert.strictEqual(lines[4], "    </CARD:Context>", "closing tag dedents to its opener");
+    });
+
+    QUnit.test("serializeFormatted_pretty_prints_the_envelope", function (assert) {
+        var env = new SoapEnvelope().init(OP, { mandantId: "M1" });
+        var pretty = env.serializeFormatted();
+        assert.ok(pretty.indexOf("\n") > -1, "formatted output spans multiple lines");
+        assert.ok(SoapEnvelope.checkWellFormed(pretty).valid, "formatted output is still well-formed");
+        assert.ok(pretty.indexOf("  <soap:Body>") > -1, "body is indented");
+    });
+
+    QUnit.test("formatXml_returns_blank_input_unchanged", function (assert) {
+        assert.strictEqual(SoapEnvelope.formatXml(""), "", "empty string passes through");
+    });
 });

@@ -31,6 +31,7 @@ sap.ui.define([
             })
             .then(function (data) {
                 that.validate(data);
+                that._denormalizeEndpoints(data);
                 that._model.setData(data);
                 return data.services;
             });
@@ -73,6 +74,20 @@ sap.ui.define([
             }
         });
         return true;
+    };
+
+    /**
+     * Copy each service's konnektor endpoint down onto its operations. The catalog stores the
+     * endpoint once per service (DRY), but SoapClient.send consumes a single operation object and
+     * reads operation.endpoint — without this, sends resolve to "/undefined". Denormalizing here
+     * keeps the catalog authoritative while satisfying that contract at every call site.
+     */
+    ServiceCatalog.prototype._denormalizeEndpoints = function (data) {
+        (data.services || []).forEach(function (svc) {
+            (svc.operations || []).forEach(function (op) {
+                op.endpoint = svc.endpoint;
+            });
+        });
     };
 
     ServiceCatalog.prototype.getServices = function () {
