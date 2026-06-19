@@ -6,7 +6,7 @@ import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
 
-import de.servicehealtherx.apdu.card.CmCardList;
+import de.servicehealtherx.apdu.card.CardListAggregator;
 import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
 import de.servicehealtherx.konnektor.vsdm.ReadVsdService;
 import jakarta.enterprise.inject.Instance;
@@ -16,15 +16,12 @@ class VsdServiceProducerTest {
     @SuppressWarnings("unchecked")
     private VsdServiceProducer producer(boolean c2cEnabled, boolean infraResolvable) {
         VsdServiceProducer p = new VsdServiceProducer();
-        Instance<CmCardList> cardList = mock(Instance.class);
         Instance<CardReaderPortResolver> resolver = mock(Instance.class);
-        when(cardList.isResolvable()).thenReturn(infraResolvable);
         when(resolver.isResolvable()).thenReturn(infraResolvable);
         if (infraResolvable) {
-            when(cardList.get()).thenReturn(new CmCardList());
             when(resolver.get()).thenReturn(CardReaderPortResolver.NONE);
         }
-        p.cardList = cardList;
+        p.cardListAggregator = new CardListAggregator();
         p.portResolver = resolver;
         p.timeoutMillis = 30_000;
         p.cardToCardEnabled = c2cEnabled;

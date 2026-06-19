@@ -9,11 +9,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 import de.servicehealtherx.apdu.c2c.CardToCardAuthException;
 import de.servicehealtherx.apdu.c2c.CardToCardAuthenticator;
 import de.servicehealtherx.apdu.card.ApduExecutionException;
 import de.servicehealtherx.apdu.card.ApduSecureChannel;
+import de.servicehealtherx.apdu.card.CardListAggregator;
 import de.servicehealtherx.apdu.card.CardObject;
 import de.servicehealtherx.apdu.card.CertStatus;
 import de.servicehealtherx.apdu.card.CmCardList;
@@ -50,7 +52,7 @@ import de.servicehealtherx.apdu.model.GematikISO7816;
  */
 public final class ReadVsdService {
 
-    private final CmCardList cardList;
+    private final Supplier<CardListAggregator> cardListSupplier;
     private final CardReaderPortResolver portResolver;
     private final CardToCardAuthenticator authenticator;
     private final EgkFileReader fileReader = new EgkFileReader();
@@ -69,12 +71,26 @@ public final class ReadVsdService {
         return t;
     });
 
-    public ReadVsdService(CmCardList cardList, CardReaderPortResolver portResolver,
+    /**
+     * Production constructor: the card view is resolved per call from the (request-scoped)
+     * {@link CardListAggregator}, so a read sees the unified, transport-spanning card list across
+     * every crypto provider (FR-064).
+     */
+    public ReadVsdService(Supplier<CardListAggregator> cardListSupplier, CardReaderPortResolver portResolver,
             CardToCardAuthenticator authenticator, long timeoutMillis) {
-        this.cardList = cardList;
+        this.cardListSupplier = cardListSupplier;
         this.portResolver = portResolver;
         this.authenticator = authenticator;
         this.timeoutMillis = timeoutMillis;
+    }
+
+    /**
+     * Convenience constructor over a single {@link CmCardList} (one transport / tests). The list is
+     * wrapped in a {@link CardListAggregator} so the read path is identical to the multi-provider case.
+     */
+    public ReadVsdService(CmCardList cardList, CardReaderPortResolver portResolver,
+            CardToCardAuthenticator authenticator, long timeoutMillis) {
+        this(() -> new CardListAggregator().addSource(cardList), portResolver, authenticator, timeoutMillis);
     }
 
     /**
@@ -89,7 +105,11 @@ public final class ReadVsdService {
         if (!reservedEgkHandles.add(request.ehcHandle())) {
             throw new VsdmReadException(VsdmErrorCode.CARD_BUSY, "eGK already in use by another call");
         }
-        Future<VsdReadResult> future = timeoutExecutor.submit(() -> doRead(request));
+        // Resolve the aggregator on the caller (request) thread: the producer's instance may be a CDI
+        // request-scoped proxy, while doRead runs on a context-less executor thread. snapshot() detaches
+        // a proxy-free view that shares the providers' thread-safe CM_CARD_LISTs.
+        CardListAggregator cards = cardListSupplier.get().snapshot();
+        Future<VsdReadResult> future = timeoutExecutor.submit(() -> doRead(request, cards));
         try {
             return future.get(timeoutMillis, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
@@ -125,7 +145,7 @@ public final class ReadVsdService {
         }
     }
 
-    private VsdReadResult doRead(ReadVsdRequest request) throws CardTransportException {
+    private VsdReadResult doRead(ReadVsdRequest request, CardListAggregator cardList) throws CardTransportException {
         CardObject egk = cardList.findByHandle(request.ehcHandle())
                 .orElseThrow(() -> new VsdmReadException(VsdmErrorCode.INVALID_REQUEST, "unknown EhcHandle"));
         if (egk.type() != CardType.EGK) {

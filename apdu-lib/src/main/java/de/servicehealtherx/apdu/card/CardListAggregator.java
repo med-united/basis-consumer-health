@@ -22,8 +22,13 @@ import jakarta.enterprise.inject.Instance;
  * union
  * duplicate-free (FR-067); {@link #findAll()} de-duplicates defensively by
  * handle regardless.
+ *
+ * <p>
+ * Not {@code final} so it can be produced as a CDI normal-scoped
+ * ({@code @RequestScoped}) bean, which requires a proxyable type (see
+ * {@code crypto-services-lib}'s {@code CardListAggregatorProducer}).
  */
-public final class CardListAggregator {
+public class CardListAggregator {
 
     private final List<CmCardList> sources = new ArrayList<>();
 
@@ -87,10 +92,22 @@ public final class CardListAggregator {
         sources.add(new CryptoProviderCardListAdapter(cryptoProvider));
     }
 
-    public static List<CardObject> getAllCardObjects(Instance<CryptoProvider> cryptoProviderInstances) {
-        // Unified, transport-spanning view: aggregate every provider's own CM_CARD_LIST
-        // (PC/SC + SICCT), de-duplicated by cardHandle (feature 002-card-handle,
-        // FR-062/FR-064).
+    /**
+     * A detached, proxy-free copy of this aggregator that shares the same
+     * (thread-safe) {@link CmCardList} sources. Use it to escape a CDI client
+     * proxy / request context before handing the view to another thread (e.g. the
+     * ReadVSD timeout executor).
+     */
+    public CardListAggregator snapshot() {
+        return new CardListAggregator(sources);
+    }
+
+    /**
+     * Build the unified, transport-spanning aggregator over every currently
+     * registered {@link CryptoProvider}: a provider's own CM_CARD_LIST when it is a
+     * {@link CardListProvider} (PC/SC + SICCT), otherwise a read-through adapter.
+     */
+    public static CardListAggregator from(Instance<CryptoProvider> cryptoProviderInstances) {
         CardListAggregator aggregator = new CardListAggregator();
         for (CryptoProvider cryptoProvider : cryptoProviderInstances) {
             if (cryptoProvider instanceof CardListProvider clp) {
@@ -100,7 +117,13 @@ public final class CardListAggregator {
                 aggregator.addCryptoProvider(cryptoProvider);
             }
         }
-        List<CardObject> allCardObjects = aggregator.findAll();
-        return allCardObjects;
+        return aggregator;
+    }
+
+    public static List<CardObject> getAllCardObjects(Instance<CryptoProvider> cryptoProviderInstances) {
+        // Unified, transport-spanning view: aggregate every provider's own CM_CARD_LIST
+        // (PC/SC + SICCT), de-duplicated by cardHandle (feature 002-card-handle,
+        // FR-062/FR-064).
+        return from(cryptoProviderInstances).findAll();
     }
 }

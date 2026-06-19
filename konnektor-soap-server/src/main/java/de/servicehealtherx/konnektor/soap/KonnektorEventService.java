@@ -34,14 +34,10 @@ import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.enterprise.inject.Instance;
 import jakarta.jws.WebService;
 import jakarta.jws.soap.SOAPBinding;
 
-import de.servicehealtherx.crypto.CryptoProvider;
-import de.servicehealtherx.crypto.KeyStoreDescriptor;
 import de.servicehealtherx.apdu.card.CardListAggregator;
-import de.servicehealtherx.apdu.card.CardListProvider;
 import de.servicehealtherx.apdu.card.CardObject;
 import de.servicehealtherx.apdu.card.CardVersionInfo;
 
@@ -68,7 +64,7 @@ public class KonnektorEventService implements EventServicePortType {
     SicctTerminalManager sicctTerminalManager;
 
     @Inject
-    Instance<CryptoProvider> cryptoProviderInstances;
+    CardListAggregator cardListAggregator;
 
     @Inject
     SubscriptionService subscriptionService;
@@ -206,7 +202,7 @@ public class KonnektorEventService implements EventServicePortType {
     }
 
     private List<CardInfoType> getAllCards() {
-        List<CardObject> allCardObjects = CardListAggregator.getAllCardObjects(cryptoProviderInstances);
+        List<CardObject> allCardObjects = cardListAggregator.findAll();
         List<CardInfoType> cards = allCardObjects.stream().map(this::toCardInfoType)
                 .collect(Collectors.toList());
         return cards;

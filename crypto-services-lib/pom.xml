@@ -16,10 +16,15 @@
     <description>EncryptionService, SignatureService, CertificateService business logic; MicroProfile ConfigSource DB; JPA AppConfigProperty entity; JMX management beans</description>
 
     <dependencies>
-        <!-- Internal: crypto-lib only — MUST NOT depend on sicct-lib (enforced below) -->
+        <!-- Internal: crypto-lib + apdu-lib (transport-neutral card model / CardListAggregator).
+             MUST NOT depend on sicct-lib (enforced below); apdu-lib is itself sicct-free. -->
         <dependency>
             <groupId>de.servicehealtherx</groupId>
             <artifactId>crypto-lib</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>apdu-lib</artifactId>
         </dependency>
 
         <!-- Quarkus CDI + Health -->

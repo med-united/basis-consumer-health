@@ -3,7 +3,7 @@ package de.servicehealtherx.konnektor.soap;
 import de.servicehealtherx.apdu.c2c.CardToCardAuthenticator;
 import de.servicehealtherx.apdu.c2c.ElcCardToCardAuthenticator;
 import de.servicehealtherx.apdu.c2c.SessionKeyDerivation;
-import de.servicehealtherx.apdu.card.CmCardList;
+import de.servicehealtherx.apdu.card.CardListAggregator;
 import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
 import de.servicehealtherx.konnektor.vsdm.ReadVsdService;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -13,11 +13,14 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /**
- * Produces the {@link ReadVsdService} bean from the card-management infrastructure. {@code CmCardList}
- * and {@code CardReaderPortResolver} are owned by the transport runtime
- * ({@code quarkus-sicct-extension}); they are injected via {@link Instance} so the bean is always
- * producible even before a terminal is bound (an empty card list / NONE resolver simply means no
- * card is reachable yet).
+ * Produces the {@link ReadVsdService} bean from the card-management infrastructure. The
+ * {@code CardReaderPortResolver} is owned by the transport runtime
+ * ({@code quarkus-sicct-extension}) and injected via {@link Instance} so the bean is always
+ * producible even before a terminal is bound (a NONE resolver simply means no card is reachable yet).
+ *
+ * <p>The card view is the request-scoped {@link CardListAggregator}, which spans every registered
+ * crypto provider; it is injected as a normal-scoped proxy and handed to the service as a supplier so
+ * each {@code ReadVSD} resolves the current unified card list (FR-064).
  *
  * <p>The card-to-card authenticator is wired to {@link CardToCardAuthenticator#NONE} for now: the
  * on-card ELC Trusted-Channel handshake that unlocks EF.GVD is hardware-bound and not yet validated
@@ -28,7 +31,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 public class VsdServiceProducer {
 
     @Inject
-    Instance<CmCardList> cardList;
+    CardListAggregator cardListAggregator;
 
     @Inject
     Instance<CardReaderPortResolver> portResolver;
@@ -48,11 +51,11 @@ public class VsdServiceProducer {
     @Produces
     @ApplicationScoped
     public ReadVsdService readVsdService() {
-        CmCardList list = cardList.isResolvable() ? cardList.get() : new CmCardList();
         CardReaderPortResolver resolver = portResolver.isResolvable() ? portResolver.get() : CardReaderPortResolver.NONE;
         CardToCardAuthenticator authenticator = cardToCardEnabled
                 ? new ElcCardToCardAuthenticator(SessionKeyDerivation.ON_CARD)
                 : CardToCardAuthenticator.NONE;
-        return new ReadVsdService(list, resolver, authenticator, timeoutMillis);
+        // Supplier defers to the request-scoped aggregator proxy; ReadVsdService snapshots it per call.
+        return new ReadVsdService(() -> cardListAggregator, resolver, authenticator, timeoutMillis);
     }
 }
