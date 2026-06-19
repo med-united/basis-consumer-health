@@ -1,0 +1,38 @@
+@startuml
+title VSDService ReadVSD — Deployment (local, no external TI)
+
+skinparam componentStyle rectangle
+
+node "Primary System\n(PVS / KIS / AVS)" as PS {
+  component "VSDM client" as Client
+}
+
+cloud "LAN (practice / hospital)" as LAN
+
+node "Konnektor (Kubernetes pod, JVM)" as KON {
+  component "quarkus-server\n(/ws CXF)" as QS
+  component "konnektor-soap-server\nKonnektorVSDService\n/ws/conn/VSDService" as SOAP
+  component "apdu-lib\nReadVsdService + C2C + ApduExecutor" as APDU
+  component "crypto-pcsc-lib / crypto-sicct-lib\nCardReaderPort" as PORT
+}
+
+node "Card Terminal" as CT {
+  component "eGK (DF.HCA)" as EGK
+  component "SMC-B / HBA" as SMB
+}
+
+Client --> LAN : SOAP/HTTP ReadVSD
+LAN --> QS
+QS --> SOAP
+SOAP --> APDU : ReadVsdService.read(...)
+APDU --> PORT : APDUs
+PORT --> CT : PC/SC or SICCT
+PORT --> EGK : READ BINARY (PD/VD/StatusVD/GVD)
+PORT --> SMB : C2C (CVC, GENERAL AUTHENTICATE)
+
+note right of KON
+  No connection leaves the konnektor:
+  NO UFS / VSDD / CMS / Intermediaer.
+  (FR-006 / SC-004)
+end note
+@enduml

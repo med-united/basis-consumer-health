@@ -1,0 +1,87 @@
+@startuml
+title VSDM ReadVSD — domain & card classes
+
+skinparam classAttributeIconSize 0
+
+interface "VSDServicePortType\n(generated)" as PT {
+  +readVSD(ReadVSD) : ReadVSDResponse
+}
+
+class KonnektorVSDService {
+  -ReadVsdService readVsdService
+  +readVSD(ReadVSD) : ReadVSDResponse
+  -toResponse(VsdReadResult) : ReadVSDResponse
+}
+KonnektorVSDService ..|> PT
+
+class VsdmFaultFactory {
+  +fault(VsdmReadException) : FaultMessage
+  +fault(int code, String text) : FaultMessage
+}
+KonnektorVSDService --> VsdmFaultFactory
+
+class ReadVsdService {
+  +read(ReadVsdRequest) : VsdReadResult
+  -checkContext() ; -reserveEgk() ; -checkEgk()
+  -authenticateC2C() ; -readContainers() ; -writeAudit()
+}
+KonnektorVSDService --> ReadVsdService
+
+class VsdReadResult {
+  -byte[] personalData
+  -byte[] generalData
+  -Optional<byte[]> protectedData
+  -VsdStatus status
+}
+class VsdStatus {
+  -String status
+  -OffsetDateTime timestamp
+  -String version
+}
+VsdReadResult --> VsdStatus
+
+class VsdmReadException {
+  -int errorCode
+  -String detail
+}
+
+class ApduExecutor {
+  -CardReaderPort port
+  +execute(TucGenerationResult) : List<ResponseAPDU>
+}
+class EgkFileReader {
+  +read(EgkVsdmFile, SecureMessagingSession?) : byte[]
+}
+class StatusVdConverter {
+  +convert(byte[]) : VsdStatus
+}
+enum EgkVsdmFile {
+  EF_PD
+  EF_VD
+  EF_STATUS_VD
+  EF_GVD
+}
+
+class TucKon005CardToCardAuth {
+  +authenticate(CardSession eGK, CardSession hpc) : SecureMessagingSession
+}
+class CvcChainParser {
+  +parse(byte[] cvc) : CvCertificate
+}
+class SecureMessagingSession {
+  +wrap(CommandAPDU) : CommandAPDU
+  +unwrap(ResponseAPDU) : ResponseAPDU
+}
+
+ReadVsdService --> ApduExecutor
+ReadVsdService --> EgkFileReader
+ReadVsdService --> StatusVdConverter
+ReadVsdService --> TucKon005CardToCardAuth
+ReadVsdService --> VsdReadResult
+ReadVsdService ..> VsdmReadException
+EgkFileReader --> ApduExecutor
+EgkFileReader ..> EgkVsdmFile
+TucKon005CardToCardAuth --> CvcChainParser
+TucKon005CardToCardAuth --> SecureMessagingSession
+EgkFileReader ..> SecureMessagingSession
+@enduml

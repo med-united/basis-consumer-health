@@ -1,0 +1,41 @@
+@startuml
+title ReadVSD — operation / eGK reservation lifecycle
+
+[*] --> Validating
+
+Validating --> Rejected : PerformOnlineCheck=true /\nReadOnlineReceipt=true /\ninvalid context (FR-007/008/010)
+Validating --> Reserving : flags=false, context ok
+
+Reserving --> CardBusy : eGK already reserved (FR-029)
+Reserving --> CheckingEgk : reservation acquired (TUC_KON_023)
+
+CheckingEgk --> Failed : DF.HCA blocked (114) /\ncert invalid (107/106) (FR-015)
+CheckingEgk --> Authenticating : eGK usable
+
+Authenticating --> Failed : PIN.SMC/PIN.CH not set\n(3041/3042) (FR-012)
+Authenticating --> ReadingMandatory : C2C done\n(AUT_VSD reached or GVD will be skipped)
+
+ReadingMandatory --> Failed : StatusVD='1' (3001) /\ncontainer read error (3011)
+ReadingMandatory --> ReadingProtected : PD+VD+Status read;\nC2C authorised GVD
+ReadingMandatory --> Auditing : PD+VD+Status read;\nGVD not authorised (omit, FR-021)
+
+ReadingProtected --> Failed : GVD read error (3011)
+ReadingProtected --> Auditing : GVD read (SM-wrapped)
+
+Auditing --> Failed : audit write failed -> no VSD (FR-023)
+Auditing --> Releasing : audit written
+
+Releasing --> Succeeded : response built (no PN)
+
+Reserving --> Failed : timeout (FR-027)
+CheckingEgk --> Failed : timeout (FR-027)
+Authenticating --> Failed : timeout (FR-027)
+ReadingMandatory --> Failed : timeout (FR-027)
+ReadingProtected --> Failed : timeout (FR-027)
+
+Failed --> Releasing : release eGK reservation
+Rejected --> [*]
+CardBusy --> [*]
+Succeeded --> [*]
+note bottom of Releasing : reservation always released\non success or abort
+@enduml

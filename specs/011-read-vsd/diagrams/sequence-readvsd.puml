@@ -1,0 +1,57 @@
+@startuml
+title ReadVSD — local read flow (PerformOnlineCheck=false)
+
+actor "Primary System" as PS
+participant "KonnektorVSDService" as SVC
+participant "ReadVsdService" as ORCH
+participant "CardSessionService\n(+Reserve)" as SESS
+participant "TucKon005CardToCardAuth" as C2C
+participant "EgkFileReader\n(+ApduExecutor)" as RD
+participant "StatusVdConverter" as CONV
+participant "eGK" as EGK
+
+PS -> SVC : ReadVSD(EhcHandle, HpcHandle,\nPerformOnlineCheck=false,\nReadOnlineReceipt=false, Context)
+activate SVC
+
+SVC -> SVC : reject if PerformOnlineCheck\nor ReadOnlineReceipt == true (FR-007/008)
+SVC -> ORCH : read(request)
+activate ORCH
+
+ORCH -> ORCH : TUC_KON_000 check both cards\nusable in Context (FR-010)
+ORCH -> SESS : reserve eGK (TUC_KON_023, DoLock)
+note right of SESS : busy -> card-busy fault (FR-029)
+ORCH -> EGK : TUC_KON_018 eGK blocking / cert check
+note right of EGK : blocked->114, invalid->107/106 (FR-015)
+
+ORCH -> C2C : authenticate(eGK, HBA/SMC-B)
+activate C2C
+note right of C2C : PIN.SMC/PIN.CH not set -> 3041/3042 (FR-012)\nreaches AUT_VSD Trusted Channel (or GVD skipped)
+C2C --> ORCH : SM session (if authorised)
+deactivate C2C
+
+ORCH -> RD : read EF.StatusVD (AlwaysRead)
+RD --> ORCH : statusVD bytes
+ORCH -> CONV : convert (Tab_FM_VSDM_21)
+CONV --> ORCH : VsdStatus
+alt Status == '1' (inconsistent)
+  ORCH --> SVC : VsdmReadException(3001) (FR-017)
+end
+
+ORCH -> RD : read EF.PD, EF.VD (AlwaysRead, VD offsets)
+RD --> ORCH : PD, VD (raw gzip bytes)
+opt C2C authorised GVD
+  ORCH -> RD : read EF.GVD (SM-wrapped READ BINARY)
+  RD --> ORCH : GVD (raw)
+end
+note right of RD : read failure -> 3011 (FR-022)
+
+ORCH -> EGK : TUC_KON_006 write audit log
+note right of EGK : write fails -> abort, no VSD (FR-023)
+ORCH -> SESS : release eGK reservation
+ORCH --> SVC : VsdReadResult(PD, VD, GVD?, status)
+deactivate ORCH
+
+SVC -> SVC : Base64-encode containers; build VSD_Status;\nno Pruefungsnachweis (FR-005/FR-004)
+SVC --> PS : ReadVSDResponse
+deactivate SVC
+@enduml
