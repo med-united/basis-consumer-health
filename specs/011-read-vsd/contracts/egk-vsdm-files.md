@@ -53,10 +53,21 @@ plain (unwrapped) READ because their READ rule is ALWAYS.
 
 ## EF.StatusVD → `VsdStatus` conversion (Tab_FM_VSDM_21, VSDM-A_2708 / A_3063)
 
-- `Status` → `"0"` (consistent) / `"1"` (inconsistent → abort 3001, FR-017).
-- `Timestamp` BCD `YYYYMMDDHHMMSS` → `dateTime` (`2012-01-31T08:47:13`).
-- `Version` BCD (`00 70 03 00 01`) → `7.3.1`; `Version_Speicherstruktur` not
-  transferred; unknown storage-structure version → abort (VSDM-A_2979).
+Container layout per gemSpec_eGK_Fach_VSDM Tab_eGK_Fach_VSDM_04 (25 octets). **Status and
+Timestamp are alphanumeric (ASCII); only the two Version fields are BCD:**
+
+| Field | Offset | Len | Encoding |
+|---|---|---|---|
+| `Status` | 0 | 1 | ASCII |
+| `Timestamp` | 1 | 14 | ASCII `YYYYMMDDHHMMSS` (UTC) |
+| `Version_XML` | 15 | 5 | BCD |
+| `Version_Speicherstruktur` | 20 | 5 | BCD |
+
+- `Status` ASCII `'0'` (consistent) / `'1'` (inconsistent → abort 3001, FR-017).
+- `Timestamp` ASCII `20120131084713` → `dateTime` (`2012-01-31T08:47:13Z`, UTC).
+- `Version_XML` BCD (`00 70 03 00 01`) → `7.3.1`.
+- `Version_Speicherstruktur` BCD (`00 30 00 00 04` → `3.0.4`, eGK G2/G2.1) not
+  transferred; an unknown storage-structure version → abort (VSDM-A_2979).
 
 ## Audit log (after read)
 

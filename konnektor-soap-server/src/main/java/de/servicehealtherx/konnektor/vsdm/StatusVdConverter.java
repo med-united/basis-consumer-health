@@ -1,52 +1,61 @@
 package de.servicehealtherx.konnektor.vsdm;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Set;
 
 /**
  * Converts the raw EF.StatusVD container into a {@link VsdStatus} per gemSpec_FM_VSDM Tab_FM_VSDM_21
- * (VSDM-A_2708 / A_3063): the update Status, the last-update Timestamp (BCD → dateTime), and the
+ * (VSDM-A_2708 / A_3063): the update Status, the last-update Timestamp (ASCII → dateTime), and the
  * schema Version (BCD → dotted). An unknown storage-structure version aborts (VSDM-A_2979).
  *
- * <p>Assumed binary layout (confirm byte-exact against gemSpec_eGK_Fach_VSDM EF.StatusVD before
- * certification — analogous to the DF.HCA-AID open item in research.md):
+ * <p>Binary layout per gemSpec_eGK_Fach_VSDM Tab_eGK_Fach_VSDM_04 (25 octets, transparent EF):
  * <pre>
- *   [0]       Version_Speicherstruktur (storage-structure version; must be known)
- *   [1]       Status                    (0x00 → "0", 0x01 → "1")
- *   [2..8]    Timestamp                 (7 BCD bytes → "YYYYMMDDHHMMSS")
- *   [9..13]   Version                   (5 BCD bytes → 3+3+4 digits → "7.3.1")
+ *   [0]        Status                    (ASCII '0' = consistent, '1' = open transactions)
+ *   [1..14]    Timestamp                 (14 ASCII chars "YYYYMMDDHHMMSS", UTC)
+ *   [15..19]   Version_XML               (5 BCD bytes → 3+3+4 digits → "7.3.1")
+ *   [20..24]   Version_Speicherstruktur  (5 BCD bytes; must be a known structure version)
  * </pre>
+ *
+ * <p>Status and Timestamp are <strong>alphanumeric (ASCII)</strong> on the card — only the two
+ * Version fields are BCD-encoded.
  */
 public final class StatusVdConverter {
 
-    /** Storage-structure versions this converter understands (VSDM-A_2979). */
-    private static final Set<Integer> KNOWN_STORAGE_STRUCTURE_VERSIONS = Set.of(0x01);
+    /**
+     * Storage-structure versions this converter understands (VSDM-A_2979), as decoded BCD digit
+     * strings. eGK G2/G2.1 carry the fixed value {@code 0x0030000004} ("3.0.4").
+     */
+    private static final Set<String> KNOWN_STORAGE_STRUCTURE_VERSIONS = Set.of("0030000004");
 
-    private static final ZoneId CARD_ZONE = ZoneId.of("Europe/Berlin");
     private static final DateTimeFormatter TS_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
-    private static final int OFF_STORAGE_VERSION = 0;
-    private static final int OFF_STATUS = 1;
-    private static final int OFF_TIMESTAMP = 2;
-    private static final int LEN_TIMESTAMP = 7;   // 14 BCD digits
-    private static final int OFF_VERSION = 9;
-    private static final int LEN_VERSION = 5;      // 10 BCD digits → 3 + 3 + 4
+    private static final int OFF_STATUS = 0;
+    private static final int OFF_TIMESTAMP = 1;
+    private static final int LEN_TIMESTAMP = 14;   // 14 ASCII chars "YYYYMMDDHHMMSS"
+    private static final int OFF_VERSION_XML = 15;
+    private static final int LEN_VERSION_XML = 5;   // 10 BCD digits → 3 + 3 + 4
+    private static final int OFF_STORAGE_VERSION = 20;
+    private static final int LEN_STORAGE_VERSION = 5; // 10 BCD digits
+
+    private static final int MIN_LENGTH = OFF_STORAGE_VERSION + LEN_STORAGE_VERSION; // 25
 
     public VsdStatus convert(byte[] statusVd) {
-        if (statusVd == null || statusVd.length < OFF_VERSION + LEN_VERSION) {
+        if (statusVd == null || statusVd.length < MIN_LENGTH) {
             throw new VsdmReadException(VsdmErrorCode.VSD_READ_FAILED, "EF.StatusVD too short");
         }
-        int storageVersion = statusVd[OFF_STORAGE_VERSION] & 0xFF;
+
+        String storageVersion = bcd(statusVd, OFF_STORAGE_VERSION, LEN_STORAGE_VERSION);
         if (!KNOWN_STORAGE_STRUCTURE_VERSIONS.contains(storageVersion)) {
             throw new VsdmReadException(VsdmErrorCode.VSD_READ_FAILED,
-                    "unknown EF.StatusVD storage-structure version 0x" + Integer.toHexString(storageVersion));
+                    "unknown EF.StatusVD storage-structure version " + formatVersion(storageVersion));
         }
 
-        String status = (statusVd[OFF_STATUS] & 0xFF) == 0 ? "0" : "1";
-        String tsDigits = bcd(statusVd, OFF_TIMESTAMP, LEN_TIMESTAMP);
-        String version = formatVersion(bcd(statusVd, OFF_VERSION, LEN_VERSION));
+        // Status / Timestamp are alphanumeric (ASCII) per Tab_FM_VSDM_21.
+        String status = String.valueOf((char) (statusVd[OFF_STATUS] & 0xFF));
+        String tsDigits = ascii(statusVd, OFF_TIMESTAMP, LEN_TIMESTAMP);
+        String version = formatVersion(bcd(statusVd, OFF_VERSION_XML, LEN_VERSION_XML));
 
         LocalDateTime local;
         try {
@@ -54,7 +63,16 @@ public final class StatusVdConverter {
         } catch (RuntimeException e) {
             throw new VsdmReadException(VsdmErrorCode.VSD_READ_FAILED, "invalid EF.StatusVD timestamp");
         }
-        return new VsdStatus(status, local.atZone(CARD_ZONE).toOffsetDateTime(), version);
+        return new VsdStatus(status, local.atOffset(ZoneOffset.UTC), version);
+    }
+
+    /** Read {@code len} ASCII bytes starting at {@code off} as a {@link String}. */
+    private static String ascii(byte[] src, int off, int len) {
+        StringBuilder sb = new StringBuilder(len);
+        for (int i = 0; i < len; i++) {
+            sb.append((char) (src[off + i] & 0xFF));
+        }
+        return sb.toString();
     }
 
     /** Decode {@code len} BCD bytes starting at {@code off} into {@code 2*len} decimal digits. */

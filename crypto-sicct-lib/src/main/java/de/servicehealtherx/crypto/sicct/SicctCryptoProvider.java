@@ -46,6 +46,12 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
         return cmCardList;
     }
 
+    @Override
+    public CardReaderPortResolver portResolver() {
+        // Delegate to the (volatile) bound resolver at call time so a late bindPortResolver is seen.
+        return ctid -> portResolver.portFor(ctid);
+    }
+
     /** Bind the terminal-port resolver (called by the SICCT runtime once terminals are owned). */
     public void bindPortResolver(CardReaderPortResolver portResolver) {
         this.portResolver = portResolver != null ? portResolver : CardReaderPortResolver.NONE;

@@ -27,8 +27,14 @@ import de.servicehealtherx.apdu.model.CardType;
 
 class ReadVsdServiceTest {
 
+    // gemSpec_eGK_Fach_VSDM Tab_eGK_Fach_VSDM_04: [0] Status '0' (ASCII), [1..14] Timestamp
+    // "20120131084713" (ASCII), [15..19] Version_XML BCD 0070030001, [20..24] Version_Speicherstruktur
+    // BCD 0030000004.
     private static final byte[] STATUS_VD = {
-            0x01, 0x00, 0x20, 0x12, 0x01, 0x31, 0x08, 0x47, 0x13, 0x00, 0x70, 0x03, 0x00, 0x01
+            '0',
+            '2', '0', '1', '2', '0', '1', '3', '1', '0', '8', '4', '7', '1', '3',
+            0x00, 0x70, 0x03, 0x00, 0x01,
+            0x00, 0x30, 0x00, 0x00, 0x04
     };
     private static final byte[] PD = "PERSONAL".getBytes();
     private static final byte[] VD = "GENERAL".getBytes();
@@ -100,7 +106,7 @@ class ReadVsdServiceTest {
         script.add(ScriptedCardReaderPort.ok());                       // SELECT DF.HCA
         script.add(ScriptedCardReaderPort.ok());                       // SELECT EF.StatusVD
         byte[] inconsistent = STATUS_VD.clone();
-        inconsistent[1] = 0x01;
+        inconsistent[0] = '1'; // Status = '1' → open transactions (offset 0, ASCII)
         script.add(ScriptedCardReaderPort.resp(inconsistent, 0x9000)); // READ EF.StatusVD
         var port = new ScriptedCardReaderPort(ctid, script);
         var service = new ReadVsdService(cardListWithEgkAndSmcb(), resolverFor(port),

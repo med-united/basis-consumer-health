@@ -91,6 +91,15 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
         return cmCardList;
     }
 
+    @Override
+    public de.servicehealtherx.apdu.card.transport.CardReaderPortResolver portResolver() {
+        // Read the registry field at call time: it is built in @PostConstruct, after construction.
+        return ctid -> {
+            PcscReaderRegistry registry = this.readerRegistry;
+            return registry == null ? java.util.Optional.empty() : registry.portFor(ctid);
+        };
+    }
+
     PcscReaderRegistry readerRegistry() {
         return readerRegistry;
     }
