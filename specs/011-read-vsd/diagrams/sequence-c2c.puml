@@ -1,0 +1,40 @@
+@startuml
+title TUC_KON_005 — ELC Card-to-Card auth (AUT_VSD Trusted Channel)
+
+participant "ReadVsdService" as ORCH
+participant "TucKon005CardToCardAuth" as C2C
+participant "CvcChainParser" as CVC
+participant "ApduExecutor" as EXEC
+participant "eGK" as EGK
+participant "SMC-B / HBA" as SMB
+
+ORCH -> C2C : authenticate(eGK, SMC-B/HBA)
+activate C2C
+
+C2C -> EXEC : READ BINARY EF.C.*.AUT_CVC.E256 (SFID 6)\n+ EF.C.CA.CS.E256 (SFID 7)
+EXEC -> SMB : read CVCs
+EXEC -> EGK : read CVCs
+EXEC --> C2C : CVC bytes (both cards)
+C2C -> CVC : parse TLV (CAR/CHR/CHAT), order chain
+CVC --> C2C : ordered chain + key refs
+
+group Import + verify CVC chain (card verifies signatures on-card)
+  C2C -> EXEC : MSE SET (83||keyRef) + PSO VERIFY CERTIFICATE (CA, then leaf)
+  EXEC -> EGK : verify SMC-B chain  (root PuK.RCA.CS.E256 -> CA -> leaf)
+  EXEC -> SMB : verify eGK chain
+end
+
+group ELC mutual auth + session keys (COS 15.4.4)
+  C2C -> EXEC : MSE SET keys (algId elcSessionkey4TC / 4SM)
+  C2C -> EXEC : GENERAL AUTHENTICATE step1 (CLA 10): select PuK, get ephemeral point
+  EXEC -> EGK : ephemeral PK out
+  C2C -> EXEC : GENERAL AUTHENTICATE step2 (CLA 00): import opponent ephemeral PK
+  EXEC -> SMB : ephemeral PK in
+  note over EGK, SMB : each card computes K=K1||K2 (ECKA-DH),\nderives session keys, sets AUT_VSD from CHAT
+end
+
+C2C --> ORCH : SecureMessagingSession (session keys, SSC)
+deactivate C2C
+
+note over ORCH : EF.GVD READ BINARY is now SM-wrapped\n(AES-CMAC + cmd/rsp encryption) under these keys
+@enduml

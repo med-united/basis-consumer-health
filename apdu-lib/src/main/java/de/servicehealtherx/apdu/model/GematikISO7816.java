@@ -73,6 +73,19 @@ public final class GematikISO7816 {
     public static final short FID_EF_ATR = (short) 0x2F01;
     public static final short FID_EF_DIR = (short) 0x2F00;
 
+    // AID — DF.HCA (Healthcareapplication) on the eGK; holds the VSDM containers
+    // (gemSpec_eGK_ObjSys_G2_1 §5.4). SELECT by DF name (P1='04').
+    public static final byte[] AID_DF_HCA = new byte[]{
+            (byte) 0xD2, 0x76, 0x00, 0x00, 0x01, 0x02
+    };
+
+    // VSDM elementary files inside DF.HCA (gemSpec_eGK_ObjSys_G2_1 §5.4 — FID/SFID page-confirmed).
+    // EF.PD / EF.VD / EF.StatusVD are READ=ALWAYS; EF.GVD READ requires the AUT_VSD C2C state.
+    public static final short FID_EF_PD = (short) 0xD001;        // EF.PD,       SFID 1
+    public static final short FID_EF_VD = (short) 0xD002;        // EF.VD,       SFID 2
+    public static final short FID_EF_GVD = (short) 0xD003;       // EF.GVD,      SFID 3 (C2C / AUT_VSD)
+    public static final short FID_EF_STATUS_VD = (short) 0xD00C; // EF.StatusVD, SFID 12
+
     // Application identifiers (MF-level), as listed in each card's EF.DIR (DO '61' → '4F' AID).
     // Used to discriminate the card type once the universally-present MF files have been read.
     public static final byte[] AID_EGK = new byte[]{            // gemSpec_eGK_ObjSys_G2_1 EF.DIR

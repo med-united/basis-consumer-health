@@ -1,0 +1,37 @@
+@startuml
+title VSDService ReadVSD — Use Cases (local read)
+
+left to right direction
+skinparam actorStyle awesome
+
+actor "Primary System\n(PVS / KIS / AVS)" as PS
+actor "Practitioner /\nInstitution\n(HBA / SMC-B)" as LE
+actor "Insured Person\n(eGK)" as INS
+actor "Administrator" as ADM
+
+rectangle "Konnektor — VSDM Fachmodul (local)" {
+  usecase "ReadVSD\n(PerformOnlineCheck=false,\nReadOnlineReceipt=false)" as UC_READ
+  usecase "Card-to-Card\nauthentication\n(eGK <-> HBA/SMC-B)" as UC_C2C
+  usecase "Read PD / VD /\nVSD_Status (AlwaysRead)" as UC_PDVD
+  usecase "Read GVD\n(requires C2C)" as UC_GVD
+  usecase "Write data-access\naudit to eGK" as UC_AUDIT
+  usecase "Reject online check /\nPruefungsnachweis" as UC_REJECT
+  usecase "Configure read\ntimeout" as UC_CFG
+}
+
+PS --> UC_READ
+UC_READ ..> UC_C2C : <<include>>
+UC_READ ..> UC_PDVD : <<include>>
+UC_READ ..> UC_GVD : <<extend>>\n(if authorised)
+UC_READ ..> UC_AUDIT : <<include>>
+UC_READ ..> UC_REJECT : <<extend>>\n(online flags set)
+UC_C2C --> LE
+UC_PDVD --> INS
+UC_GVD --> INS
+ADM --> UC_CFG
+
+note bottom of UC_REJECT
+  No UFS / VSDD / CMS / Intermediaer.
+  Zero external TI connections (FR-006).
+end note
+@enduml

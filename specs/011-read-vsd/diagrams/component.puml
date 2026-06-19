@@ -1,0 +1,59 @@
+@startuml
+title VSDService ReadVSD — Components & Dependencies
+
+skinparam componentStyle rectangle
+
+package "api-telematik (generated)" {
+  [VSDServicePortType\nReadVSD / ReadVSDResponse\nVSDStatusType / FaultMessage] as GEN
+}
+
+package "konnektor-soap-server" {
+  [KonnektorVSDService\n@CXFEndpoint(/conn/VSDService)] as SVC
+  [VsdmFaultFactory] as FAULT
+  [KonnektorServiceHelper] as HELPER
+}
+
+package "apdu-lib" {
+  [ReadVsdService\n(orchestrator)] as ORCH
+  [ApduExecutor] as EXEC
+  [EgkFileReader] as READER
+  [TucKon005CardToCardAuth] as C2C
+  [c2c.CvcChainParser] as CVC
+  [c2c.SecureMessagingSession] as SM
+  [vsdm.StatusVdConverter] as CONV
+  [CardSessionService\nTucKon023ReserveCard] as SESS
+  [CmCardList / CardObject] as REG
+  [GematikISO7816\n(+DF.HCA, EF.PD/VD/StatusVD/GVD)] as CONST
+}
+
+package "crypto-pcsc-lib / crypto-sicct-lib" {
+  [CardReaderPort (PCSC/SICCT)] as PORT
+}
+
+package "crypto-lib" {
+  [Bouncy Castle] as BC
+}
+
+SVC ..|> GEN
+SVC --> ORCH
+SVC --> FAULT
+FAULT --> HELPER
+ORCH --> EXEC
+ORCH --> READER
+ORCH --> C2C
+ORCH --> CONV
+ORCH --> SESS
+ORCH --> REG
+C2C --> CVC
+C2C --> SM
+READER --> EXEC
+EXEC --> PORT
+CVC --> BC
+SM --> BC
+EXEC ..> CONST
+
+note bottom of ORCH
+  konnektor-soap-server -> apdu-lib
+  edge already exists (no new edge)
+end note
+@enduml
