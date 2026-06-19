@@ -7,9 +7,11 @@ terminal management for German healthcare institutions.
 ## Developer start
 
 ```
-./mvn install
+./mvnw install
 ./mvnw quarkus:dev -pl :quarkus-server
 ```
+
+Once running, the OpenUI5 konnektor SOAP client is served same-origin at **`/conn-ui/`**.
 
 ## Logging / APDU tracing
 
@@ -61,6 +63,7 @@ It automatically renders `.puml` files inline — no server setup required.
 | `crypto-services-lib` | EncryptionService, SignatureService, CertificateService business logic; MicroProfile ConfigSource DB; JPA AppConfigProperty entity |
 | `apdu-lib`            | Pure APDU generation library implementing 27 TUCs from gemSpec_Kon V5.27.0 §4.1.5.4 (no transport)                                 |
 | `sicct-lib`           | SICCT ASN.1 codec, Netty 4 TCP/IP client pool, CardTerminal JPA entity, TPM 2.0 key sealing, BackupRestoreManagement JMX bean      |
+| `cetp-client-lib`     | CETP (Connector Event Transport Protocol) PUSH client: TUC_KON_256 subscription filtering and framed event delivery over TCP/mTLS (gemSpec_Kon V5.27.0 §4.1.6) |
 
 ### CryptoProvider adapters
 
@@ -84,6 +87,18 @@ It automatically renders `.puml` files inline — no server setup required.
 | `quarkus-server`        | Main Quarkus application bundling all services; CDI integration; embeds Hawtio             |
 | `consumer-soap-server`  | Quarkus application exposing the Basis Consumer SOAP interface (`api-telematik/consumer`)  |
 | `konnektor-soap-server` | Quarkus application exposing Konnektor SOAP compatibility interface (`api-telematik/conn`) |
+
+### Frontend
+
+| Module             | Description                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ui5-conn-frontend` | Responsive OpenUI5 single-page app for exercising the konnektor SOAP services; served same-origin by `quarkus-server` at `/conn-ui/` (see specs/011-ui5-conn-frontend) |
+
+### Tests
+
+| Module         | Description                                                                                                            |
+| -------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `system-tests` | Black-box SOAP system tests driving the running Konnektor endpoints with hand-written envelopes over plain HTTP (e.g. the e-prescription sign flow) |
 
 ### External submodule
 
