@@ -12,6 +12,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import javax.naming.NamingEnumeration;
+import javax.naming.directory.Attribute;
 import javax.naming.ldap.LdapName;
 import javax.naming.ldap.Rdn;
 import javax.security.auth.x500.X500Principal;
@@ -555,18 +557,29 @@ public class CardAttributeReader {
         return name.isBlank() ? null : name;
     }
 
-    /** First value of the RDN attribute {@code type} in an RFC 2253 DN, or {@code null}. */
+    /**
+     * First value of the RDN attribute {@code type} in an RFC 2253 DN, or {@code null}. Looks inside
+     * multi-valued RDNs: HBA C.HP.AUT subjects carry surname, givenName, serialNumber and CN as four
+     * components of a single multi-valued first RDN (joined with {@code +}). {@link Rdn#getType()}
+     * only reports the most-significant component, so a plain type filter would miss the CN buried
+     * alongside the surname — {@link Rdn#toAttributes()} exposes every component instead.
+     */
     private static String rdnValue(String dn, String type) {
         try {
             LdapName ldap = new LdapName(dn);
-            return ldap.getRdns().stream()
-                    .filter(r -> r.getType().equalsIgnoreCase(type))
-                    .map(r -> String.valueOf(r.getValue()))
-                    .findFirst()
-                    .orElse(null);
+            for (Rdn rdn : ldap.getRdns()) {
+                NamingEnumeration<? extends Attribute> attrs = rdn.toAttributes().getAll();
+                while (attrs.hasMore()) {
+                    Attribute attr = attrs.next();
+                    if (attr.getID().equalsIgnoreCase(type) && attr.size() > 0 && attr.get() != null) {
+                        return String.valueOf(attr.get());
+                    }
+                }
+            }
         } catch (Exception e) {
             return null;
         }
+        return null;
     }
 
     /**

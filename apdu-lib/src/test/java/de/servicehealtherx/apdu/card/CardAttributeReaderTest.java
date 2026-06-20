@@ -89,6 +89,20 @@ class CardAttributeReaderTest {
     }
 
     @Test
+    void test_cardholder_name_from_multivalued_rdn_subject_uses_cn() throws Exception {
+        // Real eHBA regression: the C.HP.AUT subject carries surname, givenName, serialNumber and CN
+        // as four components of a single MULTI-VALUED first RDN. Rdn.getType() only reports the most
+        // significant component (surname), so the CN must be found by scanning the RDN's components —
+        // otherwise GetCards logs "No cardholder name derivable" and leaves CardHolderName empty.
+        byte[] der = resource("/card/test-hba-multivalued-aut.der");
+
+        CardAttributeReader.CertInfo info = reader.parseAutCertificate(der);
+
+        assertNotNull(info);
+        assertEquals("Tanja DåvidTEST-ONLY", info.cardHolderName());
+    }
+
+    @Test
     void test_parse_aut_certificate_returns_null_on_garbage() {
         assertNull(reader.parseAutCertificate(new byte[] {0x00, 0x01, 0x02}));
     }
