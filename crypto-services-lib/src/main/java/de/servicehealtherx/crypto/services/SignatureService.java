@@ -186,6 +186,27 @@ public class SignatureService {
         }
     }
 
+    /**
+     * GetPinStatus against an inserted card addressed by CardHandle: read the state of the
+     * {@code pinType} PIN (e.g. {@code PIN.SMC} on an SMC-B) via whichever {@link CryptoProvider}
+     * holds it (gemSpec_Kon GetPinStatus / TUC_KON_011) without consuming a retry.
+     */
+    public de.servicehealtherx.crypto.model.PinStatusResult getPinStatus(
+            String cardHandle, String pinType, String callerIdentity) {
+        long start = System.currentTimeMillis();
+        try {
+            de.servicehealtherx.crypto.model.PinStatusResult result =
+                    providerForCard(cardHandle).getPinStatus(cardHandle, pinType);
+            auditLogger.logSuccess(cardHandle, "GET_PIN_STATUS", pinType, callerIdentity,
+                    System.currentTimeMillis() - start);
+            return result;
+        } catch (Exception e) {
+            auditLogger.logFailure(cardHandle, "GET_PIN_STATUS", pinType, callerIdentity,
+                    System.currentTimeMillis() - start, e.getMessage());
+            throw new RuntimeException("GetPinStatus failed: " + e.getMessage(), e);
+        }
+    }
+
     private CryptoProvider providerForCard(String cardHandle) {
         for (CryptoProvider provider : cryptoProviders) {
             if (provider.ownsCard(cardHandle)) {

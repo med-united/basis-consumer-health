@@ -2,6 +2,7 @@ package de.servicehealtherx.crypto;
 
 import de.servicehealtherx.crypto.model.CryptoOperationRequest;
 import de.servicehealtherx.crypto.model.CryptoOperationResult;
+import de.servicehealtherx.crypto.model.PinStatusResult;
 import de.servicehealtherx.crypto.model.PinVerificationResult;
 
 import java.security.cert.X509Certificate;
@@ -79,5 +80,15 @@ public interface CryptoProvider {
      */
     default PinVerificationResult verifyPin(String cardHandle, String pinType) {
         throw new UnsupportedOperationException("verifyPin not supported by " + getClass().getSimpleName());
+    }
+
+    /**
+     * Read the status of the {@code pinType} PIN (e.g. {@code PIN.SMC} on an SMC-B, {@code PIN.CH} on
+     * an HBA) of the inserted card identified by {@code cardHandle} (gemSpec_Kon GetPinStatus /
+     * TUC_KON_011). Unlike {@link #verifyPin}, this presents no secret and does not consume a retry.
+     * Returns the card's reported PIN state and remaining retry counter.
+     */
+    default PinStatusResult getPinStatus(String cardHandle, String pinType) {
+        throw new UnsupportedOperationException("getPinStatus not supported by " + getClass().getSimpleName());
     }
 }

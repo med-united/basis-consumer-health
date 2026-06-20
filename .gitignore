@@ -33,3 +33,6 @@ logs/
 *.key
 *.jks
 *.pfx
+
+# Claudes scratch data for trying out things
+.scratch-c2c/

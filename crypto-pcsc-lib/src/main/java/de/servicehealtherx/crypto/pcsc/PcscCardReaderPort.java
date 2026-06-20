@@ -53,6 +53,11 @@ public final class PcscCardReaderPort implements CardReaderPort {
         return UUID.nameUUIDFromBytes(readerName.getBytes(StandardCharsets.UTF_8));
     }
 
+    /** The underlying terminal seam — used for secure PIN-pad VERIFY (see {@code PcscPinVerifier}). */
+    public PcscTerminal terminal() {
+        return terminal;
+    }
+
     @Override
     public String readerName() {
         return terminal.name();

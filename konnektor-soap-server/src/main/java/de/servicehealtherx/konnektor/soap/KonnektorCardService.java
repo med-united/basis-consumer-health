@@ -15,9 +15,9 @@ import de.gematik.ws.conn.cardservice.wsdl.v8_1.CardServicePortType;
 import de.gematik.ws.conn.cardservice.wsdl.v8_1.FaultMessage;
 import de.gematik.ws.conn.cardservicecommon.v2.PinResponseType;
 import de.gematik.ws.conn.cardservicecommon.v2.PinResultEnum;
+import de.servicehealtherx.crypto.model.PinStatusResult;
 import de.servicehealtherx.crypto.model.PinVerificationResult;
 import de.servicehealtherx.crypto.services.SignatureService;
-import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
@@ -27,9 +27,6 @@ import java.math.BigInteger;
 @CXFEndpoint(value = "/conn/CardService")
 @WebService(portName = "CardServicePort", serviceName = "CardService", targetNamespace = "http://ws.gematik.de/conn/CardService/WSDL/v8.1", endpointInterface = "de.gematik.ws.conn.cardservice.wsdl.v8_1.CardServicePortType")
 public class KonnektorCardService implements CardServicePortType {
-
-    @Inject
-    SicctTerminalManager sicctTerminalManager;
 
     @Inject
     SignatureService signatureService;
@@ -100,16 +97,36 @@ public class KonnektorCardService implements CardServicePortType {
     @Override
     public GetPinStatusResponse getPinStatus(GetPinStatus parameter) throws FaultMessage {
         try {
-            String cardHandle = parameter.getCardHandle();
-            boolean connected = cardHandle != null
-                    && sicctTerminalManager.getConnections().containsKey(cardHandle);
+            PinStatusResult result = signatureService.getPinStatus(
+                    parameter.getCardHandle(), parameter.getPinTyp(), "konnektor-soap");
 
             GetPinStatusResponse response = new GetPinStatusResponse();
             response.setStatus(okStatus());
-            response.setPinStatus(connected ? PinStatusEnum.VERIFIABLE : PinStatusEnum.VERIFIABLE);
+            response.setPinStatus(toPinStatus(result.status()));
+            if (result.triesRemaining() >= 0) {
+                response.setLeftTries(BigInteger.valueOf(result.triesRemaining()));
+            }
             return response;
         } catch (Exception e) {
             throw new FaultMessage("GetPinStatus failed: " + e.getMessage(), buildError(e.getMessage()));
         }
+    }
+
+    private static PinStatusEnum toPinStatus(PinStatusResult.Status status) throws FaultMessage {
+        return switch (status) {
+            case VERIFIED -> PinStatusEnum.VERIFIED;
+            case VERIFIABLE -> PinStatusEnum.VERIFIABLE;
+            case TRANSPORT_PIN -> PinStatusEnum.TRANSPORT_PIN;
+            case EMPTY_PIN -> PinStatusEnum.EMPTY_PIN;
+            case BLOCKED -> PinStatusEnum.BLOCKED;
+            // The v8.1 CardService WSDL on this classpath has no DISABLED literal; a disabled
+            // verification requirement and any unmapped status word both surface as a fault.
+            case DISABLED -> throw new FaultMessage(
+                    "GetPinStatus failed: PIN verification requirement is disabled",
+                    buildError("PIN verification requirement disabled"));
+            case ERROR -> throw new FaultMessage(
+                    "GetPinStatus failed: card returned an unmapped PIN status",
+                    buildError("Unmapped card PIN status"));
+        };
     }
 }

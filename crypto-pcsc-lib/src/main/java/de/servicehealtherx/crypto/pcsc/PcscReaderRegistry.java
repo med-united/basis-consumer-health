@@ -85,6 +85,8 @@ public final class PcscReaderRegistry {
                 ActiveReader removed = active.remove(ctid);
                 if (removed != null) {
                     removed.coordinator().stop();
+                    // Drop any card connection the unplugged reader still holds (FR-069 unplug).
+                    removed.port().terminal().disconnect();
                     cardList.removeAllForTerminal(ctid);
                 }
             }

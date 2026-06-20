@@ -9,6 +9,7 @@ import de.servicehealtherx.apdu.card.CardLifecycleListener;
 import de.servicehealtherx.apdu.card.CardListProvider;
 import de.servicehealtherx.apdu.card.CardObject;
 import de.servicehealtherx.apdu.card.CardObjectFactory;
+import de.servicehealtherx.apdu.card.CardPinStatusReader;
 import de.servicehealtherx.apdu.card.CardPinVerifier;
 import de.servicehealtherx.apdu.card.CmCardList;
 import de.servicehealtherx.apdu.card.EsignSigner;
@@ -286,6 +287,48 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
         } catch (CardTransportException e) {
             throw new IllegalStateException("verifyPin failed: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public de.servicehealtherx.crypto.model.PinStatusResult getPinStatus(String cardHandle, String pinType) {
+        CardObject card = resolveCard(cardHandle);
+        PcscCardReaderPort port = portFor(card);
+        int pinRef = pinReferenceFor(pinType);
+        try {
+            CardPinStatusReader.Result result = new CardPinStatusReader(port, card.slotNo()).read(pinRef);
+            return switch (result.state()) {
+                case VERIFIED -> de.servicehealtherx.crypto.model.PinStatusResult.of(
+                        de.servicehealtherx.crypto.model.PinStatusResult.Status.VERIFIED);
+                case VERIFIABLE -> de.servicehealtherx.crypto.model.PinStatusResult.verifiable(result.triesRemaining());
+                case TRANSPORT_PIN -> de.servicehealtherx.crypto.model.PinStatusResult.of(
+                        de.servicehealtherx.crypto.model.PinStatusResult.Status.TRANSPORT_PIN);
+                case EMPTY_PIN -> de.servicehealtherx.crypto.model.PinStatusResult.of(
+                        de.servicehealtherx.crypto.model.PinStatusResult.Status.EMPTY_PIN);
+                case BLOCKED -> de.servicehealtherx.crypto.model.PinStatusResult.of(
+                        de.servicehealtherx.crypto.model.PinStatusResult.Status.BLOCKED);
+                case DISABLED -> de.servicehealtherx.crypto.model.PinStatusResult.of(
+                        de.servicehealtherx.crypto.model.PinStatusResult.Status.DISABLED);
+                case ERROR -> {
+                    LOG.warnf("[PCSC] GET PIN STATUS %s on card %s returned SW=%04X", pinType, cardHandle, result.sw());
+                    yield de.servicehealtherx.crypto.model.PinStatusResult.of(
+                            de.servicehealtherx.crypto.model.PinStatusResult.Status.ERROR);
+                }
+            };
+        } catch (CardTransportException e) {
+            throw new IllegalStateException("getPinStatus failed: " + e.getMessage(), e);
+        }
+    }
+
+    // ─── Internals exposed to the in-process JMX PIN verifier (PcscPinVerifier) ───────────────────
+
+    /** Resolve a {@code cardHandle} to its {@link CardObject}; throws if no such card is present. */
+    public CardObject cardForHandle(String cardHandle) {
+        return resolveCard(cardHandle);
+    }
+
+    /** The active {@link PcscCardReaderPort} for the card behind {@code cardHandle}. */
+    public PcscCardReaderPort portForHandle(String cardHandle) {
+        return portFor(resolveCard(cardHandle));
     }
 
     /** Map a gematik PIN type ({@code PIN.SMC} / {@code PIN.CH} / {@code PIN.QES}) to its reference. */
