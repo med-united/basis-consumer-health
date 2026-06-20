@@ -12,6 +12,7 @@ import de.servicehealtherx.apdu.card.transport.CardTransportException;
 import de.servicehealtherx.apdu.model.GematikISO7816;
 import de.servicehealtherx.crypto.pcsc.PcscCardReaderPort;
 import de.servicehealtherx.crypto.pcsc.PcscCryptoProvider;
+import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -20,16 +21,24 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 /**
- * {@link PcscPinVerifierMBean} implementation. Self-registers on the platform MBean server (mirroring
- * {@code de.servicehealtherx.crypto.jmx.CryptoProviderManagement}) and drives the inserted card via
+ * {@link PcscPinVerifierMBean} implementation. Self-registers on the platform
+ * MBean server (mirroring
+ * {@code de.servicehealtherx.crypto.jmx.CryptoProviderManagement}) and drives
+ * the inserted card via
  * the {@link PcscCryptoProvider} that owns it.
  *
- * <p>The two {@code verifyPin} operations share PIN-reference parsing and status-word interpretation;
- * they differ only in where the secret comes from — a method argument (software VERIFY) or the
- * reader's secure PIN pad ({@code FEATURE_VERIFY_PIN_DIRECT}). The PIN-pad path and the QES SELECT
- * mirror the gematik reference flow in {@code ehba-cades-qes-sign/EHBACard.java}.
+ * <p>
+ * The two {@code verifyPin} operations share PIN-reference parsing and
+ * status-word interpretation;
+ * they differ only in where the secret comes from — a method argument (software
+ * VERIFY) or the
+ * reader's secure PIN pad ({@code FEATURE_VERIFY_PIN_DIRECT}). The PIN-pad path
+ * and the QES SELECT
+ * mirror the gematik reference flow in
+ * {@code ehba-cades-qes-sign/EHBACard.java}.
  */
 @ApplicationScoped
+@Startup
 public class PcscPinVerifier implements PcscPinVerifierMBean {
 
     private static final Logger LOG = Logger.getLogger(PcscPinVerifier.class);
@@ -75,8 +84,10 @@ public class PcscPinVerifier implements PcscPinVerifierMBean {
         PcscCardReaderPort port = provider.portForHandle(cardHandle);
         try {
             if (ref.selectAid != null) {
-                // A dfSpecific PIN (PIN.QES) must be verified with its application selected. The card
-                // is left powered between transmits, so the SELECT context carries into the VERIFY.
+                // A dfSpecific PIN (PIN.QES) must be verified with its application selected.
+                // The card
+                // is left powered between transmits, so the SELECT context carries into the
+                // VERIFY.
                 port.transmit(card.slotNo(), selectApdu(ref.selectAid));
             }
             CardPinVerifier.Result result = new CardPinVerifier(port, card.slotNo()).verify(ref.value, pin);
@@ -107,7 +118,10 @@ public class PcscPinVerifier implements PcscPinVerifierMBean {
                 GematikISO7816.SELECT_BY_DF_NAME, 0x0C, aid);
     }
 
-    /** Turn a VERIFY status word into a success message, or throw a descriptive failure. */
+    /**
+     * Turn a VERIFY status word into a success message, or throw a descriptive
+     * failure.
+     */
     private static String describe(String operation, String cardHandle, PinRef ref, int sw) {
         if (sw == GematikISO7816.SW_SUCCESS) {
             return operation + " OK: PIN " + ref.label + " verified on card " + cardHandle;
@@ -128,7 +142,10 @@ public class PcscPinVerifier implements PcscPinVerifierMBean {
                 + " returned SW=" + String.format("%04X", sw));
     }
 
-    /** A parsed PIN reference: the password reference byte, an optional application to SELECT, a label. */
+    /**
+     * A parsed PIN reference: the password reference byte, an optional application
+     * to SELECT, a label.
+     */
     private static final class PinRef {
         final int value;
         final byte[] selectAid;
@@ -141,9 +158,12 @@ public class PcscPinVerifier implements PcscPinVerifierMBean {
         }
 
         /**
-         * Accept a gematik PIN name ({@code PIN.SMC}/{@code PIN.CH}/{@code PIN.QES}) or a raw reference
-         * ({@code 0x81}, {@code 81}, {@code 1}). The dfSpecific QES reference {@code 0x81} implies a
-         * SELECT of DF.QES; the global references need no SELECT (the MF is implicitly selected).
+         * Accept a gematik PIN name ({@code PIN.SMC}/{@code PIN.CH}/{@code PIN.QES}) or
+         * a raw reference
+         * ({@code 0x81}, {@code 81}, {@code 1}). The dfSpecific QES reference
+         * {@code 0x81} implies a
+         * SELECT of DF.QES; the global references need no SELECT (the MF is implicitly
+         * selected).
          */
         static PinRef parse(String pinKeyRef) {
             if (pinKeyRef == null || pinKeyRef.isBlank()) {
