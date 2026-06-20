@@ -197,6 +197,10 @@ public final class ReadVsdService {
         }
         if (channel.isPresent()) {
             try {
+                // C2C ran at MF (CVC import + role auth); re-select DF.HCA before the EF.GVD read. The
+                // role-authenticated state (flagTI.30) is global and survives the DF re-selection, so
+                // EF.GVD reads in plaintext (channel is ApduSecureChannel.NONE — no Secure Messaging).
+                fileReader.selectHca(egkPort, slot);
                 gvd = Optional.of(VsdmContainer.protectedData(
                         fileReader.read(egkPort, slot, EgkVsdmFile.EF_GVD.fileIdentifier(), channel.get())));
             } catch (ApduExecutionException e) {

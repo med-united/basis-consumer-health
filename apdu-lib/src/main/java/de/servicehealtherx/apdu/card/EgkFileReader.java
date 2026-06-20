@@ -27,6 +27,12 @@ public final class EgkFileReader {
     /** Upper bound on a single EF read (short offset addressing is limited to 0x7FFF). */
     private static final int MAX_OFFSET = 0x8000;
 
+    /**
+     * READ BINARY chunk size. {@code 0xFF} rather than 256 (Le=0x00): some contact readers reject the
+     * Le=0x00 (256) short form with SW 6700, while every reader accepts an explicit Le of 255.
+     */
+    private static final int READ_CHUNK = 0xFF;
+
     /** SELECT DF.HCA (by AID). Must be called once before reading any EF in that application. */
     public void selectHca(CardReaderPort port, int slotNo) throws CardTransportException {
         CommandAPDU select = new CommandAPDU(
@@ -68,7 +74,7 @@ public final class EgkFileReader {
         while (offset < MAX_OFFSET) {
             CommandAPDU read = channel.wrap(new CommandAPDU(
                     GematikISO7816.CLA_ISO, GematikISO7816.INS_READ_BINARY,
-                    (offset >> 8) & 0x7F, offset & 0xFF, 256));
+                    (offset >> 8) & 0x7F, offset & 0xFF, READ_CHUNK));
             ResponseAPDU resp = channel.unwrap(port.transmit(slotNo, read));
             int sw = resp.getSW();
             if (sw != GematikISO7816.SW_SUCCESS && sw != SW_END_OF_FILE) {
@@ -77,7 +83,7 @@ public final class EgkFileReader {
             byte[] chunk = resp.getData();
             out.write(chunk, 0, chunk.length);
             offset += chunk.length;
-            if (sw == SW_END_OF_FILE || chunk.length < 256 || chunk.length == 0) {
+            if (sw == SW_END_OF_FILE || chunk.length < READ_CHUNK || chunk.length == 0) {
                 break;
             }
         }

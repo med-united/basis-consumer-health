@@ -182,6 +182,7 @@ class ReadVsdServiceTest {
     void test_VSDM_A_2574_returns_gvd_and_writes_audit_when_authorised() {
         byte[] gvdPayload = gzip("PROTECTED");
         List<byte[]> script = mandatoryReadScript();
+        script.add(ScriptedCardReaderPort.ok());                                  // SELECT DF.HCA (re-select after C2C)
         script.add(ScriptedCardReaderPort.ok());                                  // SELECT EF.GVD
         script.add(ScriptedCardReaderPort.resp(lengthPrefixed(gvdPayload), 0x9000)); // READ EF.GVD
         script.add(ScriptedCardReaderPort.ok());                                  // APPEND RECORD (audit)
@@ -196,6 +197,7 @@ class ReadVsdServiceTest {
     @Test
     void test_VSDM_A_2654_aborts_when_audit_write_fails() {
         List<byte[]> script = mandatoryReadScript();
+        script.add(ScriptedCardReaderPort.ok());                                       // SELECT DF.HCA (re-select after C2C)
         script.add(ScriptedCardReaderPort.ok());                                       // SELECT EF.GVD
         script.add(ScriptedCardReaderPort.resp(lengthPrefixed(gzip("PROTECTED")), 0x9000)); // READ EF.GVD
         script.add(ScriptedCardReaderPort.resp(null, 0x6A82));                         // APPEND RECORD fails

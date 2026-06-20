@@ -2,7 +2,6 @@ package de.servicehealtherx.konnektor.soap;
 
 import de.servicehealtherx.apdu.c2c.CardToCardAuthenticator;
 import de.servicehealtherx.apdu.c2c.ElcCardToCardAuthenticator;
-import de.servicehealtherx.apdu.c2c.SessionKeyDerivation;
 import de.servicehealtherx.apdu.card.CardListAggregator;
 import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
 import de.servicehealtherx.konnektor.vsdm.ReadVsdService;
@@ -22,10 +21,10 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  * crypto provider; it is injected as a normal-scoped proxy and handed to the service as a supplier so
  * each {@code ReadVSD} resolves the current unified card list (FR-064).
  *
- * <p>The card-to-card authenticator is wired to {@link CardToCardAuthenticator#NONE} for now: the
- * on-card ELC Trusted-Channel handshake that unlocks EF.GVD is hardware-bound and not yet validated
- * (see research.md C2C risk note). With NONE the service returns PD+VD+VSD_Status and omits GVD
- * (FR-021) — the AlwaysRead MVP — without faulting.
+ * <p>The card-to-card authenticator is wired to the {@link ElcCardToCardAuthenticator} (one-sided ELC
+ * role authentication, TUC_KON_005 {@code einseitig}) when {@code vsdm.c2c.enabled=true}, which raises
+ * the eGK's {@code flagTI.30} state so EF.GVD is read in plaintext. With the default
+ * {@link CardToCardAuthenticator#NONE} the service returns PD+VD+VSD_Status and omits GVD (FR-021).
  */
 @ApplicationScoped
 public class VsdServiceProducer {
@@ -40,10 +39,10 @@ public class VsdServiceProducer {
     long timeoutMillis;
 
     /**
-     * Enables the on-card card-to-card authentication for the protected data (EF.GVD). Default
-     * {@code false}: the read returns PD+VD+VSD_Status and omits GVD (FR-021). The ELC handshake
-     * needs gSMC-K/SMC-B-mediated session keys (hardware-bound, see research.md), so it is opt-in
-     * and must be validated against real cards before being enabled.
+     * Enables the card-to-card authentication for the protected data (EF.GVD). Default {@code false}:
+     * the read returns PD+VD+VSD_Status and omits GVD (FR-021). When {@code true} the one-sided ELC
+     * role authentication raises the eGK's {@code flagTI.30} state and EF.GVD is read in plaintext.
+     * The partner card's PIN (PIN.SMC / PIN.CH) must be verified beforehand.
      */
     @ConfigProperty(name = "vsdm.c2c.enabled", defaultValue = "false")
     boolean cardToCardEnabled;
@@ -53,7 +52,7 @@ public class VsdServiceProducer {
     public ReadVsdService readVsdService() {
         CardReaderPortResolver resolver = portResolver.isResolvable() ? portResolver.get() : CardReaderPortResolver.NONE;
         CardToCardAuthenticator authenticator = cardToCardEnabled
-                ? new ElcCardToCardAuthenticator(SessionKeyDerivation.ON_CARD)
+                ? new ElcCardToCardAuthenticator()
                 : CardToCardAuthenticator.NONE;
         // Supplier defers to the request-scoped aggregator proxy; ReadVsdService snapshots it per call.
         return new ReadVsdService(() -> cardListAggregator, resolver, authenticator, timeoutMillis);
