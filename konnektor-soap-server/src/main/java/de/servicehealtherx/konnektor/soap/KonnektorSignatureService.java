@@ -25,6 +25,8 @@ import io.quarkiverse.cxf.annotation.CXFEndpoint;
 import jakarta.inject.Inject;
 import jakarta.jws.WebService;
 import oasis.names.tc.dss._1_0.core.schema.Base64Data;
+import oasis.names.tc.dss._1_0.core.schema.Base64Signature;
+import oasis.names.tc.dss._1_0.core.schema.SignatureObject;
 
 import javax.xml.datatype.DatatypeFactory;
 import java.util.GregorianCalendar;
@@ -38,6 +40,13 @@ public class KonnektorSignatureService implements SignatureServicePortType {
     @Inject
     SignatureService signatureService;
 
+    /** DSS SignatureType (RFC 3275) requesting an XML signature → XAdES. */
+    private static final String SIGNATURE_TYPE_XADES = "urn:ietf:rfc:3275";
+    /** DSS SignatureType (RFC 3369 / CMS) requesting a CMS signature → CAdES. */
+    private static final String SIGNATURE_TYPE_CADES = "urn:ietf:rfc:3369";
+    /** DSS SignatureType (ETSI TS 102 778-3) requesting a PDF signature → PAdES. */
+    private static final String SIGNATURE_TYPE_PADES = "http://uri.etsi.org/02778/3";
+
     @Override
     public SignDocumentResponse signDocument(SignDocument parameter) throws FaultMessage {
         try {
@@ -46,20 +55,23 @@ public class KonnektorSignatureService implements SignatureServicePortType {
 
             for (SignRequest req : parameter.getSignRequest()) {
                 byte[] docBytes = extractDocumentBytes(req.getDocument());
+                SignatureService.SignatureFormat format = resolveFormat(req);
+                boolean includeEContent = resolveIncludeEContent(req);
                 byte[] signature = signatureService.signDocumentWithCard(
-                        cardHandle, docBytes, "konnektor-soap");
+                        cardHandle, docBytes, format, includeEContent, "konnektor-soap");
 
                 SignResponse signResponse = new SignResponse();
                 signResponse.setStatus(okStatus());
                 signResponse.setRequestID(req.getRequestID());
 
                 SignResponse.OptionalOutputs outputs = new SignResponse.OptionalOutputs();
-                DocumentType signedDoc = new DocumentType();
-                Base64Data base64Data = new Base64Data();
-                base64Data.setValue(signature);
-                signedDoc.setBase64Data(base64Data);
-                outputs.setDocumentWithSignature(signedDoc);
                 signResponse.setOptionalOutputs(outputs);
+
+                SignatureObject signatureObject = new SignatureObject();
+                Base64Signature base64Data = new Base64Signature();
+                base64Data.setValue(signature);
+                signatureObject.setBase64Signature(base64Data);
+                signResponse.setSignatureObject(signatureObject);
 
                 response.getSignResponse().add(signResponse);
             }
@@ -102,6 +114,36 @@ public class KonnektorSignatureService implements SignatureServicePortType {
         StopSignatureResponse response = new StopSignatureResponse();
         response.setStatus(okStatus());
         return response;
+    }
+
+    /**
+     * Map the DSS {@code SignatureType} URN in the request's OptionalInputs to the internal advanced
+     * signature format. An absent or unrecognised type defaults to CAdES — the format used for the
+     * qualified e-prescription signature this connector primarily serves.
+     */
+    private static SignatureService.SignatureFormat resolveFormat(SignRequest req) {
+        String type = req.getOptionalInputs() != null ? req.getOptionalInputs().getSignatureType() : null;
+        if (type == null || type.isBlank()) {
+            return SignatureService.SignatureFormat.CADES;
+        }
+        return switch (type.trim()) {
+            case SIGNATURE_TYPE_XADES -> SignatureService.SignatureFormat.XADES;
+            case SIGNATURE_TYPE_PADES -> SignatureService.SignatureFormat.PADES;
+            case SIGNATURE_TYPE_CADES -> SignatureService.SignatureFormat.CADES;
+            default -> SignatureService.SignatureFormat.CADES;
+        };
+    }
+
+    /**
+     * Whether the signed document is embedded in the signature (enveloping CAdES / XAdES). The
+     * qualified e-prescription signature embeds the FHIR bundle, so an absent flag defaults to
+     * {@code true}.
+     */
+    private static boolean resolveIncludeEContent(SignRequest req) {
+        if (req.getOptionalInputs() == null || req.getOptionalInputs().isIncludeEContent() == null) {
+            return true;
+        }
+        return req.getOptionalInputs().isIncludeEContent();
     }
 
     private static byte[] extractDocumentBytes(DocumentType doc) {

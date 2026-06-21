@@ -6,10 +6,21 @@ import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.KeyStoreAvailability;
 import de.servicehealtherx.crypto.model.CryptoOperationRequest;
 import de.servicehealtherx.crypto.model.CryptoOperationResult;
+import de.servicehealtherx.crypto.signer.CadesSignature;
+import de.servicehealtherx.crypto.signer.PadesSignature;
+import de.servicehealtherx.crypto.signer.XadesSignature;
+import de.servicehealtherx.crypto.signer.card.CardSigner;
+import de.servicehealtherx.crypto.signer.card.CardSigningPrivateKey;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
+
+import java.io.ByteArrayInputStream;
+import java.security.PrivateKey;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.util.List;
 
 @ApplicationScoped
 public class SignatureService {
@@ -205,6 +216,69 @@ public class SignatureService {
                     System.currentTimeMillis() - start, e.getMessage());
             throw new RuntimeException("GetPinStatus failed: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * SignDocument against an inserted card addressed by CardHandle, producing a complete advanced
+     * electronic signature in the requested {@code format} (CAdES / PAdES / XAdES) rather than the
+     * bare card signature value.
+     *
+     * <p>Unlike {@link #signDocumentWithCard(String, byte[], String)}, which returns the raw card
+     * {@code R||S} bytes, this wraps the signature into the proper container: a CMS {@code SignedData}
+     * for CAdES, a signed PDF for PAdES, a {@code ds:Signature} XML document for XAdES. The card never
+     * signs the document directly — it signs the format's to-be-signed structure (e.g. the CMS signed
+     * attributes) via the {@code "EHBA"} JCE provider, so the result verifies as a real
+     * {@code SHA256withECDSA} signature.
+     *
+     * @param includeEContent for CAdES/XAdES, whether the signed document is embedded
+     *                        (enveloping) or detached/enveloped; ignored for PAdES.
+     */
+    public byte[] signDocumentWithCard(String cardHandle, byte[] document, SignatureFormat format,
+            boolean includeEContent, String callerIdentity) {
+        long start = System.currentTimeMillis();
+        try {
+            CryptoProvider provider = providerForCard(cardHandle);
+            X509Certificate signerCert = readSignerCertificate(provider, cardHandle);
+            CardSigner cardSigner = toBeSigned -> provider.signQes(cardHandle, toBeSigned);
+            PrivateKey cardKey = new CardSigningPrivateKey(cardSigner);
+            List<X509Certificate> chain = List.of(signerCert);
+
+            byte[] signed = switch (format) {
+                case CADES -> new CadesSignature().signCades(
+                        document, includeEContent, cardKey, signerCert, chain, null);
+                case PADES -> new PadesSignature().signPades(
+                        document, cardKey, signerCert, chain, null);
+                case XADES -> new XadesSignature().signXades(
+                        document, includeEContent, cardKey, signerCert, chain, null);
+            };
+
+            auditLogger.logSuccess(cardHandle, "SIGN", format.name(), callerIdentity,
+                    System.currentTimeMillis() - start);
+            return signed;
+        } catch (Exception e) {
+            auditLogger.logFailure(cardHandle, "SIGN", format.name(), callerIdentity,
+                    System.currentTimeMillis() - start, e.getMessage());
+            throw new RuntimeException("SignDocument failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Read the certificate matching the key {@link #signDocumentWithCard} signs with. The HBA carries
+     * a qualified {@code C.QES} key in DF.QES; an SMC-B does not, in which case {@code signQes} falls
+     * back to the {@code C.AUT} key, so the matching certificate is read here too.
+     */
+    private X509Certificate readSignerCertificate(CryptoProvider provider, String cardHandle)
+            throws Exception {
+        byte[] der;
+        try {
+            der = provider.readCardCertificate(cardHandle, "C.QES", "ECC");
+        } catch (RuntimeException e) {
+            LOG.warnf("[SignatureService] C.QES unavailable on %s (%s); using C.AUT certificate",
+                    cardHandle, e.getMessage());
+            der = provider.readCardCertificate(cardHandle, "C.AUT", "ECC");
+        }
+        CertificateFactory cf = CertificateFactory.getInstance("X.509", "BC");
+        return (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(der));
     }
 
     private CryptoProvider providerForCard(String cardHandle) {
