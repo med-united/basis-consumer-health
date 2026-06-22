@@ -242,6 +242,19 @@ public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
     }
 
     @Override
+    public byte[] transmitApdu(String cardHandle, byte[] commandApdu) {
+        CardObject card = resolveCard(cardHandle);
+        PcscCardReaderPort port = portFor(card);
+        try {
+            javax.smartcardio.ResponseAPDU response =
+                    port.transmit(card.slotNo(), new javax.smartcardio.CommandAPDU(commandApdu));
+            return response.getBytes();
+        } catch (CardTransportException e) {
+            throw new IllegalStateException("transmitApdu failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public byte[] signQes(String cardHandle, byte[] data) {
         CardObject card = resolveCard(cardHandle);
         PcscCardReaderPort port = portFor(card);

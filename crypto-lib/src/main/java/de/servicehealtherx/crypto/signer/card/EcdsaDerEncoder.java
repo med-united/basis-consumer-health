@@ -8,13 +8,13 @@ import java.io.ByteArrayOutputStream;
  * TR-03111). JCE's {@code SHA256withECDSA} and the CMS/XMLDSig layers built on it expect the
  * DER-encoded form; the raw concatenation parses as garbage (e.g. "header too long").
  */
-final class EcdsaDerEncoder {
+public final class EcdsaDerEncoder {
 
     private EcdsaDerEncoder() {
     }
 
     /** Wrap a raw {@code R||S} signature into {@code SEQUENCE { INTEGER r, INTEGER s }}. */
-    static byte[] rawToDer(byte[] rawSignature) {
+    public static byte[] rawToDer(byte[] rawSignature) {
         if (rawSignature == null || rawSignature.length == 0 || rawSignature.length % 2 != 0) {
             throw new IllegalArgumentException(
                     "Raw ECDSA signature must be a non-empty even-length R||S concatenation");

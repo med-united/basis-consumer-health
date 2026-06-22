@@ -67,6 +67,17 @@ public interface CryptoProvider {
         throw new UnsupportedOperationException("externalAuthenticate not supported by " + getClass().getSimpleName());
     }
 
+    /**
+     * Transmit a raw command APDU to the inserted card identified by {@code cardHandle} and return
+     * the card's raw response APDU (data + 2-byte status word). This is the transport boundary used
+     * by the CardService SecureSendAPDU / secured card-session flow (gemSpec_Kon SendApdu /
+     * TUC_KON_200); the smart-card providers (PC/SC, SICCT) drive the inserted card by handle, while
+     * software providers (P12) leave it unsupported.
+     */
+    default byte[] transmitApdu(String cardHandle, byte[] commandApdu) {
+        throw new UnsupportedOperationException("transmitApdu not supported by " + getClass().getSimpleName());
+    }
+
     /** Create a qualified signature over {@code data} with the card's C.QES key (SignDocument). */
     default byte[] signQes(String cardHandle, byte[] data) {
         throw new UnsupportedOperationException("signQes not supported by " + getClass().getSimpleName());

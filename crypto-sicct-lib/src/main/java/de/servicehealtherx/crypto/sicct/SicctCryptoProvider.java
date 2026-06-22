@@ -5,8 +5,14 @@ import java.util.Map;
 
 import de.servicehealtherx.apdu.card.CardCertificateReadService;
 import de.servicehealtherx.apdu.card.CardListProvider;
+import de.servicehealtherx.apdu.card.CardObject;
 import de.servicehealtherx.apdu.card.CmCardList;
+import de.servicehealtherx.apdu.card.transport.CardReaderPort;
 import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
+import de.servicehealtherx.apdu.card.transport.CardTransportException;
+
+import javax.smartcardio.CommandAPDU;
+import javax.smartcardio.ResponseAPDU;
 import de.servicehealtherx.crypto.CryptoProvider;
 import de.servicehealtherx.crypto.KeyAlias;
 import de.servicehealtherx.crypto.KeyStoreAvailability;
@@ -95,6 +101,21 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
     @Override
     public boolean ownsCard(String cardHandle) {
         return cmCardList.findByHandle(cardHandle).isPresent();
+    }
+
+    @Override
+    public byte[] transmitApdu(String cardHandle, byte[] commandApdu) {
+        CardObject card = cmCardList.findByHandle(cardHandle)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown card handle: " + cardHandle));
+        CardReaderPort port = portResolver.portFor(card.ctid())
+                .orElseThrow(() -> new IllegalStateException(
+                        "No active SICCT terminal for card " + cardHandle + " (terminal " + card.ctid() + ")"));
+        try {
+            ResponseAPDU response = port.transmit(card.slotNo(), new CommandAPDU(commandApdu));
+            return response.getBytes();
+        } catch (CardTransportException e) {
+            throw new IllegalStateException("transmitApdu failed: " + e.getMessage(), e);
+        }
     }
 
     @Override
