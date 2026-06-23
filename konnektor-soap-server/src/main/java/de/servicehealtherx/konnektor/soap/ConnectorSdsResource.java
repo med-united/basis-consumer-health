@@ -161,6 +161,9 @@ public class ConnectorSdsResource {
         for (ServiceCatalogEntry entry : CATALOG) {
             String endpointUrl = soapBase + "/" + entry.serviceName();
 
+            EndpointType endpoint = new EndpointType();
+            endpoint.setLocation(endpointUrl);
+
             EndpointType endpointTls = new EndpointType();
             endpointTls.setLocation(endpointUrl);
 
@@ -171,6 +174,7 @@ public class ConnectorSdsResource {
             version.setAbstract(entry.abstractText());
             version.setTargetNamespace(entry.targetNamespace());
             version.setVersion(entry.version());
+            version.setEndpoint(endpoint);
             version.setEndpointTLS(endpointTls);
             version.setWSDL(wsdl);
 

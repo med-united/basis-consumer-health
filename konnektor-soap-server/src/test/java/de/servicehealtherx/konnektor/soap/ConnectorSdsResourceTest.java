@@ -91,12 +91,15 @@ class ConnectorSdsResourceTest {
         assertEquals("http://ws.gematik.de/conn/CardService/WSDL/v8.1", version.getTargetNamespace());
         assertEquals("http://localhost:8080/ws/conn/CardService",
                 version.getEndpointTLS().getLocation());
+        assertEquals("http://localhost:8080/ws/conn/CardService",
+                version.getEndpoint().getLocation());
         assertEquals("http://localhost:8080/ws/conn/CardService?wsdl", version.getWSDL().getLocation());
 
-        // Every service carries an abstract, a TLS endpoint and a WSDL link.
+        // Every service carries an abstract, a plain endpoint, a TLS endpoint and a WSDL link.
         for (ServiceType service : list) {
             VersionType v = service.getVersions().getVersion().get(0);
             assertNotNull(service.getAbstract());
+            assertTrue(v.getEndpoint().getLocation().endsWith("/ws/conn/" + service.getName()));
             assertTrue(v.getEndpointTLS().getLocation().endsWith("/ws/conn/" + service.getName()));
             assertTrue(v.getWSDL().getLocation().endsWith("/ws/conn/" + service.getName() + "?wsdl"));
         }
