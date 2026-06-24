@@ -88,7 +88,7 @@ class ConnectorSdsResourceTest {
         ServiceType card = list.stream().filter(s -> s.getName().equals("CardService")).findFirst()
                 .orElseThrow();
         VersionType version = card.getVersions().getVersion().get(0);
-        assertEquals("http://ws.gematik.de/conn/CardService/WSDL/v8.1", version.getTargetNamespace());
+        assertEquals("http://ws.gematik.de/conn/CardService/WSDL/v8.2", version.getTargetNamespace());
         assertEquals("http://localhost:8080/ws/conn/CardService",
                 version.getEndpointTLS().getLocation());
         assertEquals("http://localhost:8080/ws/conn/CardService",

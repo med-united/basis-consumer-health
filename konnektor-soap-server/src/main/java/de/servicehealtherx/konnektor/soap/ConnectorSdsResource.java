@@ -60,8 +60,8 @@ public class ConnectorSdsResource {
     }
 
     private static final List<ServiceCatalogEntry> CATALOG = List.of(
-            new ServiceCatalogEntry("CardService", "8.1.0",
-                    "http://ws.gematik.de/conn/CardService/WSDL/v8.1",
+            new ServiceCatalogEntry("CardService", "8.2.1",
+                    "http://ws.gematik.de/conn/CardService/WSDL/v8.2",
                     "Kartenbezogene Operationen: PIN-Verifikation, PIN-Änderung, Freischaltung, SMC-Autorisierung."),
             new ServiceCatalogEntry("CardTerminalService", "1.1.0",
                     "http://ws.gematik.de/conn/CardTerminalService/WSDL/v1.1",
