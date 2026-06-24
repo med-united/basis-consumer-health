@@ -192,6 +192,15 @@ public class KonnektorEventService implements EventServicePortType {
 
             List<CardInfoType> cards = getAllCards();
 
+            // GetCards.CardType is an optional filter (gemSpec_Kon): when present,
+            // only return cards of the requested type.
+            CardTypeType cardTypeFilter = parameter.getCardType();
+            if (cardTypeFilter != null) {
+                cards = cards.stream()
+                        .filter(card -> card.getCardType() == cardTypeFilter)
+                        .collect(Collectors.toList());
+            }
+
             response.getCards().getCard().addAll(cards);
 
             response.setStatus(okStatus());
