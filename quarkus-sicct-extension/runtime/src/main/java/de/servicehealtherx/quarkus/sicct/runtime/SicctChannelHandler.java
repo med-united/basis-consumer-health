@@ -19,8 +19,12 @@ import com.beanit.asn1bean.ber.types.BerInteger;
 import com.beanit.asn1bean.ber.types.BerOctetString;
 
 import de.gematik.pki.gemlibpki.commons.utils.CertReader;
+import de.servicehealtherx.cetp.EventSeverity;
+import de.servicehealtherx.cetp.EventType;
 import de.servicehealtherx.sicct.EhealthTerminalAuthenticate;
 import de.servicehealtherx.sicct.ISO7816;
+import de.servicehealtherx.sicct.jpa.CardTerminal;
+import de.servicehealtherx.sicct.jpa.CorrelationState;
 import de.servicehealtherx.sicct.SICCT;
 import de.servicehealtherx.sicct.codec.IccStatusDecoder;
 import de.servicehealtherx.sicct.codec.IccStatusDecoder.IccStatusValue;
@@ -100,29 +104,51 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         if (evt == SslHandshakeCompletionEvent.SUCCESS) {
             SslHandler sslhandler = (SslHandler) ctx.channel().pipeline().get("ssl");
             terminalTLSCertificate = (X509Certificate) sslhandler.engine().getSession().getPeerCertificates()[0];
-            byte[] savedCertBytes = connection.getTerminal().smktAutCertificate;
+            connection.onTlsEstablished(connection.getTerminal().smktAutCertificate != null);
 
-            if (savedCertBytes == null) {
-                LOG.warnf(
-                        "[SICCT] TLS handshake successful for terminal=%s, but no SMK Aut certificate was previously stored! Saving new certificate: %s",
-                        connection.getTerminalId(),
-                        terminalTLSCertificate.getSubjectX500Principal().getName());
-                connection.getTerminal().smktAutCertificate = terminalTLSCertificate.getEncoded();
-                return;
-            }
+            // TUC_KON_050 step 5: compare the TLS server certificate against the stored
+            // reference data CT.SMKT_AUT and check the certificate validity window.
+            checkServerCertificateReferenceData();
+
+            // TUC_KON_050 steps 4 + 6–11 run once the secure channel is up.
+            beginCardTerminalSession();
+        }
+    }
+
+    /**
+     * TUC_KON_050 step 5: verify the TLS server certificate against the reference data
+     * stored for this terminal (CT.SMKT_AUT) and surface an upcoming expiry.
+     */
+    private void checkServerCertificateReferenceData() throws Exception {
+        byte[] savedCertBytes = connection.getTerminal().smktAutCertificate;
+        if (savedCertBytes == null) {
+            LOG.warnf("[SICCT] TLS up for terminal=%s but no CT.SMKT_AUT stored — saving current certificate: %s",
+                    connection.getTerminalId(), terminalTLSCertificate.getSubjectX500Principal().getName());
+            connection.getTerminal().smktAutCertificate = terminalTLSCertificate.getEncoded();
+        } else {
             X509Certificate savedCert = CertReader.readX509(savedCertBytes);
             if (!terminalTLSCertificate.equals(savedCert)) {
-                LOG.warnf(
-                        "[SICCT] TLS handshake successful for terminal=%s, but SMK Aut certificate has changed! Previous: %s, New: %s",
+                // Step 5a: certificate mismatch. The full handling compares the ICCSN
+                // from the certificate and, when equal, stores the new certificate and
+                // performs a maintenance pairing. That ICCSN/maintenance-pairing path
+                // is not yet wired here.
+                LOG.warnf("[SICCT] terminal=%s CT.SMKT_AUT mismatch! stored=%s presented=%s "
+                        + "(ICCSN comparison + maintenance pairing not yet implemented)",
                         connection.getTerminalId(),
                         savedCert.getSubjectX500Principal().getName(),
                         terminalTLSCertificate.getSubjectX500Principal().getName());
             } else {
-                LOG.debugf(
-                        "[SICCT] TLS handshake successful for terminal=%s, SMK Aut certificate matches previously stored certificate: %s",
-                        connection.getTerminalId(),
-                        terminalTLSCertificate.getSubjectX500Principal().getName());
+                LOG.debugf("[SICCT] terminal=%s CT.SMKT_AUT matches stored reference", connection.getTerminalId());
             }
+        }
+
+        // Step 5b: certificate expires in less than 35 days → operational-state warning.
+        long daysToExpiry = (terminalTLSCertificate.getNotAfter().getTime() - System.currentTimeMillis())
+                / (24L * 60 * 60 * 1000);
+        if (daysToExpiry < 35) {
+            LOG.warnf("[SICCT] terminal=%s gSMC-KT certificate expires in %d day(s) "
+                    + "→ EC_CardTerminal_gSMC-KT_Certificate_Expires_Soon(%s)",
+                    connection.getTerminalId(), daysToExpiry, connection.getTerminal().ctid);
         }
     }
 
@@ -192,6 +218,142 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
                 EhealthTerminalAuthenticate.P2_CREATE);
         sendSicctEnvelope(sicctEnvelop);
 
+    }
+
+    // -------------------------------------------------------------------------
+    // TUC_KON_050 — authenticated card-terminal session (steps 4, 6–11)
+    // -------------------------------------------------------------------------
+
+    /**
+     * TUC_KON_050 continuation that runs once the TLS channel is up. INIT CT SESSION
+     * has already been emitted from {@link #channelActive} with role-appropriate
+     * credentials. This applies the correlation gate (step 4) and, for sufficiently
+     * correlated terminals, runs the authentication (steps 6–9).
+     */
+    public void beginCardTerminalSession() {
+        CorrelationState correlation = connection.getCorrelationState();
+
+        // Step 4: Wenn CT.CORRELATION <= „zugewiesen": only a low-correlation session
+        // is permitted. INIT CT SESSION (empty credentials) was already sent; mark the
+        // terminal not usable (CT.CONNECTED = Nein) and end the TUC.
+        if (correlation.ordinal() <= CorrelationState.ZUGEWIESEN.ordinal()) {
+            LOG.infof("[TUC_KON_050] terminal=%s correlation=%s (<= ZUGEWIESEN): low-correlation session, CONNECTED=Nein",
+                    connection.getTerminalId(), correlation);
+            connection.markSessionNotUsable();
+            return;
+        }
+
+        runAuthenticatedSession(connection.getDesiredRole(), connection.isTlsFreshlyEstablished());
+    }
+
+    /**
+     * TUC_KON_050 step 2 (role switch over a kept TLS connection): close the current
+     * card-terminal session, open a new one with the requested role and re-authenticate.
+     */
+    public void switchSessionRole(Role role) {
+        sendCloseCtSession();
+        connection.setDesiredRole(role);
+        sendInitCtSessionApdu(); // new session with role-appropriate credentials
+        runAuthenticatedSession(role, false);
+    }
+
+    /**
+     * TUC_KON_050 steps 6–7: generate a challenge and send EHEALTH TERMINAL
+     * AUTHENTICATE VALIDATE. The response is verified asynchronously in
+     * {@link #handleValidateResult}.
+     */
+    private void runAuthenticatedSession(Role role, boolean tlsFreshlyEstablished) {
+        // Step 6a: generate a random challenge of at least 16 bytes.
+        byte[] challenge = EhealthTerminalAuthenticate.generateChallenge(EhealthTerminalAuthenticate.SSC_MIN_LENGTH);
+        connection.setSessionChallenge(challenge);
+        LOG.infof("[TUC_KON_050] terminal=%s sending EHEALTH TERMINAL AUTHENTICATE VALIDATE (role=%s)",
+                connection.getTerminalId(), role);
+
+        // Step 7: send the challenge in the Shared Secret Challenge DO.
+        SicctEnvelope envelope = createSicctEnvelop(
+                response -> handleValidateResult(response, challenge, role, tlsFreshlyEstablished));
+        byte[] validateApdu = EhealthTerminalAuthenticate.buildValidate(challenge);
+        envelope.setDwLength(new BerInteger(validateApdu.length));
+        envelope.setAbCmd(new SicctPayload(validateApdu));
+        rememberSentCommand(envelope, EhealthTerminalAuthenticate.CLA, EhealthTerminalAuthenticate.INS,
+                EhealthTerminalAuthenticate.P1_DIRECT, EhealthTerminalAuthenticate.P2_VALIDATE);
+        sendSicctEnvelope(envelope);
+    }
+
+    /**
+     * TUC_KON_050 steps 8–11: verify the VALIDATE response hash and, on success, mark
+     * the session usable, emit CT/CONNECTED and gather the inserted cards.
+     */
+    private void handleValidateResult(SicctEnvelope response, byte[] challenge, Role role,
+            boolean tlsFreshlyEstablished) {
+        // Step 8: the terminal must return SHA-256(challenge || CT.SHARED_SECRET).
+        byte[] sharedSecret = connection.getTerminal().sealedSharedSecret;
+        boolean verified = false;
+        if (sharedSecret != null && isSuccess(response)) {
+            byte[] expected = EhealthTerminalAuthenticate.computeExpectedValidateHash(challenge, sharedSecret);
+            byte[] responseData = extractResponseData(response);
+            verified = responseData != null && indexOf(responseData, expected) >= 0;
+        }
+
+        if (!verified) {
+            LOG.warnf("[TUC_KON_050] terminal=%s EHEALTH TERMINAL AUTHENTICATE VALIDATE failed "
+                    + "(sw=%s, sharedSecretPresent=%s): CONNECTED=Nein",
+                    connection.getTerminalId(), sw(response), sharedSecret != null);
+            connection.markSessionNotUsable();
+            return;
+        }
+
+        // Step 9: set CT.ACTIVEROLE = role and CT.CONNECTED = Ja.
+        connection.markSessionEstablished(role);
+
+        // Step 10: if the TLS connection had to be (re-)established, raise CT/CONNECTED.
+        if (tlsFreshlyEstablished && manager != null) {
+            manager.TUC_KON_256("CT/CONNECTED", EventType.Operation, EventSeverity.Info,
+                    Map.of("CtID", String.valueOf(connection.getTerminal().ctid),
+                            "Hostname", String.valueOf(connection.getTerminal().hostname)),
+                    true, true);
+        }
+
+        // Step 11: determine the cards currently inserted and fill CT.SLOTS_USED.
+        getStatusAllIcc();
+    }
+
+    /** Encodes a Response-APDU's data field to raw bytes, or {@code null} if absent. */
+    private byte[] extractResponseData(SicctEnvelope envelope) {
+        if (envelope.getAbCmd() == null || envelope.getAbCmd().getResponseApdu() == null
+                || envelope.getAbCmd().getResponseApdu().getResponseData() == null) {
+            return null;
+        }
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            envelope.getAbCmd().getResponseApdu().getResponseData().encode(out, false);
+            return out.toByteArray();
+        } catch (IOException e) {
+            LOG.warnf(e, "[SICCT] could not encode response data for terminal=%s", connection.getTerminalId());
+            return null;
+        }
+    }
+
+    /** Returns the index of {@code needle} within {@code haystack}, or -1. */
+    private static int indexOf(byte[] haystack, byte[] needle) {
+        if (needle.length == 0 || haystack.length < needle.length) {
+            return -1;
+        }
+        outer: for (int i = 0; i <= haystack.length - needle.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    continue outer;
+                }
+            }
+            return i;
+        }
+        return -1;
+    }
+
+    private void sendCloseCtSession() {
+        SicctEnvelope envelope = createSicctEnvelop();
+        assembleAndSendEnvelop(SICCT.INS_CLOSE_CT_SESSION, SICCT.P1_CARD_TERMINAL, 0x00, envelope, getCtSessDO());
+        LOG.infof("[SICCT] CLOSE CT SESSION sent for terminal=%s", connection.getTerminalId());
     }
 
     private void rememberSentCommand(SicctEnvelope envelope, int cla, byte ins, int p1, int p2) {
@@ -394,12 +556,36 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         ICCSDO iccs = findDataObject(envelope, SicctDataObject::getIccs);
         if (iccs != null && iccs.value != null) {
             lastIccStatus = IccStatusDecoder.decode(iccs.value);
+            updateSlotsUsed(lastIccStatus);
             LOG.infof("[SICCT] GET STATUS ALL ICC for terminal=%s: %s (raw=%s) sw=%s",
                     connection.getTerminalId(), lastIccStatus, HexFormat.of().formatHex(iccs.value), sw(envelope));
         } else {
             LOG.infof("[SICCT] GET STATUS ALL ICC for terminal=%s sw=%s (no ICC status DO)",
                     connection.getTerminalId(), sw(envelope));
         }
+    }
+
+    /**
+     * TUC_KON_050 step 11: derive CT.SLOTS_USED from the per-slot ICC status (a slot
+     * is "used" when a card is present) and raise CT/SLOT_IN_USE for each occupied slot.
+     */
+    private void updateSlotsUsed(List<IccStatusValue> iccStatus) {
+        StringBuilder slots = new StringBuilder();
+        for (int slot = 0; slot < iccStatus.size(); slot++) {
+            if (iccStatus.get(slot) != IccStatusValue.CC_ABSENT) {
+                if (slots.length() > 0) {
+                    slots.append(',');
+                }
+                slots.append(slot);
+                if (manager != null) {
+                    manager.TUC_KON_256("CT/SLOT_IN_USE", EventType.Operation, EventSeverity.Info,
+                            Map.of("CtID", String.valueOf(connection.getTerminal().ctid),
+                                    "SlotNo", String.valueOf(slot)),
+                            false, false);
+                }
+            }
+        }
+        connection.setSlotsUsed(slots.toString());
     }
 
     private void handleGetStatusCardTerminal(SicctEnvelope envelope) {
@@ -476,17 +662,22 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         // command that was sent (CREATE / VALIDATE / ADD generate-challenge / ADD response).
         String sw = sw(envelope);
         switch (command.p2()) {
-            case EhealthTerminalAuthenticate.P2_CREATE & 0xFF -> LOG.infof(
-                    "[SICCT] EHEALTH TERMINAL AUTHENTICATE CREATE response (signature over shared secret) sw=%s for terminal=%s",
-                    sw, connection.getTerminalId());
-            case EhealthTerminalAuthenticate.P2_VALIDATE & 0xFF -> {
-                LOG.infof("[SICCT] EHEALTH TERMINAL AUTHENTICATE VALIDATE response sw=%s for terminal=%s",
+            case EhealthTerminalAuthenticate.P2_CREATE & 0xFF -> {
+                LOG.infof(
+                        "[SICCT] EHEALTH TERMINAL AUTHENTICATE CREATE response (signature over shared secret) sw=%s for terminal=%s",
                         sw, connection.getTerminalId());
+                // Pairing CREATE acknowledged: the terminal now holds the shared secret →
+                // advance the correlation to GEPAIRT (the signature itself is validated by
+                // the response consumer registered in ehealthTerminalAuthenticateCreate()).
                 if (isSuccess(envelope)) {
                     connection.onPaired();
-                    connection.onAktiv();
                 }
             }
+            // VALIDATE is verified and finalised by the response consumer registered in
+            // runAuthenticatedSession() (TUC_KON_050 steps 8–11); here we only log.
+            case EhealthTerminalAuthenticate.P2_VALIDATE & 0xFF -> LOG.infof(
+                    "[SICCT] EHEALTH TERMINAL AUTHENTICATE VALIDATE response sw=%s for terminal=%s",
+                    sw, connection.getTerminalId());
             // P2 ADD generate-challenge (0x03): terminal returns a challenge (EHEALTH ... ADD EXPECTING)
             case EhealthTerminalAuthenticate.P2_ADD_PH1 & 0xFF -> LOG.infof(
                     "[SICCT] EHEALTH TERMINAL AUTHENTICATE ADD (challenge requested, EXPECTING response) sw=%s for terminal=%s",
@@ -687,21 +878,26 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
     }
 
     private CTSESSDO getCtSessDO() {
+        // TUC_KON_050 step 6b: empty Session ID; role-dependent username/password.
+        // User → empty credentials; Admin → CT.ADMIN_USERNAME / CT.ADMIN_PASSWORD.
         CTSESSDO ctSessDO = new CTSESSDO();
         ctSessDO.setSessionId(new BerOctetString(new byte[] {}));
         ctSessDO.setUsername(new BerOctetString(new byte[] {}));
         ctSessDO.setPassword(new BerOctetString(new byte[] {}));
-        if (connection.getTerminal() != null) {
-            if (connection.getTerminal().adminUsername != null) {
-                ctSessDO.setUsername(new BerOctetString(connection.getTerminal().adminUsername.getBytes()));
-            }
-            if (connection.getTerminal().adminPassword != null) {
-                ctSessDO.setPassword(new BerOctetString(connection.getTerminal().adminPassword.getBytes()));
-            }
-        } else {
+        CardTerminal terminal = connection.getTerminal();
+        if (terminal == null) {
             LOG.warnf(
                     "[SICCT] No terminal information available for terminal=%s, sending INIT CT SESSION with empty credentials",
                     connection.getTerminalId());
+            return ctSessDO;
+        }
+        if (connection.getDesiredRole() == Role.ADMIN) {
+            if (terminal.adminUsername != null) {
+                ctSessDO.setUsername(new BerOctetString(terminal.adminUsername.getBytes()));
+            }
+            if (terminal.adminPassword != null) {
+                ctSessDO.setPassword(new BerOctetString(terminal.adminPassword.getBytes()));
+            }
         }
         return ctSessDO;
     }

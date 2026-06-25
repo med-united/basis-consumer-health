@@ -1,6 +1,7 @@
 package de.servicehealtherx.quarkus.sicct.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -19,6 +20,8 @@ import de.servicehealtherx.sicct.SICCT;
 import de.servicehealtherx.sicct.codec.IccStatusDecoder.IccStatusValue;
 import de.servicehealtherx.sicct.codec.SicctCodec;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
+import de.servicehealtherx.sicct.jpa.CorrelationState;
+import sicct.protocol._1._3._0.SicctDataObject;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -102,11 +105,40 @@ public class SicctChannelHandlerResponseTest {
     }
 
     @Test
-    public void test_ehealth_validate_success_marks_terminal_active() {
-        sendCommand(20, SICCT.INS_EHEALTH_TERMINAL_AUTHENTICATE, EhealthTerminalAuthenticate.P1_DIRECT,
-                EhealthTerminalAuthenticate.P2_VALIDATE);
-        handler.channelRead(ctx, statusResponse(20, 0x90, 0x00));
-        assertTrue(connection.isAktiv(), "VALIDATE 9000 must drive the terminal to AKTIV");
+    public void test_ehealth_validate_correct_hash_establishes_session() {
+        // TUC_KON_050 steps 6–9: a paired terminal (correlation >= GEPAIRT) is
+        // authenticated by a challenge/response over the shared secret. A correct hash
+        // must establish the session: CT.CONNECTED = Ja and CT.ACTIVEROLE = role.
+        byte[] sharedSecret = HexFormat.of().parseHex("00112233445566778899aabbccddeeff");
+        terminal.sealedSharedSecret = sharedSecret;
+        terminal.correlation = CorrelationState.GEPAIRT;
+        connection.setDesiredRole(Role.USER);
+
+        // Generates a challenge and sends VALIDATE under the next sequence number (4,
+        // after INIT + 2× GET STATUS emitted by channelActive).
+        handler.beginCardTerminalSession();
+        byte[] challenge = connection.getSessionChallenge();
+        assertNotNull(challenge, "VALIDATE must generate a challenge");
+
+        byte[] expectedHash = EhealthTerminalAuthenticate.computeExpectedValidateHash(challenge, sharedSecret);
+        handler.channelRead(ctx, validateResponse(4, expectedHash));
+
+        assertTrue(terminal.connected, "Correct VALIDATE hash must set CT.CONNECTED = Ja");
+        assertEquals("USER", terminal.activeRole, "Active role must be recorded");
+    }
+
+    @Test
+    public void test_ehealth_validate_wrong_hash_leaves_session_unusable() {
+        terminal.sealedSharedSecret = HexFormat.of().parseHex("00112233445566778899aabbccddeeff");
+        terminal.correlation = CorrelationState.GEPAIRT;
+
+        handler.beginCardTerminalSession();
+        assertNotNull(connection.getSessionChallenge());
+
+        // A response carrying the wrong hash must not establish the session.
+        handler.channelRead(ctx, validateResponse(4, new byte[32]));
+
+        assertFalse(terminal.connected, "Wrong VALIDATE hash must keep CT.CONNECTED = Nein");
     }
 
     @Test
@@ -142,6 +174,25 @@ public class SicctChannelHandlerResponseTest {
         trailer.setSw2(new BerInteger(sw2));
         responseApdu.setTrailer(trailer);
         responseApdu.setResponseData(new ResponseAPDU.ResponseData());
+        SicctPayload payload = new SicctPayload();
+        payload.setResponseApdu(responseApdu);
+        envelope.setAbCmd(payload);
+        return envelope;
+    }
+
+    private SicctEnvelope validateResponse(int seq, byte[] responseData) {
+        SicctEnvelope envelope = new SicctEnvelope();
+        envelope.setBMessageType(SICCT.R_COMMAND);
+        envelope.setWSrcOrDesAddr(SICCT.TERMINAL_ADDRESS);
+        envelope.setWSeq(new SicctSequenceNumber(seq));
+        ResponseAPDU responseApdu = new ResponseAPDU();
+        StatusWord trailer = new StatusWord();
+        trailer.setSw1(new BerInteger(0x90));
+        trailer.setSw2(new BerInteger(0x00));
+        responseApdu.setTrailer(trailer);
+        ResponseAPDU.ResponseData data = new ResponseAPDU.ResponseData();
+        data.getSicctDataObject().add(new SicctDataObject(responseData));
+        responseApdu.setResponseData(data);
         SicctPayload payload = new SicctPayload();
         payload.setResponseApdu(responseApdu);
         envelope.setAbCmd(payload);

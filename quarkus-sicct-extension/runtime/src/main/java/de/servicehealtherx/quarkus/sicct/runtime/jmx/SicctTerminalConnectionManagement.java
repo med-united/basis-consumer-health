@@ -1,5 +1,6 @@
 package de.servicehealtherx.quarkus.sicct.runtime.jmx;
 
+import de.servicehealtherx.quarkus.sicct.runtime.Role;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalConnection;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
@@ -58,8 +59,9 @@ public class SicctTerminalConnectionManagement implements SicctTerminalConnectio
         CardTerminal terminal = CardTerminal.resolve(terminalId);
         if (terminal == null)
             return "TERMINAL_NOT_FOUND";
+        // Begin a card-terminal session in the default User role (TUC_KON_050).
         LOG.infof("[SICCT] JMX connect requested for terminal=%s (hostname=%s)", terminalId, terminal.hostname);
-        return manager.connectTerminal(terminal);
+        return manager.TUC_KON_050_startCardTerminalSession(terminal.ctid, Role.USER);
     }
 
     @Override

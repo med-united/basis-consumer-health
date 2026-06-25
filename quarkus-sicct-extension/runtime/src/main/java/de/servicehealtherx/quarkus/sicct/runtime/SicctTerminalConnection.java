@@ -47,6 +47,13 @@ public class SicctTerminalConnection {
     private volatile byte[] sessionKey;
     private SicctChannelHandler sicctChannelHandler;
 
+    /** TUC_KON_050: role the session currently being established is opened for. */
+    private volatile Role desiredRole = Role.USER;
+    /** TUC_KON_050 step 6a: challenge sent in EHEALTH TERMINAL AUTHENTICATE VALIDATE. */
+    private volatile byte[] sessionChallenge;
+    /** True when the current sequence had to (re-)establish the TLS connection (step 10). */
+    private volatile boolean tlsFreshlyEstablished;
+
     public SicctTerminalConnection(CardTerminal terminal) {
         this(terminal, null);
     }
@@ -162,17 +169,78 @@ public class SicctTerminalConnection {
     }
 
     /**
-     * Advances the connection state machine. The {@code connected} flag on the
-     * {@link CardTerminal} entity is a denormalised projection of this enum
-     * (connected ⇔ {@link ConnectionState#CONNECTED}); it is kept in sync here so
-     * there is no second, independently-updated copy of the connection status.
+     * Advances the transport state machine (TCP/TLS). This is distinct from the
+     * TUC_KON_050 {@code CT.CONNECTED} session flag: per the TUC, {@code CONNECTED}
+     * may only become {@code true} after a successful EHEALTH TERMINAL AUTHENTICATE
+     * VALIDATE (step 9). Losing the transport, however, always invalidates the
+     * session, so any non-{@link ConnectionState#CONNECTED} transport state clears it.
      */
     private void setConnectionState(ConnectionState newState) {
         ConnectionState previous = connectionState.getAndSet(newState);
-        terminal.connected = (newState == ConnectionState.CONNECTED);
+        if (newState != ConnectionState.CONNECTED) {
+            // Transport down/coming up: the authenticated session (if any) is gone.
+            terminal.connected = false;
+        }
         if (previous != newState) {
             LOG.infof("[SICCT] terminal=%s connection %s -> %s", terminal.hostname, previous, newState);
         }
+        persist();
+    }
+
+    // -------------------------------------------------------------------------
+    // TUC_KON_050 session state
+    // -------------------------------------------------------------------------
+
+    public Role getDesiredRole() {
+        return desiredRole;
+    }
+
+    public void setDesiredRole(Role role) {
+        this.desiredRole = role != null ? role : Role.USER;
+    }
+
+    public byte[] getSessionChallenge() {
+        return sessionChallenge;
+    }
+
+    public void setSessionChallenge(byte[] challenge) {
+        this.sessionChallenge = challenge;
+    }
+
+    public boolean isTlsFreshlyEstablished() {
+        return tlsFreshlyEstablished;
+    }
+
+    public void setTlsFreshlyEstablished(boolean fresh) {
+        this.tlsFreshlyEstablished = fresh;
+    }
+
+    /**
+     * TUC_KON_050 step 9: the session was authenticated. Records the active role and
+     * marks the terminal usable ({@code CT.CONNECTED = Ja}).
+     */
+    public void markSessionEstablished(Role role) {
+        this.desiredRole = role;
+        terminal.activeRole = role.name();
+        terminal.connected = true;
+        LOG.infof("[TUC_KON_050] terminal=%s session established (CONNECTED=Ja, ACTIVEROLE=%s)",
+                terminal.hostname, role);
+        persist();
+    }
+
+    /**
+     * TUC_KON_050 step 4b / failed authentication: the terminal is reachable but not
+     * usable for card operations ({@code CT.CONNECTED = Nein}).
+     */
+    public void markSessionNotUsable() {
+        terminal.activeRole = null;
+        terminal.connected = false;
+        persist();
+    }
+
+    /** TUC_KON_050 step 11: records the slots currently holding a card. */
+    public void setSlotsUsed(String slotsUsed) {
+        terminal.slotsUsed = slotsUsed;
         persist();
     }
 
