@@ -8,10 +8,10 @@ import de.servicehealtherx.apdu.card.transport.CardTransportException;
 import de.servicehealtherx.apdu.model.GematikISO7816;
 
 /**
- * Performs an on-card ECDSA signature with a gematik G2.1 ESIGN/QES private key (PSO: COMPUTE
- * DIGITAL SIGNATURE, gemSpec_COS §14.8.2). Transport-neutral — it only transmits ISO 7816 APDUs
- * through a {@link CardReaderPort}, so it serves both the PC/SC and SICCT providers, mirroring
- * {@link CardAttributeReader}.
+ * Performs on-card ECDSA signatures (PSO: COMPUTE DIGITAL SIGNATURE, gemSpec_COS §14.8.2) and
+ * deciphering (PSO: DECIPHER, §14.8.3) with gematik G2.1 ESIGN/QES private keys. Transport-neutral —
+ * it only transmits ISO 7816 APDUs through a {@link CardReaderPort}, so it serves both the PC/SC and
+ * SICCT providers, mirroring {@link CardAttributeReader}.
  *
  * <p>The exact sequence and parameters were verified against gematik G2.1 test cards (HBA + SMC-B)
  * and match gematik's reference {@code OpenHealthCardKit} (selectSigning: P1=0x41/P2=0xB6 DST,
@@ -32,9 +32,16 @@ public final class EsignSigner {
     /** P2 of MSE:SET selecting the Digital Signature Template (gemSpec_COS §15.9). */
     private static final int MSE_DST = 0xB6;
 
+    /** P2 of MSE:SET selecting the Confidentiality Template for decipher (gemSpec_COS §15.9). */
+    private static final int MSE_CT = 0xB8;
+
     /** PSO:COMPUTE DIGITAL SIGNATURE — P1=return signature, P2=input is data to be signed. */
     private static final int PSO_CDS_P1 = 0x9E;
     private static final int PSO_CDS_P2 = 0x9A;
+
+    /** PSO:DECIPHER — P1=0x80 (return plain value), P2=0x86 (input is a padding-indicator cryptogram). */
+    private static final int PSO_DEC_P1 = 0x80;
+    private static final int PSO_DEC_P2 = 0x86;
 
     private final CardReaderPort port;
     private final int slotNo;
@@ -62,6 +69,44 @@ public final class EsignSigner {
         }
         manageSecurityEnvironment(keyReference, algorithmId);
         return performSignature(hash);
+    }
+
+    /**
+     * Decipher {@code cryptogram} with the key {@code keyReference} of the application identified by
+     * {@code applicationAid}, after verifying {@code pin} against {@code pinRef} (pass
+     * {@code pinRef < 0} to skip PIN verification). Mirrors {@link #signEcdsa} but performs
+     * {@code MSE:SET} of the Confidentiality Template followed by {@code PSO:DECIPHER}
+     * (gemSpec_COS §14.8.3 / TUC_KON_220) — e.g. to unwrap an ELC/RSA transport key with the card's
+     * C.ENC key. Used by the PC/SC and SICCT crypto providers for hybrid decryption.
+     *
+     * @return the deciphered plaintext returned by the card (e.g. the AES transport key)
+     */
+    public byte[] decipher(byte[] applicationAid, int pinRef, String pin,
+                           int keyReference, byte[] cryptogram)
+            throws CardTransportException {
+        selectApplication(applicationAid);
+        if (pinRef >= 0) {
+            verifyPin(pinRef, pin);
+        }
+        manageSecurityEnvironmentForDecipher(keyReference);
+        return performDecipher(cryptogram);
+    }
+
+    private void manageSecurityEnvironmentForDecipher(int keyReference) throws CardTransportException {
+        byte[] data = {(byte) GematikISO7816.TAG_KEY_REF, 0x01, (byte) keyReference};
+        CommandAPDU mse = new CommandAPDU(
+                GematikISO7816.CLA_ISO, GematikISO7816.INS_MANAGE_SECURITY_ENV,
+                GematikISO7816.MSE_SET_COMPUTE, MSE_CT, data);
+        expectSuccess(port.transmit(slotNo, mse), "MSE:SET CT");
+    }
+
+    private byte[] performDecipher(byte[] cryptogram) throws CardTransportException {
+        CommandAPDU pso = new CommandAPDU(
+                GematikISO7816.CLA_ISO, GematikISO7816.INS_PERFORM_SECURITY_OPERATION,
+                PSO_DEC_P1, PSO_DEC_P2, cryptogram, 256);
+        ResponseAPDU resp = port.transmit(slotNo, pso);
+        expectSuccess(resp, "PSO:DECIPHER");
+        return resp.getData();
     }
 
     private void selectApplication(byte[] aid) throws CardTransportException {

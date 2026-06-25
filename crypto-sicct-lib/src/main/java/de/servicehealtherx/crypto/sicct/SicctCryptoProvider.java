@@ -7,9 +7,11 @@ import de.servicehealtherx.apdu.card.CardCertificateReadService;
 import de.servicehealtherx.apdu.card.CardListProvider;
 import de.servicehealtherx.apdu.card.CardObject;
 import de.servicehealtherx.apdu.card.CmCardList;
+import de.servicehealtherx.apdu.card.EsignSigner;
 import de.servicehealtherx.apdu.card.transport.CardReaderPort;
 import de.servicehealtherx.apdu.card.transport.CardReaderPortResolver;
 import de.servicehealtherx.apdu.card.transport.CardTransportException;
+import de.servicehealtherx.apdu.model.GematikISO7816;
 
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
@@ -34,6 +36,33 @@ import jakarta.enterprise.context.ApplicationScoped;
  */
 @ApplicationScoped
 public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
+
+    private static final org.jboss.logging.Logger LOG =
+            org.jboss.logging.Logger.getLogger(SicctCryptoProvider.class);
+
+    /**
+     * Card PIN used to release the signing keys. gematik TEST-ONLY cards ship with the default PIN
+     * {@code 123456}; overridable with {@code -Dcrypto.provider.sicct.pin=…}. Mirrors the PC/SC
+     * provider so both card transports behave identically.
+     */
+    private static final String CARD_PIN = System.getProperty("crypto.provider.sicct.pin", "123456");
+
+    // ECC signing parameters, identical to the PC/SC provider (verified against gematik G2.1 test
+    // cards). MSE:SET key reference (DO '84') is the dfSpecific reference 0x86 (= Key 6 | 0x80) for
+    // the ECC ESIGN/QES key; the algorithm id (DO '80') is 0x00 = signECDSA.
+    private static final int KEYREF_ECC = 0x86;
+    private static final int ALG_ECDSA = 0x00;
+
+    /** PIN.CH (ref 0x01) releases the C.AUT key in DF.ESIGN; PIN.QES (ref 0x81) the qualified key in DF.QES. */
+    private static final int PIN_CH = 0x01;
+    private static final int PIN_QES = 0x81;
+
+    /**
+     * dfSpecific reference of the ECC C.ENC decipher key in DF.ESIGN (Key 3 | 0x80), used to unwrap
+     * the ECIES transport key (PSO:DECIPHER). Sibling of {@link #KEYREF_ECC}; the exact reference is
+     * not yet validated against real cards (no PC/SC reference implementation for decrypt exists).
+     */
+    private static final int KEYREF_ENC = 0x83;
 
     private final CmCardList cmCardList = new CmCardList();
 
@@ -75,12 +104,29 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
 
     @Override
     public CryptoOperationResult encrypt(CryptoOperationRequest request) {
-        throw new UnsupportedOperationException("SicctCryptoProvider.encrypt not yet implemented");
+        // ECIES encryption uses only the recipient's public key and is performed in software by
+        // EncryptionService; it is not a card operation, so there is nothing for the SICCT card to do
+        // (same as the PC/SC and P12 providers).
+        throw new UnsupportedOperationException(
+                "SicctCryptoProvider does not support encrypt — ECIES encryption is software-only (recipient public key)");
     }
 
     @Override
     public CryptoOperationResult decrypt(CryptoOperationRequest request) {
-        throw new UnsupportedOperationException("SicctCryptoProvider.decrypt not yet implemented");
+        // Hybrid (ECIES) decryption: the card unwraps the AES transport key with its C.ENC key in
+        // DF.ESIGN (released by PIN.CH) via MSE:SET CT + PSO:DECIPHER. EncryptionService feeds the
+        // ELC cryptogram in as request.data and uses the returned transport key. Encryption itself
+        // is software-only (recipient public key) and is not a card operation — see encrypt().
+        String cardHandle = cardHandle(request.alias);
+        CardObject card = resolveCard(cardHandle);
+        CardReaderPort port = portFor(card);
+        try {
+            byte[] transportKey = new EsignSigner(port, card.slotNo()).decipher(
+                    GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ENC, request.data);
+            return new CryptoOperationResult(request.alias, transportKey, null, request.algorithm);
+        } catch (CardTransportException e) {
+            throw new IllegalStateException("decrypt failed for card " + cardHandle + ": " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -104,17 +150,70 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
     }
 
     @Override
+    public byte[] externalAuthenticate(String cardHandle, byte[] hash) {
+        CardObject card = resolveCard(cardHandle);
+        CardReaderPort port = portFor(card);
+        // ExternalAuthenticate signs the supplied hash with the C.AUT key in DF.ESIGN, released by
+        // PIN.CH (ref 0x01) — identical to the PC/SC provider, driven over the SICCT terminal port.
+        try {
+            return new EsignSigner(port, card.slotNo()).signEcdsa(
+                    GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+        } catch (CardTransportException e) {
+            throw new IllegalStateException("externalAuthenticate failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public byte[] signQes(String cardHandle, byte[] data) {
+        CardObject card = resolveCard(cardHandle);
+        CardReaderPort port = portFor(card);
+        byte[] hash = sha256(data);
+        EsignSigner signer = new EsignSigner(port, card.slotNo());
+        try {
+            // Qualified signature with PrK.HP.QES.E256 in DF.QES, released by PIN.QES (ref 0x81).
+            return signer.signEcdsa(GematikISO7816.AID_DF_QES, PIN_QES, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+        } catch (CardTransportException e) {
+            // Only the HBA carries a DF.QES qualified key; an SMC-B has none (SELECT → 6A82). Fall
+            // back to a card signature with the C.AUT key in DF.ESIGN so the flow still yields a
+            // verifiable signature (mirrors the PC/SC provider).
+            LOG.warnf("[SICCT] Qualified signature unavailable (%s); signing with the C.AUT key instead",
+                    e.getMessage());
+            try {
+                return signer.signEcdsa(GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+            } catch (CardTransportException fallback) {
+                throw new IllegalStateException("signQes fallback failed: " + fallback.getMessage(), fallback);
+            }
+        }
+    }
+
+    @Override
     public byte[] transmitApdu(String cardHandle, byte[] commandApdu) {
-        CardObject card = cmCardList.findByHandle(cardHandle)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown card handle: " + cardHandle));
-        CardReaderPort port = portResolver.portFor(card.ctid())
-                .orElseThrow(() -> new IllegalStateException(
-                        "No active SICCT terminal for card " + cardHandle + " (terminal " + card.ctid() + ")"));
+        CardObject card = resolveCard(cardHandle);
+        CardReaderPort port = portFor(card);
         try {
             ResponseAPDU response = port.transmit(card.slotNo(), new CommandAPDU(commandApdu));
             return response.getBytes();
         } catch (CardTransportException e) {
             throw new IllegalStateException("transmitApdu failed: " + e.getMessage(), e);
+        }
+    }
+
+    private CardObject resolveCard(String cardHandle) {
+        return cmCardList.findByHandle(cardHandle)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown card handle: " + cardHandle));
+    }
+
+    private CardReaderPort portFor(CardObject card) {
+        return portResolver.portFor(card.ctid())
+                .orElseThrow(() -> new IllegalStateException(
+                        "No active SICCT terminal for card " + card.cardHandle() + " (terminal " + card.ctid() + ")"));
+    }
+
+    private static byte[] sha256(byte[] data) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256").digest(data);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
     }
 
