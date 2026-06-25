@@ -3,10 +3,11 @@ package de.servicehealtherx.quarkus.sicct.runtime;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.security.SignatureException;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -220,14 +221,19 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
                     // dangling future would otherwise block the pairing thread (and the
                     // confirmFingerprint caller waiting on it) until the protocol timeout.
                     try {
-                        ByteArrayOutputStream signedData = new ByteArrayOutputStream();
-                        sicctEnvelope.getAbCmd().getResponseApdu().getResponseData().encode(signedData, false);
-                        byte[] signatureBytes = signedData.toByteArray();
-                        LOG.debugf("Shared secret: %s Signature: %s", HexFormat.of().formatHex(sharedSecret),
-                                HexFormat.of().formatHex(signatureBytes));
-                        // Step 6: verify the terminal's signature of the shared secret with the
-                        // key belonging to CT.SMKT_AUT (the certificate presented during TLS).
-                        validateSignature(sharedSecret, signatureBytes, terminalTLSCertificate);
+                        byte[] responseBody = responseBodyWithTrailer(sicctEnvelope);
+                        LOG.debugf("Shared secret: %s CREATE response body: %s",
+                                HexFormat.of().formatHex(sharedSecret), HexFormat.of().formatHex(responseBody));
+                        // Step 6: verify the terminal's signature of the shared secret with the key
+                        // belonging to CT.SMKT_AUT (the certificate presented during TLS). A
+                        // spec-conformant terminal terminates the response APDU with SW 9000, so the
+                        // signature is the response body without its 2-byte trailer; a terminal that
+                        // omits the trailer returns the bare signature (the codec then split its last
+                        // two bytes into the status word). Accept either form.
+                        if (!verifyPairingSignature(sharedSecret, terminalTLSCertificate, dropTrailer(responseBody))
+                                && !verifyPairingSignature(sharedSecret, terminalTLSCertificate, responseBody)) {
+                            throw new GeneralSecurityException("Signature validation failed");
+                        }
                         // Step 7: CT.CORRELATION = „gepairt“.
                         connection.onPaired();
                         pairingResult.complete(true);
@@ -357,10 +363,15 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         // Step 8: the terminal must return SHA-256(challenge || CT.SHARED_SECRET).
         byte[] sharedSecret = connection.getTerminal().sealedSharedSecret;
         boolean verified = false;
-        if (sharedSecret != null && isSuccess(response)) {
+        if (sharedSecret != null) {
             byte[] expected = EhealthTerminalAuthenticate.computeExpectedValidateHash(challenge, sharedSecret);
-            byte[] responseData = extractResponseData(response);
-            verified = responseData != null && indexOf(responseData, expected) >= 0;
+            // Search the full Response-APDU body (data field + SW). A conformant terminal returns
+            // <hash> 9000, one that omits the trailer returns the bare hash (its last two bytes
+            // were split into the status word) — reconstructing data + SW recovers the hash in
+            // both cases. A genuine error response carries no data, so its 2-byte body cannot
+            // contain the 32-byte expected hash and verification correctly fails.
+            byte[] responseBody = responseBodyWithTrailer(response);
+            verified = indexOf(responseBody, expected) >= 0;
         }
 
         if (!verified) {
@@ -429,33 +440,70 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
                 new SentCommand(cla, ins, p1 & 0xFF, p2 & 0xFF));
     }
 
-    private void validateSignature(byte[] sharedSecret, byte[] signatureBytes,
-            X509Certificate terminalTLSCertificate) throws GeneralSecurityException {
+    /**
+     * Reassembles the raw EHEALTH TERMINAL AUTHENTICATE response body — the terminal's
+     * signature over the shared secret. {@link SicctCodec#decodeSicctPayload} splits every
+     * response payload into data + a two-byte SW1SW2 trailer, but the CREATE response is a
+     * bare signature with <em>no</em> status word (see the reference terminal), so those
+     * "trailer" bytes are really the last two signature bytes and must be appended back —
+     * otherwise verification runs against a signature truncated by two bytes.
+     */
+    /**
+     * The full Response-APDU body the terminal sent: the data field followed by SW1 SW2. The codec
+     * splits the trailing two bytes of the payload into {@code getTrailer()}, so {@code data + SW}
+     * reconstructs the original payload exactly — regardless of whether those last two bytes are a
+     * real status word or (for a terminal that omits the trailer) the tail of an opaque payload.
+     */
+    private byte[] responseBodyWithTrailer(SicctEnvelope envelope) {
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        byte[] data = extractResponseData(envelope);
+        if (data != null) {
+            body.writeBytes(data);
+        }
+        StatusWord trailer = trailer(envelope);
+        if (trailer != null && trailer.getSw1() != null && trailer.getSw2() != null) {
+            body.write(trailer.getSw1().intValue() & 0xFF);
+            body.write(trailer.getSw2().intValue() & 0xFF);
+        }
+        return body.toByteArray();
+    }
 
-        // 1. SHA-256 über sharedSecret bilden
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        byte[] sharedSecretHash = digest.digest(sharedSecret);
+    /** {@code body} without its trailing 2-byte status word (the data field of a conformant APDU). */
+    private static byte[] dropTrailer(byte[] body) {
+        return body.length >= 2 ? Arrays.copyOf(body, body.length - 2) : body;
+    }
 
-        // 4. Algorithmus je nach Zertifikatstyp bestimmen
+    /**
+     * Verify the gSMC-KT pairing signature over the shared secret with the key of the certificate
+     * presented during TLS (CT.SMKT_AUT). Returns {@code false} if the signature does not verify or
+     * the candidate bytes are malformed for the key's algorithm (e.g. wrong length / not plain
+     * r||s); throws only for unrecoverable problems (unsupported key, provider/key errors).
+     *
+     * <p>The terminal signs SHA-256(sharedSecret) once. For ECC (gSMC-KT) it uses NoneWithECDSA and
+     * returns r||s in TR-03111 plain format, so verify with the PLAIN-ECDSA variant — it applies
+     * SHA-256 once internally (matching the single hash) and accepts the plain r||s encoding.
+     * (SHA256withECDSA would hash a second time and expects DER, so it can never match.)
+     */
+    private boolean verifyPairingSignature(byte[] sharedSecret, X509Certificate terminalTLSCertificate,
+            byte[] signatureBytes) throws GeneralSecurityException {
         PublicKey publicKey = terminalTLSCertificate.getPublicKey();
         String algorithm = switch (publicKey.getAlgorithm()) {
             case "RSA" -> "SHA256withRSA";
-            case "EC" -> "SHA256withECDSA";
+            case "EC" -> "SHA256withPLAIN-ECDSA";
             default -> throw new GeneralSecurityException(
                     "Unsupported key algorithm: " + publicKey.getAlgorithm());
         };
 
-        // 5. Signature-Objekt initialisieren
         Signature signature = Signature.getInstance(algorithm, "BC");
         signature.initVerify(publicKey);
-
-        // 6. sharedSecretHash + Nutzdaten einspeisen
-        signature.update(sharedSecretHash);
-
-        // 7. Validieren
-        boolean valid = signature.verify(signatureBytes);
-        if (!valid) {
-            throw new GeneralSecurityException("Signature validation failed");
+        // Feed the raw shared secret; the SHA256with* algorithm applies SHA-256 itself.
+        signature.update(sharedSecret);
+        try {
+            return signature.verify(signatureBytes);
+        } catch (SignatureException e) {
+            // Malformed signature encoding for this candidate (e.g. the bytes are a truncated or
+            // trailer-padded r||s). Treat as "did not verify" so the caller can try the other form.
+            return false;
         }
     }
 

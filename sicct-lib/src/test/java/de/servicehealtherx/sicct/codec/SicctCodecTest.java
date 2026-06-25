@@ -142,6 +142,34 @@ public class SicctCodecTest {
         // SICCT APDU Response
     }
 
+    @Test
+    public void test_create_signature_reconstructs_with_and_without_status_word_trailer() throws Exception {
+        // The codec splits the last two payload bytes into the status word. The channel handler
+        // relies on  data field + SW1 SW2  reconstructing the original payload exactly, so it can
+        // recover the full gSMC-KT signature whether the terminal terminates the response with
+        // SW 9000 (conformant) or returns the bare signature (last two bytes mis-read as the SW).
+        String signatureHex =
+                "5587F367213E3F285D7C909E1424F88331C797AA17BEC7676EC851DA7464FCF30"
+                        + "8381AE9E261E2BC40D34615FA58A3CF0EE6802DDD3DEFA45BE2CE984F9FC6A2";
+        for (String payloadHex : List.of(signatureHex + "9000", signatureHex)) {
+            SicctEnvelope env = SicctCodec.decode(toByteBuf(frame(payloadHex)));
+            ResponseAPDU apdu = env.getAbCmd().getResponseApdu();
+
+            ByteArrayOutputStream body = new ByteArrayOutputStream();
+            apdu.getResponseData().encode(body, false);
+            body.write(apdu.getTrailer().getSw1().intValue() & 0xFF);
+            body.write(apdu.getTrailer().getSw2().intValue() & 0xFF);
+
+            assertEquals(payloadHex.toUpperCase(),
+                    HexFormat.of().formatHex(body.toByteArray()).toUpperCase());
+        }
+    }
+
+    /** Wrap a Response-APDU payload in a 10-byte SICCT response envelope (type 83, seq 4). */
+    private static String frame(String payloadHex) {
+        return "830000000400" + String.format("%08X", payloadHex.length() / 2) + payloadHex;
+    }
+
     public static ByteBuf toByteBuf(String hex) {
         byte[] bytes = HexFormat.of().parseHex(hex); // Java 17+
         ByteBuf buf = Unpooled.wrappedBuffer(bytes);

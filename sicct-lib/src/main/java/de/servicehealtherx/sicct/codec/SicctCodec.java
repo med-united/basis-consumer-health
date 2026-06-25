@@ -186,8 +186,11 @@ public class SicctCodec {
                 responseData.getSicctDataObject().add(dataObject);
             }
         } catch (IOException e) {
-            LOG.warnf(e,
-                    "Failed to decode data object from response APDU. This is normal and happens when no data was supplied");
+            // The response data field is not a BER-TLV SicctDataObject. This is expected for
+            // commands whose data field is opaque — EHEALTH TERMINAL AUTHENTICATE (signature /
+            // hash / challenge), REQUEST ICC (ATR), etc. The raw bytes are retained in
+            // ResponseData and consumed directly by the channel handler, so this is harmless.
+            LOG.debugf(e, "Response APDU data field is not a SicctDataObject (opaque payload), keeping raw bytes");
         }
 
         return sicctPayload;
