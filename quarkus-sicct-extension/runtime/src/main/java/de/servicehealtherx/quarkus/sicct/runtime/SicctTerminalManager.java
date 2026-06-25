@@ -28,6 +28,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import java.net.InetAddress;
@@ -72,6 +73,15 @@ public class SicctTerminalManager {
     private static final long PAIRING_POLL_INTERVAL_MS = 100;
     /** TUC_KON_053: hard budget for the whole interactive request/confirm pairing process. */
     private static final long PAIRING_PROCESS_TIMEOUT_MS = 30_000;
+
+    /**
+     * eHealth interface versions (CardTerminal Manufacturer DO, VER field) this konnektor
+     * accepts. A terminal whose reported version is not on this list fails the
+     * TUC_KON_254 version check, leaving CT.VALID_VERSION = false (TUC_KON_053 rejects it).
+     */
+    @Inject
+    @ConfigProperty(name = "sicct.supported-ehealth-interface-versions", defaultValue = "1.0.0")
+    List<String> supportedEhealthInterfaceVersions;
 
     @Inject
     TpmSealer tpmSealer;
@@ -408,19 +418,25 @@ public class SicctTerminalManager {
             return "TERMINAL_NOT_FOUND";
         }
 
-        // 1. Prüfe CT.VALID_VERSION = true.
-        if (!ct.validVersion) {
-            LOG.warnf("[TUC_KON_053] terminal=%s rejected: VALID_VERSION=false", ct.hostname);
-            return "INVALID_VERSION";
-        }
-
         try {
             // 2. Aufbau der TLS-Verbindung mit ID.SAK.AUT. Schritt 2.a (Speichern des
             //    KT-Zertifikats in CT.SMKT_AUT) und 2.b (TUC_KON_037-Prüfung gegen den
             //    gSMC-KT-TrustManager) erfolgen im TLS-Handshake des KonnektorSslHandler.
+            //    Die Verbindung liest außerdem das CardTerminal Manufacturer DO, aus dem
+            //    CT.VALID_VERSION abgeleitet wird (Schritt 1 wird daher erst danach geprüft).
             SicctTerminalConnection conn = establishPairingConnection(ct);
             if (conn == null) {
                 return "TLS_CONNECT_FAILED";
+            }
+
+            // 1. Prüfe CT.VALID_VERSION = true. Die eHealth-Interface-Version ist erst
+            //    bekannt, nachdem das Kartenterminal sein Manufacturer DO über die soeben
+            //    aufgebaute Verbindung gemeldet hat (TUC_KON_254).
+            if (!conn.getTerminal().validVersion) {
+                LOG.warnf("[TUC_KON_053] terminal=%s rejected: VALID_VERSION=false (eHealthInterfaceVersion=%s)",
+                        ct.hostname, conn.getTerminal().ehealthInterfaceVersion);
+                disconnectTerminal(conn.getTerminal());
+                return "INVALID_VERSION";
             }
 
             // 3. Fingerprint dem KT-Zertifikat entnehmen und dem Administrator darstellen.
@@ -623,7 +639,8 @@ public class SicctTerminalManager {
     /**
      * TUC_KON_053 step 2: ensures a usable ID.SAK.AUT TLS connection to {@code ct} —
      * (re-)initiating the connection if needed and waiting until the SICCT channel is
-     * up and the KT-certificate (CT.SMKT_AUT) has been captured from the handshake.
+     * up, the KT-certificate (CT.SMKT_AUT) has been captured from the handshake and the
+     * CardTerminal Manufacturer DO has been processed (so CT.VALID_VERSION is known).
      *
      * @return the live connection, or {@code null} if it did not become usable within
      *         {@link #TLS_CONNECT_TIMEOUT_MS}.
@@ -639,7 +656,8 @@ public class SicctTerminalManager {
             if (conn != null
                     && conn.getConnectionState() == SicctTerminalConnection.ConnectionState.CONNECTED
                     && conn.getSicctChannelHandler() != null
-                    && conn.getTerminal().smktAutCertificate != null) {
+                    && conn.getTerminal().smktAutCertificate != null
+                    && conn.getSicctChannelHandler().isManufacturerInfoReceived()) {
                 return conn;
             }
             Thread.sleep(PAIRING_POLL_INTERVAL_MS);
@@ -698,6 +716,43 @@ public class SicctTerminalManager {
             LOG.warnf(e, "[SicctTerminalManager] failed to persist lifecycle state (correlation=%s connected=%s) for terminal=%s",
                     terminal.correlation, terminal.connected, terminal.hostname);
         }
+    }
+
+    /**
+     * Persists the CardTerminal Manufacturer DO fields (product information, eHealth
+     * interface version and the derived VALID_VERSION flag). Invoked from the SICCT
+     * channel (Netty) thread when the GET STATUS MANUFACTURER response is processed;
+     * best-effort, so a persistence failure is logged but never propagated.
+     */
+    @Transactional
+    public void persistManufacturerInfo(CardTerminal terminal) {
+        if (terminal.ctid == null) {
+            // Not a managed/persisted terminal (e.g. standalone test fixture).
+            return;
+        }
+        try {
+            CardTerminal managed = CardTerminal.findById(terminal.ctid);
+            if (managed != null) {
+                managed.productInformation = terminal.productInformation;
+                managed.ehealthInterfaceVersion = terminal.ehealthInterfaceVersion;
+                managed.validVersion = terminal.validVersion;
+            }
+        } catch (Exception e) {
+            LOG.warnf(e, "[SicctTerminalManager] failed to persist manufacturer info (validVersion=%s) for terminal=%s",
+                    terminal.validVersion, terminal.hostname);
+        }
+    }
+
+    /**
+     * TUC_KON_254 version check: whether the given eHealth interface version (VER field
+     * of the CardTerminal Manufacturer DO) is on this konnektor's supported list.
+     */
+    public boolean isEhealthInterfaceVersionSupported(String version) {
+        if (version == null || version.isBlank() || supportedEhealthInterfaceVersions == null) {
+            return false;
+        }
+        String trimmed = version.trim();
+        return supportedEhealthInterfaceVersions.stream().anyMatch(v -> v.trim().equals(trimmed));
     }
 
     @Transactional

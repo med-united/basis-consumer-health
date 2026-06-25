@@ -85,6 +85,8 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
     // can observe how the channel handler processed the messages.
     private volatile String sessionId;
     private volatile String manufacturerInfo;
+    /** Set once the CardTerminal Manufacturer DO has been received and processed on this connection. */
+    private volatile boolean manufacturerInfoReceived;
     private volatile List<IccStatusValue> lastIccStatus = List.of();
     private volatile byte[] lastAtr;
     private volatile String lastEvent;
@@ -203,42 +205,72 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
 
         CompletableFuture<Boolean> pairingResult = new CompletableFuture<>();
         byte[] sharedSecret = EhealthTerminalAuthenticate.generateSharedSecret();
-        SicctEnvelope sicctEnvelop = createSicctEnvelop((sicctEnvelope) -> {
-            ByteArrayOutputStream signedData = new ByteArrayOutputStream();
+
+        // The build/register/send below mutates Netty handler state (sequenceNumber,
+        // pendingOperations) and writes to the channel; all of it MUST run on the event
+        // loop. Doing it on the calling (pairing executor) thread races the event loop
+        // and can register the response consumer under a sequence number that no longer
+        // matches the sent frame — the response would then never reach the consumer and
+        // the pairing future would never complete (the caller's get() would hang).
+        Runnable sendCreate = () -> {
             try {
-                sicctEnvelope.getAbCmd().getResponseApdu().getResponseData().encode(signedData, false);
-                byte[] signatureBytes = signedData.toByteArray();
-                LOG.debugf("Shared secret: %s Signature: %s", HexFormat.of().formatHex(sharedSecret),
-                        HexFormat.of().formatHex(signatureBytes));
-                // Step 6: verify the terminal's signature of the shared secret with the
-                // key belonging to CT.SMKT_AUT (the certificate presented during TLS).
-                validateSignature(sharedSecret,
-                        signatureBytes, terminalTLSCertificate);
-                // Step 7: CT.CORRELATION = „gepairt“.
-                connection.onPaired();
-                pairingResult.complete(true);
-            } catch (GeneralSecurityException e) {
-                LOG.errorf(e, "Error validating signature with sharedSecret");
-                pairingResult.complete(false);
-            } catch (IOException e) {
-                LOG.errorf(e, "Error decoding EHEALTH TERMINAL AUTHENTICATE CREATE response");
-                pairingResult.completeExceptionally(e);
+                SicctEnvelope sicctEnvelop = createSicctEnvelop((sicctEnvelope) -> {
+                    // Always settle pairingResult — including on an unexpected response shape
+                    // (e.g. an error status word leaving the response APDU/data null). A
+                    // dangling future would otherwise block the pairing thread (and the
+                    // confirmFingerprint caller waiting on it) until the protocol timeout.
+                    try {
+                        ByteArrayOutputStream signedData = new ByteArrayOutputStream();
+                        sicctEnvelope.getAbCmd().getResponseApdu().getResponseData().encode(signedData, false);
+                        byte[] signatureBytes = signedData.toByteArray();
+                        LOG.debugf("Shared secret: %s Signature: %s", HexFormat.of().formatHex(sharedSecret),
+                                HexFormat.of().formatHex(signatureBytes));
+                        // Step 6: verify the terminal's signature of the shared secret with the
+                        // key belonging to CT.SMKT_AUT (the certificate presented during TLS).
+                        validateSignature(sharedSecret, signatureBytes, terminalTLSCertificate);
+                        // Step 7: CT.CORRELATION = „gepairt“.
+                        connection.onPaired();
+                        pairingResult.complete(true);
+                    } catch (GeneralSecurityException e) {
+                        LOG.errorf(e, "Error validating signature with sharedSecret");
+                        pairingResult.complete(false);
+                    } catch (Throwable t) {
+                        LOG.errorf(t, "Error processing EHEALTH TERMINAL AUTHENTICATE CREATE response (sw=%s) for terminal=%s",
+                                sw(sicctEnvelope), connection.getTerminalId());
+                        pairingResult.completeExceptionally(t);
+                    }
+                });
+                // Step 4.a: store the generated ShS.KT.AUT in CT.SHARED_SECRET.
+                connection.getTerminal().sealedSharedSecret = sharedSecret;
+                // Display Message „KT:$CT.MAC_ADRESS MIT KON:$MGM_KONN_HOSTNAME PAIREN OK?“,
+                // wobei die MAC-Adresse mit Trenner im folgenden Format dargestellt werden
+                // MUSS: „AABBCC:DDEEFF“
+                byte[] createApdu = EhealthTerminalAuthenticate.buildCreate(sharedSecret,
+                        "KT:" + formatMacAddressForDisplay(connection.getTerminal().macAddress) + " MIT\n" + //
+                                "      KON:" + manager.getHostname() + " PAIREN OK?");
+                sicctEnvelop.setDwLength(new BerInteger(createApdu.length));
+                sicctEnvelop.setAbCmd(new SicctPayload(createApdu));
+                rememberSentCommand(sicctEnvelop, EhealthTerminalAuthenticate.CLA,
+                        EhealthTerminalAuthenticate.INS, EhealthTerminalAuthenticate.P1_DIRECT,
+                        EhealthTerminalAuthenticate.P2_CREATE);
+                sendSicctEnvelope(sicctEnvelop);
+            } catch (Throwable t) {
+                // Building/sending failed before a response could ever arrive — settle the
+                // future so the pairing thread (and confirmFingerprint) never blocks.
+                LOG.errorf(t, "Failed to send EHEALTH TERMINAL AUTHENTICATE CREATE for terminal=%s",
+                        connection.getTerminalId());
+                pairingResult.completeExceptionally(t);
             }
-        });
-        // Step 4.a: store the generated ShS.KT.AUT in CT.SHARED_SECRET.
-        connection.getTerminal().sealedSharedSecret = sharedSecret;
-        // Display Message „KT:$CT.MAC_ADRESS MIT KON:$MGM_KONN_HOSTNAME PAIREN OK?“,
-        // wobei die MAC-Adresse mit Trenner im folgenden Format dargestellt werden
-        // MUSS: „AABBCC:DDEEFF“
-        byte[] createApdu = EhealthTerminalAuthenticate.buildCreate(sharedSecret,
-                "KT:" + formatMacAddressForDisplay(connection.getTerminal().macAddress) + " MIT\n" + //
-                        "      KON:" + manager.getHostname() + " PAIREN OK?");
-        sicctEnvelop.setDwLength(new BerInteger(createApdu.length));
-        sicctEnvelop.setAbCmd(new SicctPayload(createApdu));
-        rememberSentCommand(sicctEnvelop, EhealthTerminalAuthenticate.CLA,
-                EhealthTerminalAuthenticate.INS, EhealthTerminalAuthenticate.P1_DIRECT,
-                EhealthTerminalAuthenticate.P2_CREATE);
-        sendSicctEnvelope(sicctEnvelop);
+        };
+
+        if (ctx == null) {
+            pairingResult.completeExceptionally(new IllegalStateException(
+                    "No channel context for terminal=" + connection.getTerminalId()));
+        } else if (ctx.executor().inEventLoop()) {
+            sendCreate.run();
+        } else {
+            ctx.executor().execute(sendCreate);
+        }
 
         return pairingResult;
     }
@@ -638,19 +670,44 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void handleGetStatusManufacturer(SicctEnvelope envelope) {
-        // SICCT GET STATUS CARD TERMINAL MANUFACTURER — product/manufacturer info string
+        // SICCT GET STATUS CARD TERMINAL MANUFACTURER — the CardTerminal Manufacturer DO
+        // (§5.5.10.6). NOTE on tag routing: the manufacturer DO is sent with tag '46'. Due
+        // to the asn1bean codec deriving the constructed bit from the ASN.1 type (CTM-DO is a
+        // SEQUENCE → '66', INTFC-DO is an OCTET STRING → '46'), the wire byte '46' decodes
+        // into the INTFC slot, so getIntfc() — not getCtm() — yields the raw DO value here.
         INTFCDO manufacturer = findDataObject(envelope, SicctDataObject::getIntfc);
-        if (manufacturer != null && manufacturer.value != null) {
-            manufacturerInfo = new String(manufacturer.value, java.nio.charset.StandardCharsets.US_ASCII).trim();
-            if (connection.getTerminal() != null) {
-                connection.getTerminal().productInformation = manufacturerInfo;
+        CardTerminal terminal = connection.getTerminal();
+        if (manufacturer != null && manufacturer.value != null && terminal != null) {
+            CardTerminalManufacturerInfo info = CardTerminalManufacturerInfo.parse(manufacturer.value);
+            manufacturerInfo = info.displayString();
+            terminal.productInformation = manufacturerInfo;
+            terminal.ehealthInterfaceVersion = info.ehealthInterfaceVersion();
+            // CT.VALID_VERSION (TUC_KON_254): the konnektor accepts the terminal only if its
+            // reported eHealth interface version is on the supported list.
+            boolean supported = manager != null
+                    && manager.isEhealthInterfaceVersionSupported(info.ehealthInterfaceVersion());
+            terminal.validVersion = supported;
+            if (manager != null) {
+                manager.persistManufacturerInfo(terminal);
             }
-            LOG.infof("[SICCT] GET STATUS MANUFACTURER for terminal=%s: %s sw=%s",
-                    connection.getTerminalId(), manufacturerInfo, sw(envelope));
+            if (!supported) {
+                LOG.warnf("[SICCT] terminal=%s reports unsupported eHealth interface version=%s",
+                        connection.getTerminalId(), info.ehealthInterfaceVersion());
+            }
+            LOG.infof("[SICCT] GET STATUS MANUFACTURER for terminal=%s: %s validVersion=%s sw=%s",
+                    connection.getTerminalId(), manufacturerInfo, supported, sw(envelope));
         } else {
-            LOG.infof("[SICCT] GET STATUS MANUFACTURER for terminal=%s sw=%s",
+            LOG.infof("[SICCT] GET STATUS MANUFACTURER for terminal=%s sw=%s (no manufacturer DO)",
                     connection.getTerminalId(), sw(envelope));
         }
+        // Signal completion regardless of outcome so the pairing flow's wait for the
+        // manufacturer DO (and thus CT.VALID_VERSION) does not block until timeout.
+        manufacturerInfoReceived = true;
+    }
+
+    /** True once the CardTerminal Manufacturer DO response has been processed on this connection. */
+    public boolean isManufacturerInfoReceived() {
+        return manufacturerInfoReceived;
     }
 
     private void handleInterfaceCapabilities(SicctEnvelope envelope, SentCommand command) {
