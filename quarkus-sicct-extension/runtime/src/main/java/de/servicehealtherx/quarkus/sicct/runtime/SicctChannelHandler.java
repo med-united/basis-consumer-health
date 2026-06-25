@@ -10,6 +10,7 @@ import java.security.cert.X509Certificate;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -161,8 +162,20 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         assembleAndSendEnvelop(ins, p1, p2, sicctEnvelop, null);
     }
 
-    void ehealthTerminalAuthenticateCreate() {
+    /**
+     * TUC_KON_053 steps 4.a–7: generates the ShS.KT.AUT shared secret, sends EHEALTH
+     * TERMINAL AUTHENTICATE in the CREATE flavour with the shared secret DO and the
+     * pairing display message, and — when the terminal's signature over the shared
+     * secret verifies against CT.SMKT_AUT (step 6) — advances the terminal to GEPAIRT
+     * (step 7).
+     *
+     * @return a future that completes {@code true} once a correct signature has been
+     *         received, {@code false} if the signature is invalid, or completes
+     *         exceptionally if the response could not be processed.
+     */
+    CompletableFuture<Boolean> ehealthTerminalAuthenticateCreate() {
 
+        CompletableFuture<Boolean> pairingResult = new CompletableFuture<>();
         byte[] sharedSecret = EhealthTerminalAuthenticate.generateSharedSecret();
         SicctEnvelope sicctEnvelop = createSicctEnvelop((sicctEnvelope) -> {
             ByteArrayOutputStream signedData = new ByteArrayOutputStream();
@@ -171,13 +184,22 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
                 byte[] signatureBytes = signedData.toByteArray();
                 LOG.debugf("Shared secret: %s Signature: %s", HexFormat.of().formatHex(sharedSecret),
                         HexFormat.of().formatHex(signatureBytes));
+                // Step 6: verify the terminal's signature of the shared secret with the
+                // key belonging to CT.SMKT_AUT (the certificate presented during TLS).
                 validateSignature(sharedSecret,
                         signatureBytes, terminalTLSCertificate);
-            } catch (IOException | GeneralSecurityException e) {
+                // Step 7: CT.CORRELATION = „gepairt“.
+                connection.onPaired();
+                pairingResult.complete(true);
+            } catch (GeneralSecurityException e) {
                 LOG.errorf(e, "Error validating signature with sharedSecret");
-
+                pairingResult.complete(false);
+            } catch (IOException e) {
+                LOG.errorf(e, "Error decoding EHEALTH TERMINAL AUTHENTICATE CREATE response");
+                pairingResult.completeExceptionally(e);
             }
         });
+        // Step 4.a: store the generated ShS.KT.AUT in CT.SHARED_SECRET.
         connection.getTerminal().sealedSharedSecret = sharedSecret;
         // Display Message „KT:$CT.MAC_ADRESS MIT KON:$MGM_KONN_HOSTNAME PAIREN OK?“,
         // wobei die MAC-Adresse mit Trenner im folgenden Format dargestellt werden
@@ -192,6 +214,20 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
                 EhealthTerminalAuthenticate.P2_CREATE);
         sendSicctEnvelope(sicctEnvelop);
 
+        return pairingResult;
+    }
+
+    /**
+     * TUC_KON_053 step 8: sends the SICCT CLOSE CT SESSION command (INS 0x29) with the
+     * card terminal as addressee, ending the cardterminal session opened for pairing
+     * before the underlying TLS connection is torn down.
+     */
+    void closeCtSession() {
+        SicctEnvelope sicctEnvelop = createSicctEnvelop();
+        byte ins = SICCT.INS_CLOSE_CT_SESSION;
+        int p1 = SICCT.P1_CARD_TERMINAL;
+        int p2 = 0x00;
+        assembleAndSendEnvelop(ins, p1, p2, sicctEnvelop, null);
     }
 
     private void rememberSentCommand(SicctEnvelope envelope, int cla, byte ins, int p1, int p2) {

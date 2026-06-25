@@ -8,6 +8,7 @@ import de.servicehealtherx.quarkus.sicct.runtime.tls.SmkCSAKAut;
 import de.servicehealtherx.quarkus.sicct.runtime.tls.SmkCSAKAutProvider;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
 import io.netty.bootstrap.Bootstrap;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.EventLoopGroup;
@@ -26,12 +27,18 @@ import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
 import java.net.InetAddress;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.TrustManager;
@@ -53,6 +60,15 @@ public class SicctTerminalManager {
     private static final long INITIAL_BACKOFF_MS = 1_000;
     private static final long MAX_BACKOFF_MS = 30_000;
 
+    /** TUC_KON_053: how long to wait for the pairing TLS connection to become usable. */
+    private static final long TLS_CONNECT_TIMEOUT_MS = 15_000;
+    /** TUC_KON_053: how long to wait for the EHEALTH TERMINAL AUTHENTICATE CREATE response. */
+    private static final long PAIRING_TIMEOUT_MS = 30_000;
+    /** TUC_KON_053: poll cadence while waiting for the async connection to come up. */
+    private static final long PAIRING_POLL_INTERVAL_MS = 100;
+    /** TUC_KON_053: hard budget for the whole interactive request/confirm pairing process. */
+    private static final long PAIRING_PROCESS_TIMEOUT_MS = 30_000;
+
     @Inject
     TpmSealer tpmSealer;
 
@@ -68,6 +84,17 @@ public class SicctTerminalManager {
     private EventLoopGroup eventLoopGroup;
     private final Map<String, SicctTerminalConnection> connections = new ConcurrentHashMap<>();
     private final ScheduledExecutorService reconnectScheduler = Executors.newScheduledThreadPool(2);
+
+    /** Runs the blocking TUC_KON_053 flow off the caller (JMX) thread. */
+    private final ExecutorService pairingExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "tuc-kon-053-pairing");
+        t.setDaemon(true);
+        return t;
+    });
+    /** Interactive pairings awaiting an administrator decision, keyed by the presented fingerprint. */
+    private final Map<String, PendingPairing> pendingByFingerprint = new ConcurrentHashMap<>();
+    /** Guards against more than one in-flight pairing per terminal. */
+    private final Map<UUID, PendingPairing> pendingByCtId = new ConcurrentHashMap<>();
 
     @PostConstruct
     @Transactional
@@ -101,6 +128,7 @@ public class SicctTerminalManager {
     @PreDestroy
     void shutdown() {
         reconnectScheduler.shutdown();
+        pairingExecutor.shutdownNow();
         if (eventLoopGroup != null) {
             eventLoopGroup.shutdownGracefully();
         }
@@ -200,6 +228,314 @@ public class SicctTerminalManager {
         SicctTerminalConnection conn = connections.get(macAddress);
         if (conn != null) {
             conn.pairTerminal();
+        }
+    }
+
+    /**
+     * Administrator dialog callback for the KT-certificate fingerprint shown by
+     * TUC_KON_053 step 3. The implementation presents {@code fingerprint} (and, for
+     * context, the {@code terminal}) on the management interface and returns whether
+     * the administrator accepted (step 4) or rejected it.
+     */
+    @FunctionalInterface
+    public interface FingerprintConfirmation {
+        boolean confirm(String fingerprint, CardTerminal terminal);
+    }
+
+    /**
+     * TUC_KON_053 „Kartenterminal pairen“ (gemSpec_Kon).
+     *
+     * <p>
+     * Orchestrates the pairing of the card terminal identified by {@code ctId}:
+     * <ol>
+     * <li>resolves CT from CTM_CT_LIST and checks CT.VALID_VERSION;</li>
+     * <li>establishes the ID.SAK.AUT TLS connection (the {@code KonnektorSslHandler}
+     * offers exactly the [gemSpec_Krypt] ciphersuites for which ID.SAK.AUT key
+     * material exists), stores the presented KT-certificate in CT.SMKT_AUT and
+     * validates it during the handshake against the gSMC-KT trust manager
+     * (TUC_KON_037, validationMode = NONE);</li>
+     * <li>presents the certificate fingerprint to the administrator;</li>
+     * <li>on confirmation generates ShS.KT.AUT, opens the CT session and</li>
+     * <li>sends EHEALTH TERMINAL AUTHENTICATE CREATE with the shared secret and the
+     * pairing display message;</li>
+     * <li>verifies the returned signature and (7) advances CT.CORRELATION to
+     * GEPAIRT;</li>
+     * <li>closes the pairing TLS connection after a SICCT CLOSE CT SESSION;</li>
+     * <li>performs the implicit GEPAIRT → AKTIV transition; and</li>
+     * <li>re-establishes the working connection via TUC_KON_050 {role = User}.</li>
+     * </ol>
+     *
+     * @param ctId         CTID of the terminal to pair (key into CTM_CT_LIST)
+     * @param confirmation administrator fingerprint dialog (steps 3/4)
+     * @return a short status string describing the outcome
+     */
+    public String TUC_KON_053_pairCardTerminal(UUID ctId, FingerprintConfirmation confirmation) {
+        // Setze CT = CTM_CT_LIST(ctId). The DB read runs in its own short transaction so
+        // the (potentially many-second) blocking pairing exchange does not hold one open.
+        CardTerminal ct = QuarkusTransaction.requiringNew().call(() -> CardTerminal.findByCtid(ctId));
+        if (ct == null) {
+            return "TERMINAL_NOT_FOUND";
+        }
+
+        // 1. Prüfe CT.VALID_VERSION = true.
+        if (!ct.validVersion) {
+            LOG.warnf("[TUC_KON_053] terminal=%s rejected: VALID_VERSION=false", ct.hostname);
+            return "INVALID_VERSION";
+        }
+
+        try {
+            // 2. Aufbau der TLS-Verbindung mit ID.SAK.AUT. Schritt 2.a (Speichern des
+            //    KT-Zertifikats in CT.SMKT_AUT) und 2.b (TUC_KON_037-Prüfung gegen den
+            //    gSMC-KT-TrustManager) erfolgen im TLS-Handshake des KonnektorSslHandler.
+            SicctTerminalConnection conn = establishPairingConnection(ct);
+            if (conn == null) {
+                return "TLS_CONNECT_FAILED";
+            }
+
+            // 3. Fingerprint dem KT-Zertifikat entnehmen und dem Administrator darstellen.
+            byte[] smktAut = conn.getTerminal().smktAutCertificate;
+            if (smktAut == null) {
+                return "NO_KT_CERTIFICATE";
+            }
+            String fingerprint = sha256Fingerprint(smktAut);
+
+            // 4. Wenn der Administrator den Fingerprint bestätigt …
+            boolean accepted = confirmation != null && confirmation.confirm(fingerprint, conn.getTerminal());
+            if (!accepted) {
+                LOG.infof("[TUC_KON_053] administrator rejected fingerprint %s for terminal=%s",
+                        fingerprint, ct.hostname);
+                disconnectTerminal(conn.getTerminal());
+                return "FINGERPRINT_REJECTED";
+            }
+
+            // 4.a ShS.KT.AUT erzeugen + in CT.SHARED_SECRET ablegen, 4.b INIT CT SESSION
+            //     (bereits bei channelActive eröffnet), 5. EHEALTH TERMINAL AUTHENTICATE
+            //     CREATE, 6. Signaturprüfung und 7. CT.CORRELATION = „gepairt“ laufen in
+            //     ehealthTerminalAuthenticateCreate(); die Zukunft signalisiert das Ergebnis.
+            Boolean paired = conn.pairTerminal().get(PAIRING_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            if (!Boolean.TRUE.equals(paired)) {
+                LOG.warnf("[TUC_KON_053] signature verification failed for terminal=%s", ct.hostname);
+                disconnectTerminal(conn.getTerminal());
+                return "PAIRING_FAILED";
+            }
+
+            // 8. TLS-Verbindung, die zum Pairen diente, beenden — zuvor SICCT CLOSE CT
+            //    SESSION mit ctId als Adressat senden.
+            conn.closeCtSession();
+            disconnectTerminal(conn.getTerminal());
+
+            // 9. Automatischer Zustandsübergang CT.CORRELATION „gepairt“ → „aktiv“.
+            conn.onAktiv();
+
+            // 10. „Arbeits“-TLS-Verbindung neu aufbauen durch Aufruf TUC_KON_050
+            //     { ctId; role = „User“ }. TUC_KON_050 ist noch nicht implementiert; bis
+            //     dahin wird die Arbeitsverbindung über connectTerminal() wiederhergestellt.
+            CardTerminal pairedTerminal = conn.getTerminal();
+            pairedTerminal.activeRole = "User";
+            connectTerminal(pairedTerminal);
+
+            LOG.infof("[TUC_KON_053] terminal=%s paired successfully (fingerprint=%s)",
+                    ct.hostname, fingerprint);
+            return "PAIRED";
+        } catch (Exception e) {
+            LOG.errorf(e, "[TUC_KON_053] pairing failed for terminal=%s", ct.hostname);
+            return "PAIRING_ERROR: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Outcome of {@link #requestPairTerminal(UUID)}: either the KT-certificate
+     * fingerprint to present to the administrator (then continued via
+     * {@link #confirmFingerprint(String)} / {@link #rejectFingerprint(String)}), or a
+     * terminal status when the flow could not reach the confirmation step.
+     */
+    public record PairingRequestResult(boolean awaitingConfirmation, String fingerprint, String status) {
+    }
+
+    /** Coordination state for one interactive TUC_KON_053 pairing in progress. */
+    private static final class PendingPairing {
+        final CompletableFuture<String> fingerprint = new CompletableFuture<>();
+        final CompletableFuture<Boolean> decision = new CompletableFuture<>();
+        final CompletableFuture<String> result = new CompletableFuture<>();
+        volatile ScheduledFuture<?> timeoutTask;
+    }
+
+    /**
+     * TUC_KON_053 steps 2–4 (request phase): establishes the pairing TLS connection and
+     * returns the KT-certificate fingerprint for the administrator to verify. The flow
+     * then pauses until {@link #confirmFingerprint(String)} or
+     * {@link #rejectFingerprint(String)} is called with that fingerprint; if no decision
+     * arrives within {@value #PAIRING_PROCESS_TIMEOUT_MS} ms the whole process is
+     * abandoned.
+     *
+     * @return {@link PairingRequestResult#awaitingConfirmation()} = {@code true} with the
+     *         fingerprint on the happy path, or {@code false} with a status when the flow
+     *         ended early (e.g. {@code INVALID_VERSION}, {@code TLS_CONNECT_FAILED},
+     *         {@code PAIRING_ALREADY_IN_PROGRESS}, {@code PAIRING_TIMEOUT}).
+     */
+    public PairingRequestResult requestPairTerminal(UUID ctId) {
+        PendingPairing pending = new PendingPairing();
+        if (pendingByCtId.putIfAbsent(ctId, pending) != null) {
+            return new PairingRequestResult(false, null, "PAIRING_ALREADY_IN_PROGRESS");
+        }
+
+        // Centralised cleanup once the flow concludes (success, rejection, error, timeout).
+        pending.result.whenComplete((status, ex) -> {
+            pendingByCtId.remove(ctId, pending);
+            String fp = pending.fingerprint.getNow(null);
+            if (fp != null) {
+                pendingByFingerprint.remove(fp, pending);
+            }
+            ScheduledFuture<?> task = pending.timeoutTask;
+            if (task != null) {
+                task.cancel(false);
+            }
+        });
+
+        // Step 3/4 bridge: publish the fingerprint, then block the flow thread until an
+        // administrator confirms or rejects (or the process budget elapses).
+        FingerprintConfirmation confirmation = (fp, terminal) -> {
+            pendingByFingerprint.put(fp, pending);
+            pending.fingerprint.complete(fp);
+            try {
+                return pending.decision.get(PAIRING_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            } catch (Exception e) {
+                return false;
+            }
+        };
+
+        // Run the blocking TUC_KON_053 flow off the caller (JMX) thread.
+        pairingExecutor.submit(() -> {
+            String outcome;
+            try {
+                outcome = TUC_KON_053_pairCardTerminal(ctId, confirmation);
+            } catch (Exception e) {
+                outcome = "PAIRING_ERROR: " + e.getMessage();
+            }
+            pending.result.complete(outcome);
+        });
+
+        // Whole-process budget: abandon if no confirm/reject decision arrives in time.
+        pending.timeoutTask = reconnectScheduler.schedule(() -> {
+            if (pending.result.complete("PAIRING_TIMEOUT")) {
+                pending.decision.complete(false);
+                LOG.warnf("[TUC_KON_053] pairing for ctId=%s timed out after %dms",
+                        ctId, PAIRING_PROCESS_TIMEOUT_MS);
+            }
+        }, PAIRING_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+
+        // Return as soon as the fingerprint is available (happy path) or the flow ends early.
+        try {
+            CompletableFuture.anyOf(pending.fingerprint, pending.result)
+                    .get(PAIRING_PROCESS_TIMEOUT_MS + 5_000, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            pending.result.complete("PAIRING_TIMEOUT");
+            return new PairingRequestResult(false, null, "PAIRING_TIMEOUT");
+        }
+
+        if (pending.fingerprint.isDone() && !pending.fingerprint.isCompletedExceptionally()) {
+            return new PairingRequestResult(true, pending.fingerprint.getNow(null), "AWAITING_CONFIRMATION");
+        }
+        // Flow concluded before producing a fingerprint (version/TLS failure, timeout …).
+        return new PairingRequestResult(false, null, pending.result.getNow("PAIRING_FAILED"));
+    }
+
+    /**
+     * TUC_KON_053 step 4 (accept): the administrator confirms the previously presented
+     * {@code fingerprint}; the paused pairing flow continues through to AKTIV.
+     *
+     * @return the final pairing status (e.g. {@code PAIRED}), or {@code NO_PENDING_PAIRING}
+     *         if no pairing is awaiting this fingerprint.
+     */
+    public String confirmFingerprint(String fingerprint) {
+        PendingPairing pending = pendingByFingerprint.remove(fingerprint);
+        if (pending == null) {
+            return "NO_PENDING_PAIRING";
+        }
+        ScheduledFuture<?> task = pending.timeoutTask;
+        if (task != null) {
+            task.cancel(false);
+        }
+        pending.decision.complete(true);
+        try {
+            return pending.result.get(PAIRING_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            return "PAIRING_ERROR: " + e.getMessage();
+        }
+    }
+
+    /**
+     * TUC_KON_053 step 4 (reject): the administrator rejects the presented
+     * {@code fingerprint}; the paused pairing flow is cancelled and the terminal
+     * disconnected.
+     *
+     * @return {@code FINGERPRINT_REJECTED}, or {@code NO_PENDING_PAIRING} if no pairing
+     *         is awaiting this fingerprint.
+     */
+    public String rejectFingerprint(String fingerprint) {
+        PendingPairing pending = pendingByFingerprint.remove(fingerprint);
+        if (pending == null) {
+            return "NO_PENDING_PAIRING";
+        }
+        ScheduledFuture<?> task = pending.timeoutTask;
+        if (task != null) {
+            task.cancel(false);
+        }
+        pending.decision.complete(false);
+        try {
+            return pending.result.get(PAIRING_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            return "PAIRING_ERROR: " + e.getMessage();
+        }
+    }
+
+    /**
+     * TUC_KON_053 step 2: ensures a usable ID.SAK.AUT TLS connection to {@code ct} —
+     * (re-)initiating the connection if needed and waiting until the SICCT channel is
+     * up and the KT-certificate (CT.SMKT_AUT) has been captured from the handshake.
+     *
+     * @return the live connection, or {@code null} if it did not become usable within
+     *         {@link #TLS_CONNECT_TIMEOUT_MS}.
+     */
+    private SicctTerminalConnection establishPairingConnection(CardTerminal ct) throws InterruptedException {
+        SicctTerminalConnection conn = connections.get(ct.macAddress);
+        if (conn == null || conn.getConnectionState() != SicctTerminalConnection.ConnectionState.CONNECTED) {
+            connectTerminal(ct);
+        }
+        long deadline = System.currentTimeMillis() + TLS_CONNECT_TIMEOUT_MS;
+        while (System.currentTimeMillis() < deadline) {
+            conn = connections.get(ct.macAddress);
+            if (conn != null
+                    && conn.getConnectionState() == SicctTerminalConnection.ConnectionState.CONNECTED
+                    && conn.getSicctChannelHandler() != null
+                    && conn.getTerminal().smktAutCertificate != null) {
+                return conn;
+            }
+            Thread.sleep(PAIRING_POLL_INTERVAL_MS);
+        }
+        LOG.warnf("[TUC_KON_053] terminal=%s did not reach a usable TLS state within %dms",
+                ct.hostname, TLS_CONNECT_TIMEOUT_MS);
+        return null;
+    }
+
+    /**
+     * TUC_KON_053 step 3: SHA-256 fingerprint of the KT-certificate (CT.SMKT_AUT),
+     * formatted as colon-separated upper-case hex byte pairs for display.
+     */
+    static String sha256Fingerprint(byte[] certBytes) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(certBytes);
+            HexFormat hex = HexFormat.of().withUpperCase();
+            StringBuilder sb = new StringBuilder(hash.length * 3);
+            for (int i = 0; i < hash.length; i++) {
+                if (i > 0) {
+                    sb.append(':');
+                }
+                sb.append(hex.toHexDigits(hash[i]));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 

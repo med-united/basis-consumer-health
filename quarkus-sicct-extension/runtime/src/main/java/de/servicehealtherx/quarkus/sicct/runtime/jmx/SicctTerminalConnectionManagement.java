@@ -3,6 +3,7 @@ package de.servicehealtherx.quarkus.sicct.runtime.jmx;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalConnection;
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -15,6 +16,7 @@ import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import java.lang.management.ManagementFactory;
 import java.util.List;
+import java.util.UUID;
 
 @ApplicationScoped
 @Startup
@@ -100,25 +102,56 @@ public class SicctTerminalConnectionManagement implements SicctTerminalConnectio
                 "\",\"activeSlots\":0}";
     }
 
+    /**
+     * Starts the interactive TUC_KON_053 pairing for the terminal identified by
+     * {@code ctid} (CTID, hostname or MAC) and returns the KT-certificate fingerprint
+     * for the administrator to verify against the terminal display.
+     * <p>
+     * Intentionally NOT {@code @Transactional}: the pairing flow blocks for the
+     * multi-second TLS/handshake exchange and must not hold a JMX transaction open. The
+     * identifier is resolved to a CTID in a short, separate transaction first.
+     */
     @Override
-    @Transactional
-    public String pair(String ctid) {
-        CardTerminal terminal = CardTerminal.resolve(ctid);
-        if (terminal == null)
+    public String requestPairTerminal(String ctid) {
+        ResolvedTerminal resolved = QuarkusTransaction.requiringNew().call(() -> {
+            CardTerminal t = CardTerminal.resolve(ctid);
+            return t == null ? null : new ResolvedTerminal(t.ctid, t.hostname);
+        });
+        if (resolved == null)
             return "{\"error\":\"terminal not found: " + ctid + "\"}";
 
-        SicctTerminalConnection conn = manager.getConnections().get(terminal.macAddress);
-        if (conn == null)
-            return "{\"error\":\"no active connection for terminal: " + terminal.hostname + "\"}";
-        if (conn.getSicctChannelHandler() == null)
-            return "{\"error\":\"terminal not ready (no SICCT channel): " + terminal.hostname + "\"}";
+        LOG.infof("[SICCT] JMX requestPairTerminal (TUC_KON_053) for terminal=%s (hostname=%s)",
+                ctid, resolved.hostname());
 
-        LOG.infof("[SICCT] JMX pair (EHEALTH TERMINAL AUTHENTICATE) requested for terminal=%s (hostname=%s)",
-                ctid, terminal.hostname);
-        conn.pairTerminal();
-        return "{\"ctid\":\"" + terminal.ctid +
-                "\",\"hostname\":\"" + terminal.hostname +
-                "\",\"pairing\":\"EHEALTH_AUTHENTICATE_TRIGGERED\"}";
+        SicctTerminalManager.PairingRequestResult result = manager.requestPairTerminal(resolved.ctid());
+        if (result.awaitingConfirmation()) {
+            return "{\"ctid\":\"" + resolved.ctid() +
+                    "\",\"hostname\":\"" + resolved.hostname() +
+                    "\",\"fingerprint\":\"" + result.fingerprint() +
+                    "\",\"status\":\"" + result.status() +
+                    "\",\"next\":\"confirmFingerprint(<fingerprint>) or rejectFingerprint(<fingerprint>)\"}";
+        }
+        return "{\"ctid\":\"" + resolved.ctid() +
+                "\",\"hostname\":\"" + resolved.hostname() +
+                "\",\"status\":\"" + result.status() + "\"}";
+    }
+
+    @Override
+    public String confirmFingerprint(String fingerprint) {
+        LOG.infof("[SICCT] JMX confirmFingerprint requested for %s", fingerprint);
+        String result = manager.confirmFingerprint(fingerprint);
+        return "{\"fingerprint\":\"" + fingerprint + "\",\"pairing\":\"" + result + "\"}";
+    }
+
+    @Override
+    public String rejectFingerprint(String fingerprint) {
+        LOG.infof("[SICCT] JMX rejectFingerprint requested for %s", fingerprint);
+        String result = manager.rejectFingerprint(fingerprint);
+        return "{\"fingerprint\":\"" + fingerprint + "\",\"pairing\":\"" + result + "\"}";
+    }
+
+    /** Minimal projection of a resolved terminal, captured inside the resolve transaction. */
+    private record ResolvedTerminal(UUID ctid, String hostname) {
     }
 
     @Override
