@@ -6,6 +6,7 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -141,7 +142,6 @@ public class CardTerminalDiscovery {
             throws Exception {
 
         InetAddress localAddr = getLocalIpAddress();
-        byte[] request = buildRequestPacket(localAddr.getAddress(), port);
 
         List<DiscoveredTerminal> results = new CopyOnWriteArrayList<>();
         NioEventLoopGroup group = new NioEventLoopGroup(1);
@@ -151,10 +151,26 @@ public class CardTerminalDiscovery {
                     .channel(NioDatagramChannel.class)
                     .option(ChannelOption.SO_BROADCAST, true)
                     .option(ChannelOption.SO_REUSEADDR, true)
-                    .handler(new DiscoveryResponseHandler(results));
+                    // Use a ChannelInitializer (which is @Sharable) so a fresh
+                    // DiscoveryResponseHandler is created per channel. The handler
+                    // itself is not @Sharable, so reusing one instance across the
+                    // two bind attempts in bindWithFallback() would fail with
+                    // "is not a @Sharable handler, so can't be added ... multiple times".
+                    .handler(new ChannelInitializer<NioDatagramChannel>() {
+                        @Override
+                        protected void initChannel(NioDatagramChannel ch) {
+                            ch.pipeline().addLast(new DiscoveryResponseHandler(results));
+                        }
+                    });
 
-            Channel ch = bootstrap.bind(port).sync().channel();
+            Channel ch = bindWithFallback(bootstrap, port);
             try {
+                // The terminal directs its Dienstbeschreibungspaket to the IP/port we
+                // advertise in the request, so build the packet with the port we
+                // actually bound to (which may differ from the preferred port if it
+                // was already in use, e.g. another SICCT manager on the same host).
+                int localPort = ((InetSocketAddress) ch.localAddress()).getPort();
+                byte[] request = buildRequestPacket(localAddr.getAddress(), localPort);
 
                 // if broadcast address is 255.255.255.255 try to find the local network's
                 // broadcast address to increase chances of delivery
@@ -164,7 +180,8 @@ public class CardTerminalDiscovery {
 
                 InetSocketAddress target = new InetSocketAddress(targetBroadcast, port);
                 ch.writeAndFlush(new DatagramPacket(Unpooled.wrappedBuffer(request), target)).sync();
-                LOG.infof("[SICCT-DISCOVERY] Dienstanfrage broadcast sent to %s:%d", targetBroadcast, port);
+                LOG.infof("[SICCT-DISCOVERY] Dienstanfrage broadcast sent to %s:%d (listening on local port %d)",
+                        targetBroadcast, port, localPort);
                 TimeUnit.MILLISECONDS.sleep(waitMs);
             } finally {
                 ch.close().sync();
@@ -176,6 +193,26 @@ public class CardTerminalDiscovery {
         List<DiscoveredTerminal> snapshot = Collections.unmodifiableList(new ArrayList<>(results));
         LOG.infof("[SICCT-DISCOVERY] found %d terminal(s) after %d ms", snapshot.size(), waitMs);
         return snapshot;
+    }
+
+    /**
+     * Binds the discovery socket to {@code preferredPort}, falling back to an
+     * ephemeral port when the preferred one is already in use (e.g. a second
+     * SICCT terminal manager running on the same host). Because the bound port
+     * is encoded into the Dienstanfragepaket, terminals still send their
+     * responses back to the correct socket regardless of which port was chosen.
+     */
+    private Channel bindWithFallback(Bootstrap bootstrap, int preferredPort)
+            throws InterruptedException {
+        try {
+            return bootstrap.bind(preferredPort).sync().channel();
+        } catch (InterruptedException ie) {
+            throw ie;
+        } catch (Exception e) {
+            LOG.warnf("[SICCT-DISCOVERY] discovery port %d unavailable (%s); "
+                    + "falling back to an ephemeral local port", preferredPort, e.getMessage());
+            return bootstrap.bind(0).sync().channel();
+        }
     }
 
     // -------------------------------------------------------------------------
