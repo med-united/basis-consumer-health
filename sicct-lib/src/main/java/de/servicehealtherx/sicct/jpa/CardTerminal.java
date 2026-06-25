@@ -3,6 +3,8 @@ package de.servicehealtherx.sicct.jpa;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -74,11 +76,14 @@ public class CardTerminal extends PanacheEntityBase {
     public byte[] sealedSharedSecret;
 
     /**
-     * Correlation state per TUC_KON_053/TUC_KON_050.
-     * Values: BEKANNT | ZUGEWIESEN | GEPAIRT | AKTIV | AKTUALISIEREND
+     * Correlation state to the Konnektor per TUC_KON_053/TUC_KON_050. This is the
+     * single source of truth for the terminal lifecycle; the live
+     * {@code SicctTerminalConnection} reads and mutates it here rather than holding
+     * its own copy.
      */
+    @Enumerated(EnumType.STRING)
     @Column(name = "CORRELATION", nullable = false, length = 32)
-    public String correlation = "BEKANNT";
+    public CorrelationState correlation = CorrelationState.BEKANNT;
 
     /** True when a TLS session is established and second-factor auth succeeded */
     @Column(name = "CONNECTED", nullable = false)
@@ -110,6 +115,33 @@ public class CardTerminal extends PanacheEntityBase {
 
     public static CardTerminal findByHostname(String hostname) {
         return find("hostname = ?1", hostname).firstResult();
+    }
+
+    public static CardTerminal findByCtid(UUID ctid) {
+        return findById(ctid);
+    }
+
+    /**
+     * Resolves a terminal from a free-form identifier as supplied via JMX/operator
+     * input. Accepts the CTID (UUID primary key), the SICCT hostname/FriendlyName,
+     * or the MAC address, in that order, so callers do not have to know which kind
+     * of identifier they are holding.
+     */
+    public static CardTerminal resolve(String identifier) {
+        if (identifier == null || identifier.isBlank())
+            return null;
+        String trimmed = identifier.trim();
+        try {
+            CardTerminal byCtid = findByCtid(UUID.fromString(trimmed));
+            if (byCtid != null)
+                return byCtid;
+        } catch (IllegalArgumentException ignored) {
+            // not a UUID — fall through to the other identifier kinds
+        }
+        CardTerminal byHostname = findByHostname(trimmed);
+        if (byHostname != null)
+            return byHostname;
+        return findByMacAddress(trimmed);
     }
 
     public String toString() {

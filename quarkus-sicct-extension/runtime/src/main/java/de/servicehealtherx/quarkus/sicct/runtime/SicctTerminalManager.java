@@ -8,6 +8,7 @@ import de.servicehealtherx.quarkus.sicct.runtime.tls.SmkCSAKAut;
 import de.servicehealtherx.quarkus.sicct.runtime.tls.SmkCSAKAutProvider;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
 import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -109,7 +110,7 @@ public class SicctTerminalManager {
 
     public void connectTerminalAsync(CardTerminal terminal) {
         SicctTerminalConnection conn = connections.computeIfAbsent(terminal.macAddress,
-                id -> new SicctTerminalConnection(terminal));
+                id -> new SicctTerminalConnection(terminal, this));
 
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(eventLoopGroup)
@@ -131,20 +132,68 @@ public class SicctTerminalManager {
     }
 
     private void scheduleReconnect(CardTerminal terminal, SicctTerminalConnection conn, long delayMs) {
+        if (conn.isReconnectSuppressed()) {
+            LOG.infof("[SICCT] terminal=%s auto-reconnect suppressed (administratively disconnected)", terminal.hostname);
+            return;
+        }
         long cappedDelay = Math.min(delayMs, MAX_BACKOFF_MS);
         if (cappedDelay >= MAX_BACKOFF_MS) {
             LOG.warnf("[SICCT][ALERT] terminal=%s at maximum reconnect backoff %dms", terminal.hostname, cappedDelay);
         }
-        reconnectScheduler.schedule(() -> connectTerminalAsync(terminal), cappedDelay, TimeUnit.MILLISECONDS);
+        reconnectScheduler.schedule(() -> {
+            // Re-check: an administrator may have disconnected during the backoff delay.
+            if (!conn.isReconnectSuppressed()) {
+                connectTerminalAsync(terminal);
+            }
+        }, cappedDelay, TimeUnit.MILLISECONDS);
     }
 
     void onTerminalDisconnected(String macAddress) {
         SicctTerminalConnection conn = connections.get(macAddress);
         if (conn != null) {
-            conn.onDisconnected();
-            CardTerminal terminal = conn.getTerminal();
-            scheduleReconnect(terminal, conn, INITIAL_BACKOFF_MS * 2);
+            // conn.onDisconnected() has already been invoked by the channel handler;
+            // here we only decide whether to schedule an automatic reconnect.
+            scheduleReconnect(conn.getTerminal(), conn, INITIAL_BACKOFF_MS * 2);
         }
+    }
+
+    /**
+     * Administrative connect (JMX): (re-)establish the TCP/TLS connection to a
+     * terminal and re-enable auto-reconnect. No-op beyond a status string if the
+     * terminal is already connected.
+     */
+    public String connectTerminal(CardTerminal terminal) {
+        SicctTerminalConnection conn = connections.get(terminal.macAddress);
+        if (conn != null) {
+            conn.clearReconnectSuppressed();
+            if (conn.getConnectionState() == SicctTerminalConnection.ConnectionState.CONNECTED) {
+                return "CONNECTED";
+            }
+        }
+        LOG.infof("[SICCT] administrative connect for terminal=%s at %s:%d", terminal.hostname,
+                terminal.ipAddress, terminal.tcpPort);
+        connectTerminalAsync(terminal);
+        return "CONNECTING";
+    }
+
+    /**
+     * Administrative disconnect (JMX): close the live channel and suppress
+     * auto-reconnect until the next explicit connect.
+     */
+    public String disconnectTerminal(CardTerminal terminal) {
+        SicctTerminalConnection conn = connections.get(terminal.macAddress);
+        if (conn == null) {
+            return "NOT_CONNECTED";
+        }
+        LOG.infof("[SICCT] administrative disconnect for terminal=%s", terminal.hostname);
+        // Mark first so the channelInactive callback (fired by close()) sees the
+        // suppression flag and does not schedule a reconnect.
+        conn.markAdminDisconnected();
+        Channel channel = conn.getChannel();
+        if (channel != null && channel.isActive()) {
+            channel.close();
+        }
+        return "DISCONNECTED";
     }
 
     void pairTerminal(String macAddress) {
@@ -156,6 +205,30 @@ public class SicctTerminalManager {
 
     public Map<String, SicctTerminalConnection> getConnections() {
         return connections;
+    }
+
+    /**
+     * Persists a terminal's lifecycle state (correlation + connected flag) so the
+     * database row matches the live in-memory entity. Invoked from the SICCT channel
+     * (Netty) thread when the lifecycle advances; best-effort, so a persistence
+     * failure is logged but never propagated into the protocol handling.
+     */
+    @Transactional
+    public void persistLifecycleState(CardTerminal terminal) {
+        if (terminal.ctid == null) {
+            // Not a managed/persisted terminal (e.g. standalone test fixture).
+            return;
+        }
+        try {
+            CardTerminal managed = CardTerminal.findById(terminal.ctid);
+            if (managed != null) {
+                managed.correlation = terminal.correlation;
+                managed.connected = terminal.connected;
+            }
+        } catch (Exception e) {
+            LOG.warnf(e, "[SicctTerminalManager] failed to persist lifecycle state (correlation=%s connected=%s) for terminal=%s",
+                    terminal.correlation, terminal.connected, terminal.hostname);
+        }
     }
 
     @Transactional

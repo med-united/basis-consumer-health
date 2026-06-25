@@ -236,7 +236,9 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
         connection.onDisconnected();
-        manager.onTerminalDisconnected(connection.getTerminalId());
+        // The connections map is keyed by MAC address, so the reconnect bookkeeping
+        // must be looked up by MAC — not by the hostname returned from getTerminalId().
+        manager.onTerminalDisconnected(connection.getTerminal().macAddress);
         LOG.infof("[SICCT] channel inactive for terminal=%s", connection.getTerminalId());
     }
 

@@ -11,6 +11,7 @@ import java.util.Map;
 
 import de.servicehealtherx.sicct.EhealthAuthenticator;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
+import de.servicehealtherx.sicct.jpa.CorrelationState;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
@@ -63,7 +64,7 @@ class SicctTerminalManagerIT {
         terminal.ipAddress = HOST;
         terminal.tcpPort   = PORT;
         terminal.macAddress = "00:11:22:33:44:55";
-        terminal.correlation = "BEKANNT";
+        terminal.correlation = CorrelationState.BEKANNT;
         CardTerminal.persist(terminal);
         utx.commit();
     }

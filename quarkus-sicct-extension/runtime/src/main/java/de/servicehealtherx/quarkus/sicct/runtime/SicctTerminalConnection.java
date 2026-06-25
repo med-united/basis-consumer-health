@@ -1,9 +1,11 @@
 package de.servicehealtherx.quarkus.sicct.runtime;
 
 import de.servicehealtherx.sicct.jpa.CardTerminal;
+import de.servicehealtherx.sicct.jpa.CorrelationState;
 import io.netty.channel.Channel;
 import org.jboss.logging.Logger;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -30,24 +32,28 @@ public class SicctTerminalConnection {
         CLIENT_WITH_PAIRING
     }
 
-    public enum CorrelationState {
-        BEKANNT,
-        ZUGEWIESEN,
-        GEPAIRT,
-        AKTIV
-    }
-
     private final CardTerminal terminal;
+    private final SicctTerminalManager manager;
     private final AtomicReference<ConnectionState> connectionState = new AtomicReference<>(ConnectionState.CONNECTING);
     private final AtomicReference<TlsState> tlsState = new AtomicReference<>(TlsState.NO_SICCT_TLS);
-    private final AtomicReference<CorrelationState> correlationState = new AtomicReference<>(CorrelationState.BEKANNT);
+
+    /**
+     * Set when an administrator explicitly disconnected the terminal (via JMX). While
+     * true the manager must not auto-reconnect; cleared again on an explicit connect.
+     */
+    private final AtomicBoolean reconnectSuppressed = new AtomicBoolean(false);
 
     private volatile Channel channel;
     private volatile byte[] sessionKey;
     private SicctChannelHandler sicctChannelHandler;
 
     public SicctTerminalConnection(CardTerminal terminal) {
+        this(terminal, null);
+    }
+
+    public SicctTerminalConnection(CardTerminal terminal, SicctTerminalManager manager) {
         this.terminal = terminal;
+        this.manager = manager;
     }
 
     public String getTerminalId() {
@@ -63,17 +69,17 @@ public class SicctTerminalConnection {
     }
 
     public CorrelationState getCorrelationState() {
-        return correlationState.get();
+        return terminal.correlation;
     }
 
     public boolean isAktiv() {
-        return correlationState.get() == CorrelationState.AKTIV;
+        return terminal.correlation == CorrelationState.AKTIV;
     }
 
     public void onConnected(SicctChannelHandler sicctChannelHandler2, Channel ch) {
         setSicctChannelHandler(sicctChannelHandler2);
         this.channel = ch;
-        connectionState.set(ConnectionState.CONNECTED);
+        setConnectionState(ConnectionState.CONNECTED);
         LOG.infof("[SICCT] terminal=%s CONNECTED", terminal.hostname);
     }
 
@@ -85,14 +91,39 @@ public class SicctTerminalConnection {
         }
         this.channel = null;
         if (connectionState.get() != ConnectionState.FAILED) {
-            connectionState.set(ConnectionState.RECONNECTING);
+            // An administrative disconnect terminates the connection for good (no
+            // reconnect); an unsolicited drop moves to RECONNECTING so the manager
+            // can re-establish it.
+            setConnectionState(reconnectSuppressed.get()
+                    ? ConnectionState.DISCONNECTED
+                    : ConnectionState.RECONNECTING);
         }
-        LOG.infof("[SICCT] terminal=%s DISCONNECTED, session keys cleared", terminal.hostname);
+        LOG.infof("[SICCT] terminal=%s session keys cleared", terminal.hostname);
     }
 
     public void onFailed(String reason) {
-        connectionState.set(ConnectionState.FAILED);
+        setConnectionState(ConnectionState.FAILED);
         LOG.errorf("[SICCT] terminal=%s FAILED: %s", terminal.hostname, reason);
+    }
+
+    /** True while an administrator has disabled this terminal; suppresses auto-reconnect. */
+    public boolean isReconnectSuppressed() {
+        return reconnectSuppressed.get();
+    }
+
+    /** Re-enables auto-reconnect; called when an administrator explicitly connects. */
+    public void clearReconnectSuppressed() {
+        reconnectSuppressed.set(false);
+    }
+
+    /**
+     * Records an administrative disconnect when there is no live channel to close
+     * (e.g. the terminal was already offline). Marks the connection DISCONNECTED and
+     * suppresses auto-reconnect.
+     */
+    public void markAdminDisconnected() {
+        reconnectSuppressed.set(true);
+        setConnectionState(ConnectionState.DISCONNECTED);
     }
 
     public void onTlsEstablished(boolean hasPairing) {
@@ -100,17 +131,73 @@ public class SicctTerminalConnection {
     }
 
     public void onCtSessionInit() {
-        correlationState.set(CorrelationState.ZUGEWIESEN);
+        // A terminal that is merely BEKANNT becomes ZUGEWIESEN once a CT session is
+        // initialised. Terminals that are already further along the lifecycle
+        // (GEPAIRT/AKTIV) keep their state across a reconnect.
+        if (terminal.correlation == CorrelationState.BEKANNT) {
+            setCorrelation(CorrelationState.ZUGEWIESEN);
+        }
     }
 
     public void onPaired() {
-        correlationState.set(CorrelationState.GEPAIRT);
+        setCorrelation(CorrelationState.GEPAIRT);
         tlsState.set(TlsState.CLIENT_WITH_PAIRING);
     }
 
     public void onAktiv() {
-        correlationState.set(CorrelationState.AKTIV);
+        setCorrelation(CorrelationState.AKTIV);
         LOG.infof("[SICCT] terminal=%s AKTIV — ready for card operations", terminal.hostname);
+    }
+
+    /** KSR/UPDATE/START — the Konnektor started an update of this terminal. */
+    public void onUpdateStart() {
+        setCorrelation(CorrelationState.AKTUALISIEREND);
+        LOG.infof("[SICCT] terminal=%s AKTUALISIEREND — update in progress", terminal.hostname);
+    }
+
+    /** KSR/UPDATE/END — the update finished; the terminal returns to AKTIV. */
+    public void onUpdateEnd() {
+        setCorrelation(CorrelationState.AKTIV);
+        LOG.infof("[SICCT] terminal=%s update finished, back to AKTIV", terminal.hostname);
+    }
+
+    /**
+     * Advances the connection state machine. The {@code connected} flag on the
+     * {@link CardTerminal} entity is a denormalised projection of this enum
+     * (connected ⇔ {@link ConnectionState#CONNECTED}); it is kept in sync here so
+     * there is no second, independently-updated copy of the connection status.
+     */
+    private void setConnectionState(ConnectionState newState) {
+        ConnectionState previous = connectionState.getAndSet(newState);
+        terminal.connected = (newState == ConnectionState.CONNECTED);
+        if (previous != newState) {
+            LOG.infof("[SICCT] terminal=%s connection %s -> %s", terminal.hostname, previous, newState);
+        }
+        persist();
+    }
+
+    /**
+     * Mutates the single source of truth — the {@link CardTerminal} entity — for the
+     * correlation lifecycle and persists it.
+     */
+    private void setCorrelation(CorrelationState newState) {
+        CorrelationState previous = terminal.correlation;
+        terminal.correlation = newState;
+        if (previous != newState) {
+            LOG.infof("[SICCT] terminal=%s correlation %s -> %s", terminal.hostname, previous, newState);
+        }
+        persist();
+    }
+
+    /**
+     * Asks the manager to persist the terminal's lifecycle state (correlation +
+     * connected) so the in-memory and database state stay in sync. Best-effort: a
+     * failure leaves the live in-memory state correct and is logged by the manager.
+     */
+    private void persist() {
+        if (manager != null) {
+            manager.persistLifecycleState(terminal);
+        }
     }
 
     public void setSessionKey(byte[] key) {

@@ -2,6 +2,7 @@ package de.servicehealtherx.quarkus.sicct.runtime.discovery;
 
 import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
+import de.servicehealtherx.sicct.jpa.CorrelationState;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -264,7 +265,7 @@ public class CardTerminalDiscovery {
             entity.ipAddress = t.ipAddress();
             entity.tcpPort = t.commandPort();
             entity.macAddress = t.macAddressHex();
-            entity.correlation = "BEKANNT";
+            entity.correlation = CorrelationState.BEKANNT;
             CardTerminal.persist(entity);
             LOG.infof("[SICCT-DISCOVERY] new terminal persisted: hostname='%s' ipAddress=%s port=%d mac=%s",
                     t.name(), t.ipAddress(), t.commandPort(), t.macAddressHex());

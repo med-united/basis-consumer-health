@@ -9,4 +9,10 @@ public interface SicctTerminalConnectionManagementMBean {
     String getTerminalStatus(String terminalId);
 
     String listAllTerminals();
+
+    /**
+     * Triggers an EHEALTH TERMINAL AUTHENTICATE (CREATE) run — i.e. a pairing — for
+     * the terminal identified by the given CTID (UUID), hostname or MAC address.
+     */
+    String pair(String ctid);
 }

@@ -1,10 +1,13 @@
 package de.servicehealtherx.quarkus.sicct.runtime.jmx;
 
+import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalConnection;
+import de.servicehealtherx.quarkus.sicct.runtime.SicctTerminalManager;
 import de.servicehealtherx.sicct.jpa.CardTerminal;
 import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
@@ -19,6 +22,9 @@ public class SicctTerminalConnectionManagement implements SicctTerminalConnectio
 
     private static final Logger LOG = Logger.getLogger(SicctTerminalConnectionManagement.class);
     private static final String OBJECT_NAME = "de.servicehealtherx:module=quarkus-sicct-extension,name=SicctTerminalConnectionManagement";
+
+    @Inject
+    SicctTerminalManager manager;
 
     @PostConstruct
     void registerMBean() {
@@ -48,39 +54,71 @@ public class SicctTerminalConnectionManagement implements SicctTerminalConnectio
 
     @Override
     @Transactional
-    public String connect(String hostname) {
-        CardTerminal terminal = CardTerminal.findByHostname(hostname);
+    public String connect(String terminalId) {
+        CardTerminal terminal = CardTerminal.resolve(terminalId);
         if (terminal == null)
             return "TERMINAL_NOT_FOUND";
-        if (terminal.connected)
-            return "CONNECTED";
-        LOG.infof("[SICCT] JMX connect requested for hostname=%s", hostname);
-        return "CONNECTING";
+        LOG.infof("[SICCT] JMX connect requested for terminal=%s (hostname=%s)", terminalId, terminal.hostname);
+        return manager.connectTerminal(terminal);
     }
 
     @Override
     @Transactional
-    public String disconnect(String hostname) {
-        CardTerminal terminal = CardTerminal.findByHostname(hostname);
+    public String disconnect(String terminalId) {
+        CardTerminal terminal = CardTerminal.resolve(terminalId);
         if (terminal == null)
             return "TERMINAL_NOT_FOUND";
-        LOG.infof("[SICCT] JMX disconnect requested for hostname=%s", hostname);
-        return "DISCONNECTED";
+        LOG.infof("[SICCT] JMX disconnect requested for terminal=%s (hostname=%s)", terminalId, terminal.hostname);
+        return manager.disconnectTerminal(terminal);
     }
 
     @Override
     @Transactional
-    public String getTerminalStatus(String hostname) {
-        CardTerminal terminal = CardTerminal.findByHostname(hostname);
+    public String getTerminalStatus(String terminalId) {
+        CardTerminal terminal = CardTerminal.resolve(terminalId);
         if (terminal == null) {
-            return "{\"error\":\"terminal not found: " + hostname + "\"}";
+            return "{\"error\":\"terminal not found: " + terminalId + "\"}";
         }
-        return "{\"hostname\":\"" + terminal.hostname +
-                "\",\"connected\":" + terminal.connected +
-                ",\"ipAddress\":\"" + terminal.ipAddress +
-                "\",\"tcpPort\":" + terminal.tcpPort +
-                ",\"correlation\":\"" + terminal.correlation +
+
+        // Prefer the live in-memory connection: its CardTerminal instance carries the
+        // authoritative, up-to-the-moment correlation state. The freshly resolved DB
+        // row only reflects the last persisted transition. When no connection is
+        // active (terminal offline), the DB row is the best available answer.
+        SicctTerminalConnection conn = manager.getConnections().get(terminal.macAddress);
+        CardTerminal live = conn != null ? conn.getTerminal() : terminal;
+        String connectionState = conn != null ? conn.getConnectionState().name() : "DISCONNECTED";
+        boolean connected = conn != null
+                && conn.getConnectionState() == SicctTerminalConnection.ConnectionState.CONNECTED;
+
+        return "{\"ctid\":\"" + live.ctid +
+                "\",\"hostname\":\"" + live.hostname +
+                "\",\"connected\":" + connected +
+                ",\"connectionState\":\"" + connectionState +
+                "\",\"ipAddress\":\"" + live.ipAddress +
+                "\",\"tcpPort\":" + live.tcpPort +
+                ",\"correlation\":\"" + live.correlation +
                 "\",\"activeSlots\":0}";
+    }
+
+    @Override
+    @Transactional
+    public String pair(String ctid) {
+        CardTerminal terminal = CardTerminal.resolve(ctid);
+        if (terminal == null)
+            return "{\"error\":\"terminal not found: " + ctid + "\"}";
+
+        SicctTerminalConnection conn = manager.getConnections().get(terminal.macAddress);
+        if (conn == null)
+            return "{\"error\":\"no active connection for terminal: " + terminal.hostname + "\"}";
+        if (conn.getSicctChannelHandler() == null)
+            return "{\"error\":\"terminal not ready (no SICCT channel): " + terminal.hostname + "\"}";
+
+        LOG.infof("[SICCT] JMX pair (EHEALTH TERMINAL AUTHENTICATE) requested for terminal=%s (hostname=%s)",
+                ctid, terminal.hostname);
+        conn.pairTerminal();
+        return "{\"ctid\":\"" + terminal.ctid +
+                "\",\"hostname\":\"" + terminal.hostname +
+                "\",\"pairing\":\"EHEALTH_AUTHENTICATE_TRIGGERED\"}";
     }
 
     @Override
