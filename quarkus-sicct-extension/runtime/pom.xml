@@ -28,6 +28,15 @@
             <artifactId>cetp-client-lib</artifactId>
         </dependency>
 
+        <!-- Internal: crypto-sicct-lib for the SICCT CryptoProvider + card-handle wiring
+             (SicctCardReaderPort / CardPresenceCoordinator). The runtime owns the Netty
+             channel, so the card-discovery bridge lives here and drives the provider's
+             CM_CARD_LIST. Transitively brings apdu-lib (CardObjectFactory, CmCardList). -->
+        <dependency>
+            <groupId>de.servicehealtherx</groupId>
+            <artifactId>crypto-sicct-lib</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk18on</artifactId>

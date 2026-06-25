@@ -83,6 +83,17 @@ public class SicctTerminalConnection {
         return terminal.correlation == CorrelationState.AKTIV;
     }
 
+    /**
+     * True when the terminal has an authenticated session ({@code CT.CONNECTED}) <em>and</em> a
+     * valid pairing ({@code GEPAIRT}/{@code AKTIV}) — i.e. it is safe to enumerate the inserted
+     * ICCs and build card handles for them (the requirement: connection established + pairing valid).
+     */
+    public boolean isReadyForCards() {
+        return terminal.connected
+                && (terminal.correlation == CorrelationState.GEPAIRT
+                        || terminal.correlation == CorrelationState.AKTIV);
+    }
+
     public void onConnected(SicctChannelHandler sicctChannelHandler2, Channel ch) {
         setSicctChannelHandler(sicctChannelHandler2);
         this.channel = ch;

@@ -97,6 +97,14 @@ public class SicctTerminalManager {
     @Inject
     Event<KonnektorSystemEvent> konnektorEventBus;
 
+    /**
+     * Turns SICCT slot-status into card handles once a terminal is connected and validly paired.
+     * {@code Instance<>} so this manager (and its tests) start even when the discovery bean is
+     * absent from a thin deployment; resolved lazily into {@link #cardDiscovery}.
+     */
+    @Inject
+    jakarta.enterprise.inject.Instance<SicctCardDiscovery> cardDiscoveryInstance;
+
     List<CardTerminal> terminals = null;
 
     private EventLoopGroup eventLoopGroup;
@@ -200,10 +208,36 @@ public class SicctTerminalManager {
     void onTerminalDisconnected(String macAddress) {
         SicctTerminalConnection conn = connections.get(macAddress);
         if (conn != null) {
+            // The card handles for this terminal are no longer reachable; drop its reader port so
+            // card-handle addressed crypto operations fail fast until it reconnects and re-enumerates.
+            SicctCardDiscovery discovery = cardDiscovery();
+            if (discovery != null) {
+                discovery.removeTerminal(conn.getTerminal().ctid);
+            }
             // conn.onDisconnected() has already been invoked by the channel handler;
             // here we only decide whether to schedule an automatic reconnect.
             scheduleReconnect(conn.getTerminal(), conn, INITIAL_BACKOFF_MS * 2);
         }
+    }
+
+    /**
+     * Enumerates the inserted ICCs of a connected, validly-paired terminal and builds correct card
+     * handles for them (TUC_KON_001) via {@link SicctCardDiscovery}. Invoked from the SICCT channel
+     * (Netty) thread after GET STATUS ALL ICC; the discovery itself runs off the event loop.
+     */
+    public void discoverCards(SicctTerminalConnection connection,
+            List<de.servicehealtherx.sicct.codec.IccStatusDecoder.IccStatusValue> iccStatus) {
+        SicctCardDiscovery discovery = cardDiscovery();
+        if (discovery != null) {
+            discovery.discoverCards(connection, iccStatus);
+        }
+    }
+
+    /** Resolves the optional {@link SicctCardDiscovery} bean, or {@code null} in thin deployments. */
+    private SicctCardDiscovery cardDiscovery() {
+        return cardDiscoveryInstance != null && cardDiscoveryInstance.isResolvable()
+                ? cardDiscoveryInstance.get()
+                : null;
     }
 
     /**

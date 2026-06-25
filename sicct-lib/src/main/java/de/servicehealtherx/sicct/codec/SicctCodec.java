@@ -62,6 +62,31 @@ public class SicctCodec {
         }
     }
 
+    /**
+     * Encodes a transparent card command-APDU into a SICCT C-COMMAND envelope addressed to a
+     * card functional unit (ICC slot). Unlike the CT-BCS command path
+     * ({@code SicctChannelHandler.assembleAndSendEnvelop}), the four-byte CLA/INS/P1/P2 header and
+     * any Lc/data/Le are taken verbatim from {@code apdu} (a complete ISO 7816 command APDU), so
+     * card reads that expect response data (SELECT, READ BINARY, …) work — the structured payload
+     * path hardcodes {@code Le = 0}.
+     *
+     * @param destAddr {@code wSrcOrDesAddr} — the destination functional-unit address of the ICC
+     *                 slot. NOTE: the FU-address↔slot mapping is terminal/spec dependent and must
+     *                 be validated against a real terminal.
+     * @param seq      {@code wSeq} sequence number used to correlate the response.
+     * @param apdu     the raw card command-APDU bytes (CLA INS P1 P2 [Lc DATA] [Le]).
+     */
+    public static ByteBuf encodeCardApdu(int destAddr, int seq, byte[] apdu) {
+        ByteBuf buf = Unpooled.buffer(10 + apdu.length);
+        buf.writeByte(0x6B);        // bMessageType = C-COMMAND
+        buf.writeShort(destAddr);   // wSrcOrDesAddr — destination FU / ICC slot
+        buf.writeShort(seq);        // wSeq
+        buf.writeByte(0x00);        // RFU / high byte of dwLength
+        buf.writeInt(apdu.length);  // dwLength
+        buf.writeBytes(apdu);       // transparent card command-APDU
+        return buf;
+    }
+
     public static ByteBuf encode(SicctPayload sicctPayload) throws IOException {
         try (ByteBufOutputStream bbos = new ByteBufOutputStream(Unpooled.buffer())) {
 

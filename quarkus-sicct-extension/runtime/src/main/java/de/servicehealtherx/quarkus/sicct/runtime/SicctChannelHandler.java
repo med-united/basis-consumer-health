@@ -606,10 +606,18 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
             lastEvent = "CARD_INSERTED:" + fu(event.getCardInserted());
             LOG.infof("[SICCT] card inserted in slot fu=%s on terminal=%s",
                     fu(event.getCardInserted()), connection.getTerminalId());
+            // Re-query ICC status so the per-slot view drives card-handle (re)creation; this
+            // avoids decoding the event's FuNumber→slot mapping and reuses the GET STATUS path.
+            if (connection.isReadyForCards()) {
+                getStatusAllIcc();
+            }
         } else if (event.getCardRemoved() != null) {
             lastEvent = "CARD_REMOVED:" + fu(event.getCardRemoved());
             LOG.infof("[SICCT] card removed from slot fu=%s on terminal=%s",
                     fu(event.getCardRemoved()), connection.getTerminalId());
+            if (connection.isReadyForCards()) {
+                getStatusAllIcc();
+            }
         } else if (event.getKeypadEvent() != null) {
             int keyCode = event.getKeypadEvent().getKeyCode().intValue();
             lastEvent = "KEYPAD:" + keyCode;
@@ -702,6 +710,13 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
             }
         }
         connection.setSlotsUsed(slots.toString());
+
+        // Once the terminal is connected and validly paired, build correct card handles
+        // (TUC_KON_001) for every inserted ICC so each card is addressable over SICCT exactly
+        // as over PC/SC. Card reads block, so the manager dispatches this off the event loop.
+        if (manager != null && connection.isReadyForCards()) {
+            manager.discoverCards(connection, iccStatus);
+        }
     }
 
     private void handleGetStatusCardTerminal(SicctEnvelope envelope) {
@@ -912,6 +927,87 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
 
     public String getLastEvent() {
         return lastEvent;
+    }
+
+    // -------------------------------------------------------------------------
+    // Transparent card-APDU transmission (drives the SICCT CardReaderPort)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Sends a transparent card command-APDU to the card in {@code slotNo} and completes the
+     * returned future with the raw card response-APDU (response data ‖ SW1 SW2). The send is
+     * marshalled onto the Netty event loop so the {@code sequenceNumber} stays single-threaded;
+     * the future is then completed from that same loop when the correlated response arrives.
+     *
+     * <p><strong>Callers MUST block on the future from a worker thread, never the event loop</strong>
+     * — the response is decoded on the loop, so blocking it would dead-lock the round-trip.
+     */
+    public CompletableFuture<byte[]> transmitCardApdu(int slotNo, byte[] commandApdu) {
+        CompletableFuture<byte[]> result = new CompletableFuture<>();
+        ChannelHandlerContext context = this.ctx;
+        if (context == null) {
+            result.completeExceptionally(new IllegalStateException(
+                    "no active SICCT channel for terminal=" + connection.getTerminalId()));
+            return result;
+        }
+        context.executor().execute(() -> {
+            try {
+                int seq = sequenceNumber++;
+                // pendingOperations is dispatched before the INS-classification switch, so the
+                // response routes here regardless of the card's INS byte (which is not recorded
+                // in sentCommands for transparent APDUs).
+                pendingOperations.put(seq, envelope -> result.complete(rawResponseApdu(envelope)));
+                ByteBuf out = SicctCodec.encodeCardApdu(iccFunctionalUnitAddress(slotNo), seq, commandApdu);
+                context.writeAndFlush(out);
+            } catch (RuntimeException e) {
+                result.completeExceptionally(e);
+            }
+        });
+        return result;
+    }
+
+    /** Whether the last GET STATUS ALL ICC reported a card in {@code slotNo} (0-based). */
+    public boolean isCardPresent(int slotNo) {
+        List<IccStatusValue> status = lastIccStatus;
+        return slotNo >= 0 && slotNo < status.size() && status.get(slotNo) != IccStatusValue.CC_ABSENT;
+    }
+
+    /**
+     * Maps a 0-based ICC slot index (as reported by GET STATUS ALL ICC) to its SICCT destination
+     * functional-unit address ({@code wSrcOrDesAddr}). FU 0 addresses the card terminal itself, so
+     * the first ICC slot is FU 1. NOTE: validate this mapping against the real terminal — isolated
+     * here so it is a one-line change if a terminal numbers its ICC functional units differently.
+     */
+    private static int iccFunctionalUnitAddress(int slotNo) {
+        return slotNo + 1;
+    }
+
+    /**
+     * Reconstructs the raw card response-APDU (response data ‖ SW1 SW2) from a decoded SICCT
+     * response envelope. {@link SicctCodec#decodeSicctPayload} keeps the response data field
+     * verbatim in {@code ResponseData}, so encoding it without a tag yields exactly those bytes.
+     */
+    private byte[] rawResponseApdu(SicctEnvelope envelope) {
+        ResponseAPDU response = envelope.getAbCmd() != null ? envelope.getAbCmd().getResponseApdu() : null;
+        if (response == null) {
+            return new byte[] {(byte) 0x6F, 0x00}; // no response APDU — generic error SW
+        }
+        byte[] data = new byte[0];
+        if (response.getResponseData() != null) {
+            try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
+                response.getResponseData().encode(os, false);
+                data = os.toByteArray();
+            } catch (IOException ignored) {
+                // Opaque/short data field — fall back to empty data; the SW still carries the outcome.
+            }
+        }
+        StatusWord trailer = response.getTrailer();
+        int sw1 = trailer != null ? trailer.getSw1().intValue() & 0xFF : 0x6F;
+        int sw2 = trailer != null ? trailer.getSw2().intValue() & 0xFF : 0x00;
+        byte[] full = Arrays.copyOf(data, data.length + 2);
+        full[data.length] = (byte) sw1;
+        full[data.length + 1] = (byte) sw2;
+        return full;
     }
 
     @Override

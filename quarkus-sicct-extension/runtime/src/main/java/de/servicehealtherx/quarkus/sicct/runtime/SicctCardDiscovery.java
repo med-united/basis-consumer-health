@@ -1,0 +1,113 @@
+package de.servicehealtherx.quarkus.sicct.runtime;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import org.jboss.logging.Logger;
+
+import de.servicehealtherx.apdu.card.CardLifecycleListener;
+import de.servicehealtherx.apdu.card.CardObjectFactory;
+import de.servicehealtherx.apdu.card.CardPresenceCoordinator;
+import de.servicehealtherx.crypto.sicct.SicctCardReaderPort;
+import de.servicehealtherx.crypto.sicct.SicctCryptoProvider;
+import de.servicehealtherx.sicct.codec.IccStatusDecoder.IccStatusValue;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
+
+/**
+ * Runtime integration that turns SICCT slot-status into card handles (the "Phase 6 / runtime
+ * integration" the {@code SicctCryptoProvider} javadoc defers): for each connected, validly-paired
+ * terminal it owns a {@link SicctCardReaderPort} + {@link CardPresenceCoordinator} that drive the
+ * provider's CM_CARD_LIST via {@link CardObjectFactory} (TUC_KON_001), exactly as the PC/SC
+ * {@code PcscReaderRegistry} does. It also binds the provider's port resolver so card-handle
+ * addressed crypto operations resolve the live terminal by {@code ctid}.
+ */
+@ApplicationScoped
+public class SicctCardDiscovery {
+
+    private static final Logger LOG = Logger.getLogger(SicctCardDiscovery.class);
+
+    @Inject
+    SicctCryptoProvider provider;
+
+    /**
+     * Optional runtime card-lifecycle listener (CDI), used to publish TUC_KON_256 CARD/INSERTED &
+     * CARD/REMOVED events. Falls back to {@link CardLifecycleListener#NO_OP} when no bean is present.
+     */
+    @Inject
+    Instance<CardLifecycleListener> lifecycleListener;
+
+    /** One CardReaderPort per terminal (ctid); also the resolver target for crypto operations. */
+    private final ConcurrentHashMap<UUID, SicctCardReaderPort> portsByCtid = new ConcurrentHashMap<>();
+
+    /** Card reads block on the SICCT round-trip, so discovery runs off the Netty event loop. */
+    private final ExecutorService discoveryExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "sicct-card-discovery");
+        t.setDaemon(true);
+        return t;
+    });
+
+    @PostConstruct
+    void bindPortResolver() {
+        provider.bindPortResolver(ctid -> Optional.ofNullable(portsByCtid.get(ctid)));
+    }
+
+    /**
+     * Builds/refreshes card handles for the inserted ICCs of a connected, validly-paired terminal,
+     * from a GET STATUS ALL ICC result (one entry per 0-based slot). Each slot is handled on a
+     * worker thread because reading the card (ICCSN, type, …) issues blocking APDU round-trips.
+     */
+    public void discoverCards(SicctTerminalConnection connection, List<IccStatusValue> iccStatus) {
+        SicctCardReaderPort port = portFor(connection);
+        for (int slot = 0; slot < iccStatus.size(); slot++) {
+            int slotNo = slot;
+            boolean present = iccStatus.get(slot) != IccStatusValue.CC_ABSENT;
+            discoveryExecutor.execute(() -> {
+                try {
+                    if (present) {
+                        port.onCardInserted(slotNo);
+                    } else {
+                        port.onCardRemoved(slotNo);
+                    }
+                } catch (RuntimeException e) {
+                    LOG.warnf(e, "[SICCT] card discovery failed on slot=%d of terminal=%s",
+                            slotNo, connection.getTerminalId());
+                }
+            });
+        }
+    }
+
+    /** Drops a terminal's port when it disconnects so crypto operations fail fast (best-effort). */
+    public void removeTerminal(UUID ctid) {
+        if (ctid != null) {
+            portsByCtid.remove(ctid);
+        }
+    }
+
+    private SicctCardReaderPort portFor(SicctTerminalConnection connection) {
+        UUID ctid = connection.getTerminal().ctid;
+        return portsByCtid.computeIfAbsent(ctid, id -> {
+            SicctCardReaderPort port = new SicctCardReaderPort(new SicctConnectionChannel(connection));
+            CardLifecycleListener listener = lifecycleListener != null && lifecycleListener.isResolvable()
+                    ? lifecycleListener.get()
+                    : CardLifecycleListener.NO_OP;
+            CardPresenceCoordinator coordinator = new CardPresenceCoordinator(
+                    port, provider.cmCardList(), new CardObjectFactory(), listener,
+                    CardPresenceCoordinator.defaultTypeResolver());
+            coordinator.start();
+            return port;
+        });
+    }
+
+    @PreDestroy
+    void shutdown() {
+        discoveryExecutor.shutdownNow();
+    }
+}
