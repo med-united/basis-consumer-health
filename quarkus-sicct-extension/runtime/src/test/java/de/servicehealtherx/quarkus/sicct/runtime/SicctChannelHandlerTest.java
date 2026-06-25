@@ -61,6 +61,25 @@ public class SicctChannelHandlerTest {
     }
 
     @Test
+    public void test_close_ct_session_sends_apdu() {
+        // TUC_KON_053 step 8: CLOSE CT SESSION (INS 0x29) with the card terminal as
+        // addressee, sent after the three channelActive messages (seq 1-3), so this is
+        // seq 4. APDU = 80 29 00 00 00 (CLA=80, INS=29, P1=00, P2=00, empty data).
+        SicctTerminalConnection connection = mock(SicctTerminalConnection.class);
+        SicctChannelHandler handler = new SicctChannelHandler(connection, null);
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+        when(ctx.alloc()).thenReturn(Unpooled.buffer().alloc());
+
+        handler.channelActive(ctx);
+        handler.closeCtSession();
+
+        ArgumentCaptor<ByteBuf> byteBufCaptor = ArgumentCaptor.forClass(ByteBuf.class);
+        verify(ctx, times(4)).writeAndFlush(byteBufCaptor.capture());
+
+        checkMessage(byteBufCaptor.getAllValues(), "6B0000000400000000058029000000", 3);
+    }
+
+    @Test
     public void test_format_mac_address_for_display() {
         String formatted = SicctChannelHandler.formatMacAddressForDisplay("aa:bb:cc:dd:ee:ff");
         assertEquals("AABBCC:DDEEFF", formatted);

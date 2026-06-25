@@ -284,13 +284,28 @@ public class SicctTerminalConnection {
         return 30_000;
     }
 
-    public void pairTerminal() {
+    public java.util.concurrent.CompletableFuture<Boolean> pairTerminal() {
         if (getSicctChannelHandler() == null) {
             LOG.errorf("[SicctTerminalConnection] Cannot pair terminal=%s because SicctChannelHandler is not set yet",
                     terminal.hostname);
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                    new IllegalStateException("SicctChannelHandler not set for terminal=" + terminal.hostname));
+        }
+        return getSicctChannelHandler().ehealthTerminalAuthenticateCreate();
+    }
+
+    /**
+     * TUC_KON_053 step 8: sends SICCT CLOSE CT SESSION to the terminal to end the
+     * cardterminal session opened for pairing. No-op when no channel is established.
+     */
+    public void closeCtSession() {
+        SicctChannelHandler handler = getSicctChannelHandler();
+        if (handler == null) {
+            LOG.warnf("[SicctTerminalConnection] Cannot close CT session for terminal=%s: no SICCT channel",
+                    terminal.hostname);
             return;
         }
-        getSicctChannelHandler().ehealthTerminalAuthenticateCreate();
+        handler.closeCtSession();
     }
 
     public void setSicctChannelHandler(SicctChannelHandler sicctChannelHandler) {
