@@ -1,0 +1,122 @@
+{
+  "A_17408": {
+    "title": "Basisdienst Zertifikatsdienst",
+    "description": "Der Basis-Consumer MUSS Clientsystemen einen Basisdienst Zertifikatsdienst zur Verfügung stellen. Tabelle #: Tab_Zertifikatsdienst Name CertificateService Version Siehe Anhang B Namensraum Siehe Anhang B Namensraum-Kürzel CERT für Schema und CERTW für WSDL Operationen Name Kurzbeschreibung VerifyCertificate Prüfung des Status eines Zertifikats WSDL CertificateService.wsdl Schema CertificateService",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_24782-02": {
+    "title": "Basis-Consumer, Operation ReadCertificate",
+    "description": "Die Basisanwendung Zertifikatsdienst des Basis-Consumer MUSS an der Client-Schnittstelle eine Operation ReadCertificate wie in Tabelle Tab_Operation_ReadCertificate beschrieben anbieten. Tabelle #: Tab_Operation_ReadCertificate Name ReadCertificate Beschreibung Liest X.509-Zertifikate von einem Identitätsträger. Aufruf parameter Name Beschreibung CardHandle Gibt die Quelle an, von der das Zertifik",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17429-02": {
+    "title": "Basis-Consumer, Operation VerifyCertificate",
+    "description": "Der Zertifikatsdienst des Basis-Consumer MUSS an der Clientsystemschnittstelle eine Operation VerifyCertificate wie in Tabelle Tab_Operation_VerifyCertificate beschrieben anbieten. Tabelle #: Tab_Operation_VerifyCertificate Name VerifyCertificate Beschreibung Prüft den Status eines Zertifikats. Aufruf-parameter Name Beschreibung CERTCMN: X509Certificate Enthält das base64-codierte Zertifikat, dess",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17466": {
+    "title": "Systemprozess PL_TUC_HYBRID_ENCIPHER",
+    "description": "Der Basis-Consumer MUSS den Systemprozess PL_TUC_HYBRID_ENCIPHER implementieren und bereitstellen.",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17467": {
+    "title": "Systemprozess PL_TUC_HYBRID_DECIPHER",
+    "description": "Der Basis-Consumer MUSS den Systemprozess PL_TUC_HYBRID_DECIPHER implementieren und bereitstellen.",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17477": {
+    "title": "Basisdienst Verschlüsselungsdienst",
+    "description": "Der Basis-Consumer MUSS für Clients einen Basisdienst Verschlüsselungsdienst anbieten. Tabelle #: Tab_Verschlüsselungsdienst Name EncryptionService Version Siehe Anhang Namensraum Siehe Anhang Namensraum-Kürzel CRYPT für Schema und CRYPTW für WSDL Operationen Name Kurzbeschreibung EncryptDocument Dokument hybrid verschlüsseln DecryptDocument Dokument hybrid entschlüsseln WSDL EncryptionService.wsd",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17510-05": {
+    "title": "Basis-Consumer, Operation EncryptDocument",
+    "description": "Der Verschlüsselungsdienst des Basis-Consumer MUSS an der Clientsystemschnittstelle eine Operation EncryptDocument anbieten. Tabelle #: Tab_Operation_EncryptDocument Name EncryptDocument Beschreibung Diese Operation verschlüsselt ein übergebenes Dokument hybrid. Der Dokumententyp XML wird gesondert behandelt. Alle anderen Dokumententypen nutzen die binäre Verschlüsselung. Für die hybride Verschlüs",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17515-03": {
+    "title": "Basis-Consumer, Operation DecryptDocument",
+    "description": "Der Verschlüsselungsdienst des Basis-Consumer MUSS an der Clientsystemschnittstelle eine Operation DecryptDocument anbieten. Tabelle #: Tab_Operation_DecryptDocument Name DecryptDocument Beschreibung Diese Operation entschlüsselt ein hybrid verschlüsseltes Dokument. Es werden die Dokumententypen XML und Andere (Binär) unterstützt. Für die Entschlüsselung wird ein asymmetrischer Schlüssel zu einem ",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17517": {
+    "title": "Systemprozess PL_TUC_SIGN_DOCUMENT_nonQES",
+    "description": "Der Basis-Consumer MUSS den Systemprozess PL_TUC_SIGN_DOCUMENT_nonQES implementieren und bereitstellen.",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17523": {
+    "title": "Basisdienst Signaturdienst",
+    "description": "Der Basis-Consumer MUSS Clientsystemen einen Basisdienst Signaturdienst (nonQES) anbieten. Tabelle #: Tab_Signaturdienst Name SignatureService Version Siehe Anhang Namensraum Siehe Anhang Namensraum-Kürzel SIG für Schema und SIGW für WSDL Operationen Name Kurzbeschreibung SignDocument Dokument signieren VerifyDocument Signatur verifizieren ExternalAuthenticate Binärstring signieren WSDL SignatureS",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17525-03": {
+    "title": "Basis- und KTR-Consumer, Operation SignDocument",
+    "description": "Der Signaturdienst des Basis- und KTR-Consumer MUSS an der Clientsystemschnittstelle eine an [OASIS-DSS] angelehnte Operation SignDocument wie in Tabelle Tab_Operation_SignDocument beschrieben anbieten. Tabelle #: Tab_Operation_SignDocument Name SignDocument Beschreibung Diese Operation lehnt sich an [OASIS-DSS] an. Sie enthält voneinander unabhängige SignRequests. Jeder SignRequest erzeugt eine S",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17525-04": {
+    "title": "Basis-Consumer, Operation SignDocument",
+    "description": "Der Signaturdienst des Basis-Consumer MUSS an der Clientsystemschnittstelle eine an [OASIS-DSS] angelehnte Operation SignDocument wie in Tabelle Tab_Operation_SignDocument beschrieben anbieten. Tabelle #: Tab_Operation_SignDocument Name SignDocument Beschreibung Diese Operation lehnt sich an [OASIS-DSS] an. Sie enthält voneinander unabhängige SignRequests. Jeder SignRequest erzeugt eine Signatur f",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17526-03": {
+    "title": "Basis-Consumer, Operation VerifyDocument",
+    "description": "Der Signaturdienst des Basis-Consumer MUSS an der Clientsystemschnittstelle eine Operation VerifyDocument wie in Tabelle Tab_Operation_VerifyDocument beschrieben anbieten. Tabelle #: Tab_Operation_VerifyDocument Name VerifyDocument Beschreibung Diese Operation verifiziert die Signatur eines Dokumentes. Der Basis-Consumer MUSS jede konform zur Clientsystemschnittstelle SignDocument erzeugte Signatu",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17577": {
+    "title": "Systemprozess PL_TUC_VERIFY_DOCUMENT_nonQES",
+    "description": "Der Basis-Consumer MUSS den Systemprozess PL_TUC_VERIFY_DOCUMENT_nonQES implementieren und bereitstellen.",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17518": {
+    "title": "Systemprozess PL_TUC_SIGN_HASH_nonQES",
+    "description": "Der Basis-Consumer MUSS den Systemprozess PL_TUC_SIGN_HASH_nonQES implementieren und bereitstellen.",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17578-03": {
+    "title": "Basis- und KTR-Consumer, Operation ExternalAuthenticate",
+    "description": "Der Signaturdienst des Basis- und KTR-Consumer MUSS an der Client-Systemschnittstelle die Operation ExternalAuthenticate wie in Tabelle Tab_Operation_ExternalAuthenticate beschrieben anbieten. Tabelle #: Tab_Operation_ExternalAuthenticate Name ExternalAuthenticate Beschrei bung Diese Operation versieht einen Binärstring der maximalen Länge 512 Bit mit einer nicht-qualifizierten elektronischen Sign",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_17578-04": {
+    "title": "Basis-Consumer, Operation ExternalAuthenticate",
+    "description": "Der Signaturdienst des Basis-Consumer MUSS an der Client-Systemschnittstelle die Operation ExternalAuthenticate wie in Tabelle Tab_Operation_ExternalAuthenticate beschrieben anbieten. Tabelle #: Tab_Operation_ExternalAuthenticate Name ExternalAuthenticate Beschrei bung Diese Operation versieht einen Binärstring der maximalen Länge 256 Bit mit einer nicht-qualifizierten elektronischen Signatur (non",
+    "source": "gemSpec_Basis_Consumer",
+    "verbindlichkeit": "MUSS"
+  },
+  "A_15237": {
+    "title": "Transport Fehlermeldungen als gematik-SOAP-Fault- SOAP 1.2",
+    "description": "Alle Produkttypen der TI, die Webservices auf Basis von SOAP 1.2 und keine abweichenden Vorgaben von der gematik für diesen Webservice haben, MÜSSEN bei der Übermittlung von Fehlermeldungen gematik-SOAP-Faults verwenden. Hierbei gelten folgende Vorgaben: gematik-SOAP-Faults MÜSSEN auf SOAP-Faults gemäß [SOAP1.2] und [BasicProfile2.0] basieren. Für die Attribute des SOAP-Faults MÜSSEN die Vorgaben ",
+    "source": "gemSpec_OM",
+    "verbindlichkeit": "MUSS"
+  },
+  "GS-A_3796": {
+    "title": "Transport Fehlermeldungen als gematik-SOAP-Fault - SOAP 1.1",
+    "description": "Alle Produkttypen der TI, die Webservices auf Basis von SOAP 1.1 und keine abweichenden Vorgaben von der gematik für diesen Webservice haben, MÜSSEN bei der Übermittlung von Fehlermeldungen gematik-SOAP-Faults verwenden. Hierbei gelten folgende Vorgaben: gematik-SOAP-Fault MÜSSEN auf SOAP-Faults gemäß [SOAP1.1] und [BasicProfile1.2] basieren. Für die Attribute des SOAP-Fault MÜSSEN die Vorgaben au",
+    "source": "gemSpec_OM",
+    "verbindlichkeit": "MUSS"
+  },
+  "GS-A_4547": {
+    "title": "Generische Fehlermeldungen",
+    "description": "Alle Produkttypen der TI, die Webservices nutzen, MÜSSEN für Fehlermeldungen, die durch generische Fehlermeldungen entsprechend Tab_Gen_Fehler abbildbar sind, die generischen Fehlermeldungen verwenden.",
+    "source": "gemSpec_OM",
+    "verbindlichkeit": "MUSS"
+  }
+}

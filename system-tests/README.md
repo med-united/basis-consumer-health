@@ -1,8 +1,12 @@
 # system-tests
 
-Black-box SOAP **system tests** that drive the running Konnektor endpoints over plain HTTP.
-No generated stubs and no Quarkus runtime — each step sends a hand-written SOAP envelope, so the
-test reflects exactly what an external primary system puts on the wire.
+Black-box SOAP **system tests** that drive the running Konnektor and Basis-Consumer endpoints over
+plain HTTP. No generated stubs and no Quarkus runtime — each step sends a hand-written SOAP
+envelope, so the test reflects exactly what an external primary system puts on the wire.
+
+> **Basis-Consumer suite:** the `consumer/*` tests (Certificate, Encryption, Signature basisdienste)
+> are organized as an ISO/IEC 25000 test concept with gematik-AFO traceability — see
+> [`TESTKONZEPT.md`](TESTKONZEPT.md).
 
 ## `EPrescriptionSoapFlowTest`
 

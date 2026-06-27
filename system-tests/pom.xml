@@ -13,13 +13,18 @@
 
     <artifactId>system-tests</artifactId>
     <name>Basis Consumer :: System Tests</name>
-    <description>Black-box SOAP system tests that drive the running Konnektor endpoints over HTTP
-        (e.g. the full e-prescription signing flow). Requires a live server; tests skip themselves
-        when no server is reachable.</description>
+    <description>Black-box SOAP system tests that drive the running Konnektor and Basis-Consumer
+        endpoints over HTTP (e.g. the full e-prescription signing flow and the Basis-Consumer
+        Certificate/Encryption/Signature basisdienste). Requires a live server; tests skip
+        themselves when no server is reachable. Test cases are traced to gematik AFOs via the
+        gematik AfoReporter @Afo annotation (see TESTKONZEPT.md).</description>
 
     <properties>
         <!-- Base URL of the running CXF endpoints (quarkus.cxf.path defaults to /ws). -->
         <systemtest.base.url>http://localhost:8080/ws</systemtest.base.url>
+        <!-- Card handle for the card-bound Basis-Consumer crypto operations. -->
+        <systemtest.card.handle>card-1</systemtest.card.handle>
+        <aforeporter.version>1.2.1</aforeporter.version>
     </properties>
 
     <dependencies>
@@ -29,16 +34,44 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- gematik AfoReporter: provides the de.gematik.idp.tests.@Afo annotation used to trace
+             each test case to its AFO, and the reporter that renders requirements coverage. -->
+        <dependency>
+            <groupId>de.gematik.idp.aforeporter</groupId>
+            <artifactId>aforeporter</artifactId>
+            <version>${aforeporter.version}</version>
+            <scope>test</scope>
+            <!-- We only need the de.gematik.idp.tests.@Afo annotation class on the classpath; the
+                 reporter itself runs as a standalone jar (see TESTKONZEPT.md). Excluding all
+                 transitives keeps an old Lombok off the compile classpath (it would otherwise be
+                 auto-discovered as an annotation processor and fail on JDK 21). -->
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <!-- These black-box tests need no annotation processing; disabling it stops any
+                         processor on the test classpath (e.g. a transitive Lombok) from running. -->
+                    <proc>none</proc>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <systemPropertyVariables>
                         <systemtest.base.url>${systemtest.base.url}</systemtest.base.url>
+                        <systemtest.card.handle>${systemtest.card.handle}</systemtest.card.handle>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
