@@ -3,7 +3,9 @@ sap.ui.define([
 ], function (JSONModel) {
     "use strict";
 
-    var BLANK_CONTEXT = { mandantId: "", clientSystemId: "", workplaceId: "", userId: "" };
+    // Convenience defaults for the local test konnektor: the demo mandant/client/workplace
+    // are all "a". The server-provided config.json (if reachable) overrides these per key.
+    var BLANK_CONTEXT = { mandantId: "a", clientSystemId: "a", workplaceId: "a", userId: "" };
 
     /**
      * Loads the server-configured default invocation context from GET /conn-ui/config.json.

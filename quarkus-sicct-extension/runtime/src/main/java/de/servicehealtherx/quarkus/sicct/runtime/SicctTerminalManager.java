@@ -745,6 +745,10 @@ public class SicctTerminalManager {
                 managed.connected = terminal.connected;
                 managed.activeRole = terminal.activeRole;
                 managed.slotsUsed = terminal.slotsUsed;
+                // The pairing secret (ShS.KT.AUT) cannot be re-derived on a later connection,
+                // so it MUST survive a restart for the reconnect VALIDATE to succeed. Stored as
+                // produced by TpmSealer.protect() (TPM-sealed when available, else unsealed).
+                managed.sealedSharedSecret = terminal.sealedSharedSecret;
             }
         } catch (Exception e) {
             LOG.warnf(e, "[SicctTerminalManager] failed to persist lifecycle state (correlation=%s connected=%s) for terminal=%s",
@@ -800,6 +804,11 @@ public class SicctTerminalManager {
 
     public TrustManager getGSMCKtTrustManager() {
         return gSMCKtTrustManager;
+    }
+
+    /** The TPM 2.0 sealer used to protect/recover the pairing secret; may be {@code null} in tests. */
+    public TpmSealer getTpmSealer() {
+        return tpmSealer;
     }
 
     public static void main(String[] args) throws InterruptedException {

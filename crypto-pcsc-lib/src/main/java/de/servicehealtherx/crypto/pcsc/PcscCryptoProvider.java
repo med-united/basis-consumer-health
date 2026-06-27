@@ -22,6 +22,7 @@ import de.servicehealtherx.crypto.KeyStoreDescriptor;
 import de.servicehealtherx.crypto.SourceType;
 import de.servicehealtherx.crypto.model.CryptoOperationRequest;
 import de.servicehealtherx.crypto.model.CryptoOperationResult;
+import io.quarkus.arc.properties.IfBuildProperty;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -34,8 +35,14 @@ import jakarta.enterprise.context.ApplicationScoped;
  * <p>The card service aggregates this list with the SICCT provider's list for the unified GetCards
  * view (FR-064, implemented in US3). Reader discovery is guarded so the application starts even
  * with no PC/SC subsystem present.
+ *
+ * <p>Disable the entire PC/SC reader crypto service by setting
+ * {@code crypto.provider.pcsc.enabled=false} in {@code application.properties} — the bean (and the
+ * companion {@code PcscPinVerifier} JMX MBean) is then removed, so no reader polling thread starts
+ * and the provider drops out of the aggregated GetCards view. Enabled by default.
  */
 @ApplicationScoped
+@IfBuildProperty(name = "crypto.provider.pcsc.enabled", stringValue = "true", enableIfMissing = true)
 public class PcscCryptoProvider implements CryptoProvider, CardListProvider {
 
     private static final org.jboss.logging.Logger LOG =

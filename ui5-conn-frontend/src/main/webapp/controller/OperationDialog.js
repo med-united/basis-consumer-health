@@ -5,11 +5,15 @@ sap.ui.define([
     "sap/m/Input",
     "sap/m/Label",
     "sap/m/Select",
+    "sap/m/ComboBox",
     "sap/ui/core/Item",
+    "sap/ui/core/ListItem",
+    "sap/ui/model/Filter",
+    "sap/ui/model/FilterOperator",
     "sap/m/MessageBox",
     "de/servicehealtherx/connui/model/SoapEnvelope",
     "de/servicehealtherx/connui/service/SoapClient"
-], function (BaseObject, Fragment, JSONModel, Input, Label, Select, Item, MessageBox, SoapEnvelope, SoapClient) {
+], function (BaseObject, Fragment, JSONModel, Input, Label, Select, ComboBox, Item, ListItem, Filter, FilterOperator, MessageBox, SoapEnvelope, SoapClient) {
     "use strict";
 
     /**
@@ -89,7 +93,9 @@ sap.ui.define([
                 oBox.addItem(new Label({ text: field.label, required: !!field.required })
                     .addStyleClass("sapUiTinyMarginTop"));
                 var oControl;
-                if (field.type === "enum") {
+                if (field.cardHandle) {
+                    oControl = this._buildCardHandleControl(field, sPath);
+                } else if (field.type === "enum") {
                     oControl = new Select({
                         selectedKey: "{env>" + sPath + "}",
                         items: (field.enumValues || []).map(function (v) {
@@ -105,6 +111,37 @@ sap.ui.define([
                 oControl.setWidth("100%");
                 oBox.addItem(oControl);
             }.bind(this));
+        },
+
+        /**
+         * A card-handle field renders as an editable ComboBox fed by the shared "cards" registry
+         * (handles the konnektor reported via GetCards). The value is still two-way bound to the
+         * envelope path, so picking a card OR typing a handle by hand both flow into the request.
+         * When the field declares cardTypes, the dropdown is filtered to those types (e.g. only
+         * eGKs for the VSD eGK handle); an unfiltered field offers every known card.
+         */
+        _buildCardHandleControl: function (field, sPath) {
+            var oItemsBinding = {
+                path: "cards>/cards",
+                template: new ListItem({
+                    key: "{cards>cardHandle}",
+                    text: "{cards>cardHandle}",
+                    additionalText: "{cards>label}"
+                }),
+                templateShareable: false
+            };
+            if (field.cardTypes && field.cardTypes.length) {
+                var aTypeFilters = field.cardTypes.map(function (sType) {
+                    return new Filter("cardType", FilterOperator.EQ, sType);
+                });
+                oItemsBinding.filters = [new Filter({ filters: aTypeFilters, and: false })];
+            }
+            return new ComboBox({
+                value: "{env>" + sPath + "}",
+                showSecondaryValues: true,
+                placeholder: this._text("cardHandlePlaceholder"),
+                items: oItemsBinding
+            });
         },
 
         _resetViews: function () {
@@ -159,6 +196,9 @@ sap.ui.define([
             this._dialog.setBusy(true);
             SoapClient.send(this._operation, this._envelope.serialize()).then(function (oResult) {
                 that._dialog.setBusy(false);
+                // Remember any card handles this response surfaced (e.g. GetCards) so every
+                // card-handle ComboBox — including the one in this dialog — picks them up.
+                that._component.getCardRegistry().ingest(oResult.doc);
                 that._showResult(oResult);
                 if (that._fnDone) { that._fnDone(oResult); }
             });

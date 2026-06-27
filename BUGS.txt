@@ -1,7 +1,10 @@
-- Card Handle for an eHBA does not show the card holder name
+- On remove and insert system rebuilds all handles but should only rebuild the one that was inserted or remove the removed one
+- Cards become UNKNOWN when card is removed and inserted
+- eGK Handle is not correctly produced with connect SICCT terminal
+- [FIXED] Card Handle for an eHBA does not show the card holder name
 - [FIXED] Not all certificates for an eHBA (C.ENC, C.QES, C.AUT) are returned only C.ENC
 - [FIXED] CETP Events are not thrown when entering a card
-- VSDService return error even when eGK is available
+- [FIXED] VSDService return error even when eGK is available
 
 <soap:Fault>
          <faultcode>soap:Server</faultcode>

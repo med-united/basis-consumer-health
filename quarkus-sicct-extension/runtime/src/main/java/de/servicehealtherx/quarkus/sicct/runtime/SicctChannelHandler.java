@@ -234,7 +234,13 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
                                 && !verifyPairingSignature(sharedSecret, terminalTLSCertificate, responseBody)) {
                             throw new GeneralSecurityException("Signature validation failed");
                         }
-                        // Step 7: CT.CORRELATION = „gepairt“.
+                        // Step 4.a/7: protect ShS.KT.AUT (TPM-seal when available, else store
+                        // unsealed) and place it in CT.SHARED_SECRET, then advance CORRELATION to
+                        // „gepairt“. onPaired() persists the lifecycle state — including the
+                        // protected secret — so it survives a restart and the reconnect VALIDATE
+                        // can recover it (without persistence the secret is unrecoverable and every
+                        // reconnect fails authentication, blocking card discovery).
+                        connection.getTerminal().sealedSharedSecret = protectSharedSecret(sharedSecret);
                         connection.onPaired();
                         pairingResult.complete(true);
                     } catch (GeneralSecurityException e) {
@@ -246,8 +252,8 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
                         pairingResult.completeExceptionally(t);
                     }
                 });
-                // Step 4.a: store the generated ShS.KT.AUT in CT.SHARED_SECRET.
-                connection.getTerminal().sealedSharedSecret = sharedSecret;
+                // The generated ShS.KT.AUT is stored (protected) into CT.SHARED_SECRET only after
+                // the terminal's CREATE signature has been verified (see the response handler above).
                 // Display Message „KT:$CT.MAC_ADRESS MIT KON:$MGM_KONN_HOSTNAME PAIREN OK?“,
                 // wobei die MAC-Adresse mit Trenner im folgenden Format dargestellt werden
                 // MUSS: „AABBCC:DDEEFF“
@@ -360,24 +366,33 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
      */
     private void handleValidateResult(SicctEnvelope response, byte[] challenge, Role role,
             boolean tlsFreshlyEstablished) {
-        // Step 8: the terminal must return SHA-256(challenge || CT.SHARED_SECRET).
-        byte[] sharedSecret = connection.getTerminal().sealedSharedSecret;
+        // Step 8: the terminal must return SHA-256(challenge || CT.SHARED_SECRET). Recover the raw
+        // ShS.KT.AUT from the stored (TPM-sealed when available) value; the recovered copy is zeroed
+        // again below so the cleartext secret does not linger on the heap.
+        byte[] storedSecret = connection.getTerminal().sealedSharedSecret;
+        byte[] sharedSecret = recoverSharedSecret(storedSecret);
         boolean verified = false;
-        if (sharedSecret != null) {
-            byte[] expected = EhealthTerminalAuthenticate.computeExpectedValidateHash(challenge, sharedSecret);
-            // Search the full Response-APDU body (data field + SW). A conformant terminal returns
-            // <hash> 9000, one that omits the trailer returns the bare hash (its last two bytes
-            // were split into the status word) — reconstructing data + SW recovers the hash in
-            // both cases. A genuine error response carries no data, so its 2-byte body cannot
-            // contain the 32-byte expected hash and verification correctly fails.
-            byte[] responseBody = responseBodyWithTrailer(response);
-            verified = indexOf(responseBody, expected) >= 0;
+        try {
+            if (sharedSecret != null) {
+                byte[] expected = EhealthTerminalAuthenticate.computeExpectedValidateHash(challenge, sharedSecret);
+                // Search the full Response-APDU body (data field + SW). A conformant terminal returns
+                // <hash> 9000, one that omits the trailer returns the bare hash (its last two bytes
+                // were split into the status word) — reconstructing data + SW recovers the hash in
+                // both cases. A genuine error response carries no data, so its 2-byte body cannot
+                // contain the 32-byte expected hash and verification correctly fails.
+                byte[] responseBody = responseBodyWithTrailer(response);
+                verified = indexOf(responseBody, expected) >= 0;
+            }
+        } finally {
+            if (sharedSecret != null) {
+                Arrays.fill(sharedSecret, (byte) 0);
+            }
         }
 
         if (!verified) {
             LOG.warnf("[TUC_KON_050] terminal=%s EHEALTH TERMINAL AUTHENTICATE VALIDATE failed "
                     + "(sw=%s, sharedSecretPresent=%s): CONNECTED=Nein",
-                    connection.getTerminalId(), sw(response), sharedSecret != null);
+                    connection.getTerminalId(), sw(response), storedSecret != null);
             connection.markSessionNotUsable();
             return;
         }
@@ -395,6 +410,39 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
 
         // Step 11: determine the cards currently inserted and fill CT.SLOTS_USED.
         getStatusAllIcc();
+    }
+
+    /**
+     * Protects the freshly generated ShS.KT.AUT for storage in {@code CT.SHARED_SECRET}. Delegates
+     * to {@link TpmSealer#protect(byte[])} (TPM-sealed when available, else unsealed with a format
+     * marker). When no manager/sealer is wired (standalone/test), the raw secret is stored as-is —
+     * matching the legacy on-disk format that {@link #recoverSharedSecret(byte[])} reads back.
+     */
+    private byte[] protectSharedSecret(byte[] rawSecret) {
+        TpmSealer sealer = manager != null ? manager.getTpmSealer() : null;
+        if (sealer != null) {
+            return sealer.protect(rawSecret);
+        }
+        return rawSecret;
+    }
+
+    /**
+     * Recovers the raw ShS.KT.AUT from the value stored in {@code CT.SHARED_SECRET}. Always returns
+     * a caller-owned copy that MUST be zeroed after use — never the stored array itself, so callers
+     * can wipe the cleartext secret without clobbering the persisted value. Returns {@code null} for
+     * a missing secret.
+     */
+    private byte[] recoverSharedSecret(byte[] storedSecret) {
+        if (storedSecret == null) {
+            return null;
+        }
+        TpmSealer sealer = manager != null ? manager.getTpmSealer() : null;
+        if (sealer != null) {
+            return sealer.recover(storedSecret);
+        }
+        // No sealer (standalone/test): the stored value is the raw secret. Clone it so the caller's
+        // post-use zeroing does not wipe CT.SHARED_SECRET.
+        return storedSecret.clone();
     }
 
     /** Encodes a Response-APDU's data field to raw bytes, or {@code null} if absent. */

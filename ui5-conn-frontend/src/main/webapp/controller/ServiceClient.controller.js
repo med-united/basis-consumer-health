@@ -65,6 +65,9 @@ sap.ui.define([
             var oEnv = new SoapEnvelope().init(oListOp, this.getOwnerComponent().getConfig().getDefaultContext());
             SoapClient.send(oListOp, oEnv.serialize()).then(function (oResult) {
                 that._entities.setProperty("/busy", false);
+                // GetCards (the Event Service list op) carries the card handles every
+                // card-handle ComboBox draws from — remember them as soon as the list loads.
+                that.getOwnerComponent().getCardRegistry().ingest(oResult.doc);
                 that._entities.setProperty("/rows", that._mapRows(oResult, oListOp.rowMapping));
             });
         },

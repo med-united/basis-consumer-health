@@ -12,6 +12,7 @@ import de.servicehealtherx.apdu.card.transport.CardTransportException;
 import de.servicehealtherx.apdu.model.GematikISO7816;
 import de.servicehealtherx.crypto.pcsc.PcscCardReaderPort;
 import de.servicehealtherx.crypto.pcsc.PcscCryptoProvider;
+import io.quarkus.arc.properties.IfBuildProperty;
 import io.quarkus.runtime.Startup;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -39,6 +40,7 @@ import org.jboss.logging.Logger;
  */
 @ApplicationScoped
 @Startup
+@IfBuildProperty(name = "crypto.provider.pcsc.enabled", stringValue = "true", enableIfMissing = true)
 public class PcscPinVerifier implements PcscPinVerifierMBean {
 
     private static final Logger LOG = Logger.getLogger(PcscPinVerifier.class);
