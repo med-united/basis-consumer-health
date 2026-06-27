@@ -58,6 +58,11 @@ import org.junit.jupiter.api.TestMethodOrder;
  *   <li><b>Card handles</b> — once the working session is established, the Konnektor runs SICCT card
  *       discovery; {@code EventService.GetCards} must then return at least one card with a
  *       {@code CardHandle} and a {@code SlotId &ge; 1} (the latter guards the slot-numbering fix).</li>
+ *   <li><b>E-prescription signing</b> — the same crypto-provider-independent {@link EPrescriptionFlow}
+ *       that {@link EPrescriptionSoapFlowTest} runs against an external server is run here against this
+ *       SICCT-backed Konnektor, so the C.AUT/QES read+sign route through the <i>SICCT</i> crypto
+ *       provider (card behind the paired terminal) instead of a PC/SC reader. Skips when no HBA is
+ *       inserted in the terminal's slots.</li>
  * </ul>
  *
  * <p>The test is <b>hardware-gated</b>: the eHealth-KT binds the host's PC/SC readers for its
@@ -251,6 +256,21 @@ class SicctTerminalPairingSystemTest {
             assertTrue(Integer.parseInt(slot.trim()) >= 1,
                     "SlotId must be >= 1 (slot-numbering fix), was " + slot);
         }
+    }
+
+    // ── Use case 3: the e-prescription signing flow works through the SICCT crypto provider ────────
+    @Test
+    @Order(3)
+    void signsEPrescriptionThroughSicctCryptoProvider() throws Exception {
+        assumeTrue(ctid != null, "pairing did not run (terminal not discovered) — skipping");
+
+        // Run the very same provider-agnostic e-prescription flow as EPrescriptionSoapFlowTest, but
+        // against this self-started Konnektor whose cards come from the paired eHealth-KT terminal:
+        // GetCards → ReadCardCertificate(C.AUT) → ExternalAuthenticate → GetJobNumber → SignDocument.
+        // The card it selects (the HBA) is reached over SICCT, so the read/sign route through the
+        // SICCT crypto provider rather than a PC/SC reader — proving the flow is crypto-provider
+        // independent. It skips (rather than fails) when no HBA is inserted in the terminal's slots.
+        new EPrescriptionFlow("http://localhost:" + KONN_HTTP_PORT + "/ws").runFullFlow();
     }
 
     // ── process launch ───────────────────────────────────────────────────────────────────────────

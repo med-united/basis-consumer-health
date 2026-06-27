@@ -76,12 +76,19 @@ public class SicctCardDiscovery {
             boolean present = iccStatus.get(slot) != IccStatusValue.CC_ABSENT;
             discoveryExecutor.execute(() -> {
                 try {
-                    if (present) {
-                        port.onCardInserted(slotNo);
-                    } else {
-                        port.onCardRemoved(slotNo);
-                    }
-                } catch (RuntimeException e) {
+                    // Reading the inserted card's type/ICCSN issues a multi-APDU SELECT+READ sequence;
+                    // run it under the terminal lock so it does not interleave with a concurrent
+                    // foreground crypto operation on the same card (which would clobber its selected
+                    // file — e.g. a cert read's SELECT DF.ESIGN being reset by discovery's SELECT MF).
+                    port.runExclusively(() -> {
+                        if (present) {
+                            port.onCardInserted(slotNo);
+                        } else {
+                            port.onCardRemoved(slotNo);
+                        }
+                        return null;
+                    });
+                } catch (Exception e) {
                     LOG.warnf(e, "[SICCT] card discovery failed on slot=%d of terminal=%s",
                             slotNo, connection.getTerminalId());
                 }

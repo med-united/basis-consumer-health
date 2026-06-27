@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
@@ -86,5 +89,83 @@ class SicctCardReaderPortTest {
         port.onCardRemoved(1);
 
         assertEquals(0, sicctList.size());
+    }
+
+    @Test
+    void test_runExclusively_serialises_concurrent_operations_on_the_same_terminal() throws Exception {
+        // A single SICCT terminal multiplexes background slot discovery and foreground crypto onto
+        // the same cards, so logical operations on it must not interleave (a discovery SELECT must
+        // not land between a cert read's SELECT and READ). Two ops on one terminal must run serially.
+        SicctCardReaderPort port = new SicctCardReaderPort(new FakeSicctChannel());
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger maxObserved = new AtomicInteger();
+        Runnable op = () -> {
+            try {
+                port.runExclusively(() -> {
+                    maxObserved.accumulateAndGet(active.incrementAndGet(), Math::max);
+                    sleepQuietly(150);
+                    active.decrementAndGet();
+                    return null;
+                });
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+        Thread t1 = new Thread(op);
+        Thread t2 = new Thread(op);
+        t1.start();
+        t2.start();
+        t1.join();
+        t2.join();
+        assertEquals(1, maxObserved.get(), "operations on one terminal must not run concurrently");
+    }
+
+    @Test
+    void test_runExclusively_does_not_serialise_across_different_terminals() throws Exception {
+        // The lock is per terminal (CtID), not global: two different terminals must run concurrently.
+        // The barrier (reached inside each runExclusively) only trips if both ops are inside at once;
+        // a global lock would deadlock it, failing the test.
+        SicctCardReaderPort a = new SicctCardReaderPort(new FakeSicctChannel());
+        SicctCardReaderPort b = new SicctCardReaderPort(new FakeSicctChannel());
+        CyclicBarrier bothInside = new CyclicBarrier(2);
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger maxObserved = new AtomicInteger();
+        java.util.function.Consumer<SicctCardReaderPort> op = port -> {
+            try {
+                port.runExclusively(() -> {
+                    awaitQuietly(bothInside);
+                    maxObserved.accumulateAndGet(active.incrementAndGet(), Math::max);
+                    sleepQuietly(50);
+                    active.decrementAndGet();
+                    return null;
+                });
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+        Thread t1 = new Thread(() -> op.accept(a));
+        Thread t2 = new Thread(() -> op.accept(b));
+        t1.start();
+        t2.start();
+        t1.join();
+        t2.join();
+        assertEquals(2, maxObserved.get(), "different terminals must be able to run concurrently");
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void awaitQuietly(CyclicBarrier barrier) {
+        try {
+            barrier.await(3, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

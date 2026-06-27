@@ -24,6 +24,8 @@ import de.servicehealtherx.apdu.model.CardType;
  */
 public final class CardObjectFactory {
 
+    private static final System.Logger LOG = System.getLogger(CardObjectFactory.class.getName());
+
     private final CardAttributeReader attributeReader;
 
     public CardObjectFactory() {
@@ -102,6 +104,15 @@ public final class CardObjectFactory {
         CardType effectiveType = (type != CardType.UNKNOWN && attrs.iccsn() == null)
                 ? CardType.UNKNOWN
                 : type;
+        if (effectiveType == CardType.UNKNOWN && type != CardType.UNKNOWN) {
+            // The card application was positively identified (SELECT by AID) but its mandatory ICCSN
+            // (EF.GDO) could not be read, so per TUC_KON_001 it is registered as UNKNOWN. This is a
+            // common cause of "a known card surfaces as UNKNOWN" — frequently a transient read error
+            // right after (re)insertion — so make the downgrade visible rather than silent.
+            LOG.log(System.Logger.Level.WARNING,
+                    "Card on slot " + slotNo + " of " + port.readerName() + " resolved as " + type
+                            + " but its ICCSN (EF.GDO) was unreadable; registering as UNKNOWN");
+        }
         return createAndRegister(list, port, slotNo, effectiveType, attrs);
     }
 

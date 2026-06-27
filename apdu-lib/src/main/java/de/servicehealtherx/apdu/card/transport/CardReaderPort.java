@@ -40,6 +40,28 @@ public interface CardReaderPort {
      */
     ResponseAPDU transmit(int slotNo, CommandAPDU command) throws CardTransportException;
 
+    /**
+     * Run a multi-APDU logical card operation (e.g. {@code SELECT DF + READ BINARY}, or
+     * {@code VERIFY PIN + MSE + PSO}) with <b>exclusive access</b> to this reader's card(s), so its
+     * APDU sequence is not interleaved with concurrent card access — background card-presence
+     * discovery or another crypto operation — that would clobber the card's selected-file or
+     * security state between two of its APDUs.
+     *
+     * <p>The default simply runs the action: transports that already serialise per-card access (PC/SC
+     * holds the reader for the connected card) need no extra locking. The SICCT port overrides this
+     * with a per-terminal lock, because a single SICCT terminal channel multiplexes background slot
+     * discovery and foreground crypto onto the same cards.
+     */
+    default <T> T runExclusively(CardOperation<T> action) throws CardTransportException {
+        return action.run();
+    }
+
+    /** A logical card operation passed to {@link #runExclusively(CardOperation)}. */
+    @FunctionalInterface
+    interface CardOperation<T> {
+        T run() throws CardTransportException;
+    }
+
     /** Register a listener notified when a card is inserted into or removed from a slot. */
     void addPresenceListener(PresenceListener listener);
 

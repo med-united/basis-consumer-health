@@ -2,6 +2,7 @@ package de.servicehealtherx.crypto.sicct;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import de.servicehealtherx.apdu.card.CardCertificateReadService;
 import de.servicehealtherx.apdu.card.CardListProvider;
@@ -121,8 +122,8 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
         CardObject card = resolveCard(cardHandle);
         CardReaderPort port = portFor(card);
         try {
-            byte[] transportKey = new EsignSigner(port, card.slotNo()).decipher(
-                    GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ENC, request.data);
+            byte[] transportKey = port.runExclusively(() -> new EsignSigner(port, card.slotNo()).decipher(
+                    GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ENC, request.data));
             return new CryptoOperationResult(request.alias, transportKey, null, request.algorithm);
         } catch (CardTransportException e) {
             throw new IllegalStateException("decrypt failed for card " + cardHandle + ": " + e.getMessage(), e);
@@ -131,16 +132,37 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
 
     @Override
     public java.security.cert.X509Certificate readCertificate(KeyAlias alias, String certRef, String crypt) {
-        return certReadService.readCertificate(cardHandle(alias), certRef, crypt);
+        return readCertificateExclusively(cardHandle(alias), certRef, crypt);
     }
 
     @Override
     public byte[] readCardCertificate(String cardHandle, String certRef, String crypt) {
         try {
-            return certReadService.readCertificate(cardHandle, certRef, crypt).getEncoded();
+            return readCertificateExclusively(cardHandle, certRef, crypt).getEncoded();
         } catch (java.security.cert.CertificateEncodingException e) {
             throw new IllegalStateException(
                     "Encoding " + certRef + " from card " + cardHandle + " failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Read a card certificate (SELECT DF + READ BINARY) holding the terminal lock so concurrent slot
+     * discovery cannot reset the selected file between the SELECT and the READ. When no terminal is
+     * bound for the card the read service is invoked directly so it still raises its usual
+     * {@code CardCertificateException} (rather than a lock-resolution error).
+     */
+    private java.security.cert.X509Certificate readCertificateExclusively(
+            String cardHandle, String certRef, String crypt) {
+        Optional<CardReaderPort> port = cmCardList.findByHandle(cardHandle)
+                .flatMap(card -> portResolver.portFor(card.ctid()));
+        if (port.isEmpty()) {
+            return certReadService.readCertificate(cardHandle, certRef, crypt);
+        }
+        try {
+            return port.get().runExclusively(() -> certReadService.readCertificate(cardHandle, certRef, crypt));
+        } catch (CardTransportException e) {
+            throw new IllegalStateException(
+                    "readCardCertificate " + certRef + " from card " + cardHandle + " failed: " + e.getMessage(), e);
         }
     }
 
@@ -155,9 +177,11 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
         CardReaderPort port = portFor(card);
         // ExternalAuthenticate signs the supplied hash with the C.AUT key in DF.ESIGN, released by
         // PIN.CH (ref 0x01) — identical to the PC/SC provider, driven over the SICCT terminal port.
+        // Held under the terminal lock so the SELECT DF.ESIGN + VERIFY PIN + PSO sequence is atomic
+        // against concurrent slot discovery.
         try {
-            return new EsignSigner(port, card.slotNo()).signEcdsa(
-                    GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+            return port.runExclusively(() -> new EsignSigner(port, card.slotNo()).signEcdsa(
+                    GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash));
         } catch (CardTransportException e) {
             throw new IllegalStateException("externalAuthenticate failed: " + e.getMessage(), e);
         }
@@ -168,21 +192,25 @@ public class SicctCryptoProvider implements CryptoProvider, CardListProvider {
         CardObject card = resolveCard(cardHandle);
         CardReaderPort port = portFor(card);
         byte[] hash = sha256(data);
-        EsignSigner signer = new EsignSigner(port, card.slotNo());
+        // The whole qualified-or-fallback sequence runs under the terminal lock so the DF.QES attempt
+        // and the DF.ESIGN fallback are not split by concurrent slot discovery.
         try {
-            // Qualified signature with PrK.HP.QES.E256 in DF.QES, released by PIN.QES (ref 0x81).
-            return signer.signEcdsa(GematikISO7816.AID_DF_QES, PIN_QES, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+            return port.runExclusively(() -> {
+                EsignSigner signer = new EsignSigner(port, card.slotNo());
+                try {
+                    // Qualified signature with PrK.HP.QES.E256 in DF.QES, released by PIN.QES (ref 0x81).
+                    return signer.signEcdsa(GematikISO7816.AID_DF_QES, PIN_QES, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+                } catch (CardTransportException e) {
+                    // Only the HBA carries a DF.QES qualified key; an SMC-B has none (SELECT → 6A82).
+                    // Fall back to a card signature with the C.AUT key in DF.ESIGN so the flow still
+                    // yields a verifiable signature (mirrors the PC/SC provider).
+                    LOG.warnf("[SICCT] Qualified signature unavailable (%s); signing with the C.AUT key instead",
+                            e.getMessage());
+                    return signer.signEcdsa(GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
+                }
+            });
         } catch (CardTransportException e) {
-            // Only the HBA carries a DF.QES qualified key; an SMC-B has none (SELECT → 6A82). Fall
-            // back to a card signature with the C.AUT key in DF.ESIGN so the flow still yields a
-            // verifiable signature (mirrors the PC/SC provider).
-            LOG.warnf("[SICCT] Qualified signature unavailable (%s); signing with the C.AUT key instead",
-                    e.getMessage());
-            try {
-                return signer.signEcdsa(GematikISO7816.AID_DF_ESIGN, PIN_CH, CARD_PIN, KEYREF_ECC, ALG_ECDSA, hash);
-            } catch (CardTransportException fallback) {
-                throw new IllegalStateException("signQes fallback failed: " + fallback.getMessage(), fallback);
-            }
+            throw new IllegalStateException("signQes fallback failed: " + e.getMessage(), e);
         }
     }
 

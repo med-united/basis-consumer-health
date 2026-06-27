@@ -17,6 +17,8 @@ import de.servicehealtherx.apdu.model.CardType;
  */
 public final class CardPresenceCoordinator implements CardReaderPort.PresenceListener {
 
+    private static final System.Logger LOG = System.getLogger(CardPresenceCoordinator.class.getName());
+
     /** Resolves the card type for a freshly inserted card in a slot (ATR/AID based, per provider). */
     @FunctionalInterface
     public interface CardTypeResolver {
@@ -76,7 +78,12 @@ public final class CardPresenceCoordinator implements CardReaderPort.PresenceLis
         } catch (RuntimeException e) {
             // Fehlerfall: even when card-type resolution or reading fails, TUC_KON_001 step 3 must
             // still run. Register a minimal CardObject with CardType=UNKNOWN so CARD/INSERTED is
-            // published for the slot rather than the insertion being silently dropped.
+            // published for the slot rather than the insertion being silently dropped. Log the cause:
+            // a silently-swallowed failure here is why a card can surface as UNKNOWN for no visible
+            // reason (e.g. a transient post-insert read error).
+            LOG.log(System.Logger.Level.WARNING,
+                    () -> "Card-type resolution/read failed on slot " + slotNo + " of "
+                            + port.readerName() + "; registering as UNKNOWN", e);
             card = factory.createAndRegister(cardList, port, slotNo, CardType.UNKNOWN,
                     CardObjectFactory.CardAttributes.empty());
         }
