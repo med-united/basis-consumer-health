@@ -82,7 +82,18 @@ public class SicctCardDiscovery {
                     // file — e.g. a cert read's SELECT DF.ESIGN being reset by discovery's SELECT MF).
                     port.runExclusively(() -> {
                         if (present) {
-                            port.onCardInserted(slotNo);
+                            // Idempotent re-discovery: a SICCT terminal re-runs full card discovery on
+                            // every session (re)establish, and the Konnektor establishes several
+                            // sessions. Rebuilding a still-present card would remove its CardObject and
+                            // mint a fresh CardHandle (createAndRegister → removeBySlot +
+                            // generateCardHandle), invalidating a handle a client is mid-operation with
+                            // ("No card found for handle ..."). Keep the existing handle for an
+                            // already-known slot; only build when the slot is newly occupied. A genuine
+                            // card change still re-enumerates: removal first fires onCardRemoved (below),
+                            // clearing the slot, so the next insert builds a fresh handle.
+                            if (provider.cmCardList().findBySlot(port.ctid(), slotNo).isEmpty()) {
+                                port.onCardInserted(slotNo);
+                            }
                         } else {
                             port.onCardRemoved(slotNo);
                         }
