@@ -78,6 +78,13 @@
             <groupId>io.quarkiverse.cxf</groupId>
             <artifactId>quarkus-cxf</artifactId>
         </dependency>
+        <!-- CXF runtime management: puts org.apache.cxf:cxf-rt-management on the classpath (and
+             indexes it / makes it native-safe) so the JMX InstrumentationManager and the
+             response-time performance counters used by CxfJmxPerformanceFeature are available. -->
+        <dependency>
+            <groupId>io.quarkiverse.cxf</groupId>
+            <artifactId>quarkus-cxf-rt-management</artifactId>
+        </dependency>
 
         <!-- JPA + H2 for AppConfigProperty and CardTerminal -->
         <dependency>
