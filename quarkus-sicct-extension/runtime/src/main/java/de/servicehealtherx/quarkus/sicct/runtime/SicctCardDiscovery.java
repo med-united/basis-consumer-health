@@ -61,13 +61,18 @@ public class SicctCardDiscovery {
 
     /**
      * Builds/refreshes card handles for the inserted ICCs of a connected, validly-paired terminal,
-     * from a GET STATUS ALL ICC result (one entry per 0-based slot). Each slot is handled on a
+     * from a GET STATUS ALL ICC result (one entry per 0-based ICC index). Each slot is handled on a
      * worker thread because reading the card (ICCSN, type, …) issues blocking APDU round-trips.
+     * <p>
+     * Card slot numbers are <b>1-based</b> (slot 1 = first ICC), matching the PC/SC reader registry
+     * and the {@link de.servicehealtherx.apdu.card.CardObject} contract ({@code slotNo >= 1}); the
+     * raw GET STATUS list is 0-based, so ICC index {@code i} is slot {@code i + 1}. Passing the
+     * 0-based index here is what previously made slot 0 fail with "slotNo must be >= 1".
      */
     public void discoverCards(SicctTerminalConnection connection, List<IccStatusValue> iccStatus) {
         SicctCardReaderPort port = portFor(connection);
         for (int slot = 0; slot < iccStatus.size(); slot++) {
-            int slotNo = slot;
+            int slotNo = slot + 1;
             boolean present = iccStatus.get(slot) != IccStatusValue.CC_ABSENT;
             discoveryExecutor.execute(() -> {
                 try {

@@ -743,16 +743,19 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
      */
     private void updateSlotsUsed(List<IccStatusValue> iccStatus) {
         StringBuilder slots = new StringBuilder();
+        // The GET STATUS list is 0-based; card slot numbers are 1-based (slot 1 = first ICC),
+        // consistent with card-handle SlotId and the FU addressing in iccFunctionalUnitAddress.
         for (int slot = 0; slot < iccStatus.size(); slot++) {
             if (iccStatus.get(slot) != IccStatusValue.CC_ABSENT) {
+                int slotNo = slot + 1;
                 if (slots.length() > 0) {
                     slots.append(',');
                 }
-                slots.append(slot);
+                slots.append(slotNo);
                 if (manager != null) {
                     manager.TUC_KON_256("CT/SLOT_IN_USE", EventType.Operation, EventSeverity.Info,
                             Map.of("CtID", String.valueOf(connection.getTerminal().ctid),
-                                    "SlotNo", String.valueOf(slot)),
+                                    "SlotNo", String.valueOf(slotNo)),
                             false, false);
                 }
             }
@@ -1014,20 +1017,24 @@ public class SicctChannelHandler extends ChannelInboundHandlerAdapter {
         return result;
     }
 
-    /** Whether the last GET STATUS ALL ICC reported a card in {@code slotNo} (0-based). */
+    /**
+     * Whether the last GET STATUS ALL ICC reported a card in {@code slotNo} (1-based card slot).
+     * The status list is 0-based, so slot {@code n} is list index {@code n - 1}.
+     */
     public boolean isCardPresent(int slotNo) {
         List<IccStatusValue> status = lastIccStatus;
-        return slotNo >= 0 && slotNo < status.size() && status.get(slotNo) != IccStatusValue.CC_ABSENT;
+        return slotNo >= 1 && slotNo <= status.size() && status.get(slotNo - 1) != IccStatusValue.CC_ABSENT;
     }
 
     /**
-     * Maps a 0-based ICC slot index (as reported by GET STATUS ALL ICC) to its SICCT destination
-     * functional-unit address ({@code wSrcOrDesAddr}). FU 0 addresses the card terminal itself, so
-     * the first ICC slot is FU 1. NOTE: validate this mapping against the real terminal — isolated
-     * here so it is a one-line change if a terminal numbers its ICC functional units differently.
+     * Maps a 1-based ICC card slot to its SICCT destination functional-unit address
+     * ({@code wSrcOrDesAddr}). FU 0 addresses the card terminal itself and the first ICC slot is
+     * FU 1, so with 1-based slot numbering the functional-unit address equals the slot number.
+     * NOTE: validate this mapping against the real terminal — isolated here so it is a one-line
+     * change if a terminal numbers its ICC functional units differently.
      */
     private static int iccFunctionalUnitAddress(int slotNo) {
-        return slotNo + 1;
+        return slotNo;
     }
 
     /**
