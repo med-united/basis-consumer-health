@@ -84,7 +84,9 @@ public class SicctMockServerTest {
 
                     assertEquals("0l7EieJvSAvC", handler.getSessionId(), "INIT CT SESSION session id");
 
-                    assertTrue(handler.getManufacturerInfo().startsWith("DECHY0120"),
+                    // The manufacturer DO is parsed into the human-readable
+                    // CardTerminalManufacturerInfo summary (manufacturer=DECHY, sicctVersion=0120, ...).
+                    assertTrue(handler.getManufacturerInfo().startsWith("manufacturer=DECHY"),
                             "manufacturer info was: " + handler.getManufacturerInfo());
                     assertEquals(handler.getManufacturerInfo(), cardTerminal.productInformation,
                             "manufacturer info should be persisted on the terminal");

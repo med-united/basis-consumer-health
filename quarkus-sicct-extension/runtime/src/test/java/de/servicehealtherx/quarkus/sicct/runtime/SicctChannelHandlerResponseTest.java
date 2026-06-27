@@ -91,7 +91,12 @@ public class SicctChannelHandlerResponseTest {
                 SICCT.P2_GET_STATUS_CARD_TERMINAL_MANUFACTURER);
         handler.channelRead(ctx, decode(GET_STATUS_MANUFACTURER_RESPONSE));
         assertNotNull(handler.getManufacturerInfo());
-        assertTrue(handler.getManufacturerInfo().startsWith("DECHY0120"), handler.getManufacturerInfo());
+        // The manufacturer DO is parsed into the human-readable CardTerminalManufacturerInfo
+        // summary: manufacturer=DECHY (RID), sicctVersion=0120, eHealth interface version 1.0.0.
+        assertTrue(handler.getManufacturerInfo().startsWith("manufacturer=DECHY"),
+                handler.getManufacturerInfo());
+        assertTrue(handler.getManufacturerInfo().contains("sicctVersion=0120"),
+                handler.getManufacturerInfo());
         assertEquals(handler.getManufacturerInfo(), terminal.productInformation);
     }
 
