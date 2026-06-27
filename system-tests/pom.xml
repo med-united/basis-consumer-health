@@ -34,6 +34,18 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- SICCT eHealth-KT terminal simulator (git submodule). Pulled in test scope so
+             SicctTerminalPairingSystemTest can launch the terminal as a child JVM on the surefire
+             classpath (java -cp ${java.class.path} de.servicehealtherx.ehealthkt.app.EhealthKtApplication …)
+             and drive it over JMX. The test talks to it generically via MBeanServerConnection#invoke,
+             so there is no compile-time use of its classes — the dependency only has to be present on
+             the test runtime classpath for the child JVM to resolve the main class. -->
+        <dependency>
+            <groupId>de.servicehealtherx.ehealthkt</groupId>
+            <artifactId>app</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
         <!-- gematik AfoReporter: provides the de.gematik.idp.tests.@Afo annotation used to trace
              each test case to its AFO, and the reporter that renders requirements coverage. -->
         <dependency>

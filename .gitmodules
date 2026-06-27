@@ -6,3 +6,6 @@
 [submodule "openkim"]
 	path = openkim
 	url = git@github.com:med-united/openkim.git
+[submodule "sicct-ehealth-kt"]
+	path = sicct-ehealth-kt
+	url = git@github.com:med-united/sicct-ehealth-kt.git

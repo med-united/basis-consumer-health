@@ -28,6 +28,9 @@
         <module>konnektor-soap-server</module>
         <module>quarkus-server</module>
         <module>openkim</module>
+        <!-- SICCT eHealth-KT terminal simulator (git submodule); built so its `app`
+             artifact is available to the system-tests JMX pairing/card-handle suite. -->
+        <module>sicct-ehealth-kt</module>
 	<module>system-tests</module>
         <module>ui5-conn-frontend</module>
     </modules>
