@@ -151,6 +151,10 @@ class SicctTerminalPairingSystemTest {
         closeQuietly(ktJmx);
         destroyQuietly(konnektorProc);
         destroyQuietly(terminalProc);
+        if (System.getProperty("systemtest.keep.logs") != null) {
+            System.out.println("[systest] keeping logs in " + tempDir);
+            return;
+        }
         deleteRecursively(tempDir);
     }
 
@@ -206,8 +210,20 @@ class SicctTerminalPairingSystemTest {
         }, Duration.ofSeconds(30));
         assertTrue(aktiv, "Konnektor terminal did not reach correlation=AKTIV");
 
-        // … and the terminal sees exactly one active session and one stored pairing block.
-        assertTrue(getInt(this.kt, kt, "ActiveSessions") >= 1, "terminal reports no active session");
+        // … and the terminal sees an active working session and one stored pairing block.
+        // The Konnektor flips to AKTIV the instant pairing completes, but it then performs an
+        // administrative disconnect and re-establishes the TUC_KON_050 working session (a fresh
+        // CLIENT_WITH_PAIRING connection + VALIDATE) a few hundred ms later. Only that reconnected
+        // session registers in the terminal's SicctSessionRegistry, so poll for it instead of
+        // racing the reconnect window (where ActiveSessions is briefly 0).
+        boolean sessionUp = waitFor(() -> {
+            try {
+                return getInt(this.kt, kt, "ActiveSessions") >= 1;
+            } catch (Exception e) {
+                return false;
+            }
+        }, Duration.ofSeconds(30));
+        assertTrue(sessionUp, "terminal reports no active session");
         assertEquals(1, getInt(this.kt, kt, "PairingBlocks"), "terminal should hold exactly one pairing block");
     }
 
@@ -263,13 +279,19 @@ class SicctTerminalPairingSystemTest {
     private Process startKonnektor(Path runnerJar) throws IOException {
         List<String> cmd = new ArrayList<>();
         cmd.add(javaBin());
+        // The gematik conn WSDLs import xmldsig-core-schema.xsd, which carries an external-DTD
+        // DOCTYPE. CXF re-parses these schemas when it creates the SOAP endpoints at boot, and
+        // JAXP's default accessExternalDTD/Schema policy ("") blocks that read, failing endpoint
+        // creation. The reactor build/dev get this via .mvn/jvm.config; a standalone runner jar
+        // does not, so pass it here (mirrors gemSpec runtime requirements for the konnektor).
+        cmd.add("-Djavax.xml.accessExternalDTD=all");
+        cmd.add("-Djavax.xml.accessExternalSchema=all");
         cmd.addAll(remoteJmxFlags(KONN_JMX_PORT));
         cmd.add("-Dquarkus.profile=dev"); // dev profile disables OIDC and opens Hawtio (matches local dev)
         cmd.add("-Dquarkus.http.port=" + KONN_HTTP_PORT);
-        // The prod runner jar has no dev-services, so name an explicit in-memory datasource.
-        cmd.add("-Dquarkus.datasource.db-kind=h2");
+        // db-kind and the schema-management strategy are baked into the runner jar (build-time);
+        // only the jdbc.url is overridable at runtime, so point it at a throwaway in-memory DB.
         cmd.add("-Dquarkus.datasource.jdbc.url=jdbc:h2:mem:sicct-systest;DB_CLOSE_DELAY=-1");
-        cmd.add("-Dquarkus.hibernate-orm.database.generation=drop-and-create");
         cmd.add("-jar");
         cmd.add(runnerJar.toString());
         return start(cmd, tempDir.resolve("konnektor.log"));

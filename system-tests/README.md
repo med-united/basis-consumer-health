@@ -47,8 +47,12 @@ so it is safe inside the reactor build.
 | `systemtest.base.url`   | `http://localhost:8080/ws` | base URL of the CXF endpoints (`quarkus.cxf.path`) |
 | `systemtest.card.handle`| _(from GetCards)_          | force a specific card handle instead of discovering one |
 
+Card handles are server-assigned UUIDs (from `GetCards`), so by default the card-bound flow tests
+discover one rather than assuming a fixed value; when no card is reachable they skip themselves.
+Pass an explicit handle only to pin a specific card:
+
 ```bash
 mvn -pl system-tests test \
     -Dsystemtest.base.url=http://my-konnektor:8080/ws \
-    -Dsystemtest.card.handle=card-1
+    -Dsystemtest.card.handle=6fbf3289-fa66-4c1b-a16c-ed99706ebd2a
 ```

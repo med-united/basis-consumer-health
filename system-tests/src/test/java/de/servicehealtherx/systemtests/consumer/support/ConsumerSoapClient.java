@@ -29,9 +29,18 @@ public final class ConsumerSoapClient {
     public static final String BASE_URL =
             System.getProperty("systemtest.base.url", "http://localhost:8080/ws");
 
-    /** Card handle used by the card-bound operations; maps to key alias {@code sicct/<handle>}. */
-    public static final String CARD_HANDLE =
-            System.getProperty("systemtest.card.handle", "card-1");
+    /**
+     * Card handle used by the card-bound operations; maps to key alias {@code sicct/<handle>}.
+     * Taken from {@code -Dsystemtest.card.handle}; falls back to the placeholder {@code card-1} when
+     * unset/blank (these card-bound consumer tests then SOAP-fault and skip themselves when that
+     * handle is not provisioned).
+     */
+    public static final String CARD_HANDLE = cardHandle();
+
+    private static String cardHandle() {
+        String h = System.getProperty("systemtest.card.handle");
+        return h == null || h.isBlank() ? "card-1" : h.trim();
+    }
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))

@@ -161,6 +161,13 @@ class KimEncryptionSoapFlowTest {
                 "/conn/CertificateService", soapReadCardCertificate(cardHandle),
                 ACTION_READ_CERT);
 
+        // No provisioned EC encryption card reachable by the server → SOAP fault: skip (don't fail)
+        // the KIM flow, matching this class's contract and the consumer suite.
+        boolean fault = resp.body().contains("Fault") && resp.body().contains("faultstring");
+        assumeTrue(!fault,
+                "ReadCardCertificate(C.ENC) faulted — no provisioned encryption card reachable by the "
+                        + "server; skipping the KIM flow (insert a card / set -Dsystemtest.card.handle=…): "
+                        + resp.body());
         assertOkSoap(resp, "ReadCardCertificateResponse");
         recipientCertB64 = firstMatch(resp.body(), "X509Certificate");
         assumeTrue(recipientCertB64 != null && !recipientCertB64.isBlank(),

@@ -22,8 +22,10 @@
     <properties>
         <!-- Base URL of the running CXF endpoints (quarkus.cxf.path defaults to /ws). -->
         <systemtest.base.url>http://localhost:8080/ws</systemtest.base.url>
-        <!-- Card handle for the card-bound Basis-Consumer crypto operations. -->
-        <systemtest.card.handle>card-1</systemtest.card.handle>
+        <!-- Card handle for the card-bound crypto operations. Empty by default so the flow tests
+             discover a real handle from GetCards (handles are server-assigned UUIDs, never "card-1");
+             override with -Dsystemtest.card.handle=<uuid> to force a specific card. -->
+        <systemtest.card.handle></systemtest.card.handle>
         <aforeporter.version>1.2.1</aforeporter.version>
     </properties>
 
