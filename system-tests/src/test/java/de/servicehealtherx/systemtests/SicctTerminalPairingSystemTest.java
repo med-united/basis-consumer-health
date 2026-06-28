@@ -270,7 +270,27 @@ class SicctTerminalPairingSystemTest {
         // The card it selects (the HBA) is reached over SICCT, so the read/sign route through the
         // SICCT crypto provider rather than a PC/SC reader — proving the flow is crypto-provider
         // independent. It skips (rather than fails) when no HBA is inserted in the terminal's slots.
+        //
+        // SICCT card discovery is asynchronous and per-slot (slot 1 is the gSMC-KT, the cards follow),
+        // so wait until the HBA has actually surfaced in GetCards before running the flow — otherwise
+        // the flow's one-shot GetCards could race discovery and pick a non-HBA card (e.g. the gSMC-KT).
+        boolean hbaPresent = waitFor(() -> {
+            HttpResponse<String> resp = getCards();
+            return resp != null && resp.statusCode() == 200 && hasCardOfType(resp.body(), "HBA");
+        }, Duration.ofSeconds(45));
+        assumeTrue(hbaPresent, "no HBA discovered via the terminal — skipping the SICCT e-prescription flow");
+
         new EPrescriptionFlow("http://localhost:" + KONN_HTTP_PORT + "/ws").runFullFlow();
+    }
+
+    /** Whether GetCards holds a {@code <Card>} of the given {@code CardType} (namespace-agnostic). */
+    private static boolean hasCardOfType(String body, String cardType) {
+        for (String card : elements(body, "Card")) {
+            if (cardType.equalsIgnoreCase(firstMatch(card, "CardType"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ── process launch ───────────────────────────────────────────────────────────────────────────
