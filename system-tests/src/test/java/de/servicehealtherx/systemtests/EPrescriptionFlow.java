@@ -176,8 +176,14 @@ final class EPrescriptionFlow {
                 ACTION_SIGN_DOCUMENT);
         assumeCardOperationAvailable(resp);
         assertOkSoap(resp, "SignDocumentResponse");
-        assertTrue(resp.body().contains("DocumentWithSignature") || resp.body().contains("Base64Data"),
-                "expected a signed document in the SignDocument response: " + resp.body());
+        // A successful SignDocument returns the signature in one of several shapes depending on the
+        // signature form: an enveloping CAdES/PKCS#7 signature comes back as SignatureObject/
+        // Base64Signature (what the HBA QES produces here), while an enveloped/document form returns
+        // DocumentWithSignature/Base64Data. Accept any of them as a produced signature.
+        assertTrue(resp.body().contains("Base64Signature")
+                        || resp.body().contains("DocumentWithSignature")
+                        || resp.body().contains("Base64Data"),
+                "expected a signature in the SignDocument response: " + resp.body());
     }
 
     /** Run all five steps in order. */
