@@ -36,3 +36,8 @@ logs/
 
 # Claudes scratch data for trying out things
 .scratch-c2c/
+
+# Runtime / generated data
+pairing.json
+quarkus-server/data/
+tsl-cache/
