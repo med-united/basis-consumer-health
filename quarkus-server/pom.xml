@@ -29,6 +29,13 @@
             <groupId>de.servicehealtherx</groupId>
             <artifactId>crypto-p12-lib</artifactId>
         </dependency>
+        <!-- BouncyCastle PKCS#10 (CSR) + PEM I/O for the self-managed mTLS PKI
+             (MtlsCertificateAuthority / MtlsCertManagement JMX bean). bcprov is
+             already on the classpath transitively via crypto-p12-lib. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+        </dependency>
         <dependency>
             <groupId>de.servicehealtherx</groupId>
             <artifactId>crypto-pcsc-lib</artifactId>
